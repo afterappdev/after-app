@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: after-postgres
+    restart: unless-stopped
+    ports:
+      # Host 5433 avoids conflict with a local Windows PostgreSQL on 5432
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: after
+      POSTGRES_PASSWORD: after
+      POSTGRES_DB: after
+    volumes:
+      - after_pg_data:/var/lib/postgresql/data
+
+volumes:
+  after_pg_data:

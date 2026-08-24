@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  VENUE
+}
+
+enum PhotoKind {
+  GALLERY
+  MENU
+}
+
+enum PurchaseStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum BannerStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  googleId     String?    @unique
+  appleId      String?    @unique
+  role         Role       @default(USER)
+  state        String
+  city         String
+  avatarUrl    String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  venue         Venue?
+  favorites     Favorite[]
+  reviews       Review[]
+  notifications Notification[]
+}
+
+model Venue {
+  id          String           @id @default(cuid())
+  ownerUserId String           @unique
+  owner       User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  category    String?
+  logoUrl     String?
+  coverUrl    String?
+  city        String
+  state       String
+  lat         Float?
+  lng         Float?
+  contacts    Json?
+  /// Weekly hours JSON, e.g. { "mon": { "open": "10:00", "close": "22:00" }, ... }
+  hoursJson   Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  photos      VenuePhoto[]
+  favorites   Favorite[]
+  reviews     Review[]
+  wallet      CreditWallet?
+  purchases   CreditPurchase[]
+  banners       Banner[]
+  notifications Notification[]
+}
+
+model VenuePhoto {
+  id        String    @id @default(cuid())
+  venueId   String
+  venue     Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  url       String
+  kind      PhotoKind @default(GALLERY)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([venueId, kind])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  venueId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, venueId])
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  userId      String
+  venueId     String
+  rating      Int
+  testimonial String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue       Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, venueId])
+  @@index([venueId, createdAt])
+}
+
+model CreditWallet {
+  venueId String @id
+  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  balance Int    @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model CreditPurchase {
+  id           String         @id @default(cuid())
+  venueId      String
+  venue        Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  packageKey   String
+  amountPaid   Decimal        @db.Decimal(10, 2)
+  credits      Int
+  providerTxId String?        @unique
+  status       PurchaseStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([venueId, createdAt])
+}
+
+model Banner {
+  id          String           @id @default(cuid())
+  venueId     String
+  venue       Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  title       String?
+  description String?
+  creditsCost Int
+  status      BannerStatus     @default(ACTIVE)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  schedules     BannerSchedule[]
+  notifications Notification[]
+
+  @@index([venueId, createdAt])
+}
+
+model BannerSchedule {
+  id            String   @id @default(cuid())
+  bannerId      String
+  banner        Banner   @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  displayDate   DateTime @db.Date
+  citySnapshot  String
+
+  @@index([citySnapshot, displayDate])
+  @@index([bannerId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venueId   String
+  venue     Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  bannerId  String?
+  banner    Banner?   @relation(fields: [bannerId], references: [id], onDelete: SetNull)
+  title     String
+  body      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
