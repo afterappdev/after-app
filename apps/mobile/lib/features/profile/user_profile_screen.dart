@@ -10,6 +10,7 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
 import '../notifications/notifications_controller.dart';
 import '../notifications/push_notifications.dart';
+import 'delete_account_button.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -721,6 +722,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   ),
                 ),
               ),
+              const DeleteAccountButton(),
               const SizedBox(height: 8),
               AfterBottomNav(
                 index: 3,

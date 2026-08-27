@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { PhotoKind } from '@prisma/client';
+import { PhotoKind, MediaType } from '@prisma/client';
 import {
   IsEnum,
   IsInt,
@@ -80,6 +80,10 @@ class AddPhotoDto {
   @IsOptional()
   @IsEnum(PhotoKind)
   kind?: PhotoKind;
+
+  @IsOptional()
+  @IsEnum(MediaType)
+  mediaType?: MediaType;
 }
 
 class UpsertReviewDto {
@@ -113,6 +117,7 @@ export class VenuesController {
     @Query('hasKidsSpace') hasKidsSpace?: string,
     @Query('hasCoverCharge') hasCoverCharge?: string,
     @Query('hasWheelchairAccess') hasWheelchairAccess?: string,
+    @Query('isPetFriendly') isPetFriendly?: string,
   ) {
     const rating = Number(minRating);
     return this.venuesService.searchByName(q ?? '', {
@@ -122,6 +127,7 @@ export class VenuesController {
       hasKidsSpace: hasKidsSpace === 'true',
       hasCoverCharge: hasCoverCharge === 'true',
       hasWheelchairAccess: hasWheelchairAccess === 'true',
+      isPetFriendly: isPetFriendly === 'true',
     });
   }
 
@@ -167,7 +173,13 @@ export class VenuesController {
     @Param('id') id: string,
     @Body() dto: AddPhotoDto,
   ) {
-    return this.venuesService.addPhoto(user.userId, id, dto.url, dto.kind);
+    return this.venuesService.addPhoto(
+      user.userId,
+      id,
+      dto.url,
+      dto.kind,
+      dto.mediaType,
+    );
   }
 
   @Delete(':id/photos/:photoId')

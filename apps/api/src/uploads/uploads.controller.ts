@@ -29,10 +29,18 @@ export class UploadsController {
           cb(null, `${randomUUID()}${ext}`);
         },
       }),
-      limits: { fileSize: 8 * 1024 * 1024 },
+      limits: { fileSize: 80 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
-          cb(new BadRequestException('Apenas imagens são permitidas') as never, false);
+        const ok =
+          file.mimetype.startsWith('image/') ||
+          file.mimetype.startsWith('video/');
+        if (!ok) {
+          cb(
+            new BadRequestException(
+              'Apenas imagens ou vídeos são permitidos',
+            ) as never,
+            false,
+          );
           return;
         }
         cb(null, true);

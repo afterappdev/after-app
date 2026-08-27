@@ -159,6 +159,11 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteAccount() async {
+    await api.delete('/users/me');
+    await logout();
+  }
+
   Future<void> updateProfile({
     required String name,
     required String state,

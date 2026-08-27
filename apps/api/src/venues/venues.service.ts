@@ -3,9 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { PhotoKind, Prisma } from '@prisma/client';
+import { MediaType, PhotoKind, Prisma } from '@prisma/client';
 import { computeIsOpen } from '../common/utils/hours';
 import { geocodeCity, geocodeVenueProfile, contactsStreetAddress, haversineKm, parseCoord } from '../common/utils/geo';
+import { inferMediaType } from '../common/utils/media-type';
 import { PrismaService } from '../prisma/prisma.service';
 
 function amenityFlags(contacts: unknown) {
@@ -22,6 +23,7 @@ function amenityFlags(contacts: unknown) {
         ? ''
         : String(c.coverCharge),
     hasWheelchairAccess: c.hasWheelchairAccess === true,
+    isPetFriendly: c.isPetFriendly === true,
   };
 }
 
@@ -66,6 +68,7 @@ export class VenuesService {
       hasKidsSpace?: boolean;
       hasCoverCharge?: boolean;
       hasWheelchairAccess?: boolean;
+      isPetFriendly?: boolean;
     } = {},
   ) {
     const venues = await this.prisma.venue.findMany({
@@ -126,6 +129,11 @@ export class VenuesService {
     if (filters.hasWheelchairAccess) {
       ranked = ranked.filter(
         (venue) => amenityFlags(venue.contacts).hasWheelchairAccess,
+      );
+    }
+    if (filters.isPetFriendly) {
+      ranked = ranked.filter(
+        (venue) => amenityFlags(venue.contacts).isPetFriendly,
       );
     }
 
@@ -368,6 +376,7 @@ export class VenuesService {
     venueId: string,
     url: string,
     kind: PhotoKind = PhotoKind.GALLERY,
+    mediaType?: MediaType,
   ) {
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) {
@@ -378,7 +387,12 @@ export class VenuesService {
     }
 
     return this.prisma.venuePhoto.create({
-      data: { venueId, url, kind },
+      data: {
+        venueId,
+        url,
+        kind,
+        mediaType: inferMediaType(url, mediaType),
+      },
     });
   }
 

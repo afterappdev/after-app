@@ -17,11 +17,17 @@ enum PhotoKind {
   MENU
 }
 
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
 enum PurchaseStatus {
   PENDING
   PAID
   FAILED
   REFUNDED
+  CANCELLED
 }
 
 enum BannerStatus {
@@ -83,6 +89,7 @@ model VenuePhoto {
   venue     Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
   url       String
   kind      PhotoKind @default(GALLERY)
+  mediaType MediaType @default(IMAGE)
   sortOrder Int       @default(0)
   createdAt DateTime  @default(now())
 
@@ -127,10 +134,14 @@ model CreditPurchase {
   venueId      String
   venue        Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
   packageKey   String
+  productId    String?
   amountPaid   Decimal        @db.Decimal(10, 2)
+  currency     String         @default("BRL")
   credits      Int
+  provider     String?
   providerTxId String?        @unique
   status       PurchaseStatus @default(PENDING)
+  confirmedAt  DateTime?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

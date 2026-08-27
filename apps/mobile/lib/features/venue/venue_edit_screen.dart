@@ -4,9 +4,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/venue_categories.dart';
 import '../../core/config/api_config.dart';
+import '../../core/media/gallery_media.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../auth/models/user_session.dart';
 
 class VenueEditScreen extends StatefulWidget {
   const VenueEditScreen({super.key});
@@ -57,7 +59,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   String? _coverUrl;
   List<dynamic> _photos = [];
   bool _loading = false;
-  bool _boot = true;
   String? _venueId;
   int _tab = 0;
   String _loadedCity = '';
@@ -66,6 +67,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   bool _hasKidsSpace = false;
   bool _hasCoverCharge = false;
   bool _hasWheelchairAccess = false;
+  bool _isPetFriendly = false;
 
   final _picker = ImagePicker();
 
@@ -85,26 +87,36 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       _close[key] = TextEditingController(text: '22:00');
       _closed[key] = false;
     }
+    final user = context.read<AuthController>().user;
+    _venueId = user?.venueId;
+    _applyAccountFields(user);
     _load();
   }
 
+  String _nonEmpty(dynamic value, [String fallback = '']) {
+    final text = value?.toString().trim() ?? '';
+    return text.isNotEmpty ? text : fallback;
+  }
+
+  void _applyAccountFields(UserSession? user, {Map<String, dynamic>? venue}) {
+    _name.text = _nonEmpty(venue?['name'], _nonEmpty(user?.name));
+    _city.text = _nonEmpty(venue?['city'], _nonEmpty(user?.city));
+    _state.text = _nonEmpty(venue?['state'], _nonEmpty(user?.state));
+    _loadedCity = _city.text;
+    _loadedState = _state.text;
+  }
+
   Future<void> _load() async {
-    final auth = context.read<AuthController>();
-    final venueId = auth.user?.venueId;
-    _venueId = venueId;
-    if (venueId == null) {
-      setState(() => _boot = false);
-      return;
-    }
+    final user = context.read<AuthController>().user;
+    _venueId = user?.venueId ?? _venueId;
+    final venueId = _venueId;
+    if (venueId == null) return;
     try {
       final data = await context.read<ApiClient>().get('/venues/$venueId')
           as Map<String, dynamic>;
-      _name.text = data['name']?.toString() ?? '';
+      if (!mounted) return;
+      _applyAccountFields(user, venue: data);
       _description.text = data['description']?.toString() ?? '';
-      _city.text = data['city']?.toString() ?? '';
-      _state.text = data['state']?.toString() ?? '';
-      _loadedCity = _city.text;
-      _loadedState = _state.text;
       final category = data['category']?.toString();
       _category = VenueCategories.all.contains(category) ? category : null;
       _logoUrl = data['logoUrl'] as String?;
@@ -122,6 +134,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         _hasCoverCharge = contacts['hasCoverCharge'] == true;
         _coverCharge.text = contacts['coverCharge']?.toString() ?? '';
         _hasWheelchairAccess = contacts['hasWheelchairAccess'] == true;
+        _isPetFriendly = contacts['isPetFriendly'] == true;
       }
 
       final hours = data['hoursJson'];
@@ -137,8 +150,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           }
         }
       }
-    } finally {
-      if (mounted) setState(() => _boot = false);
+      if (mounted) setState(() {});
+    } on ApiException {
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) setState(() {});
     }
   }
 
@@ -157,21 +173,23 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     return map;
   }
 
-  Future<String?> _pickAndUpload() async {
-    final file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 85,
-    );
+  Future<String?> _pickAndUpload({bool video = false}) async {
+    final file = video
+        ? await _picker.pickVideo(source: ImageSource.gallery)
+        : await _picker.pickImage(
+            source: ImageSource.gallery,
+            maxWidth: 1600,
+            imageQuality: 85,
+          );
     if (file == null) return null;
     if (!mounted) return null;
     final api = context.read<ApiClient>();
     final bytes = await file.readAsBytes();
-    final uploaded = await api.uploadImage(
-          bytes: bytes,
-          filename: file.name,
-          mimeType: file.mimeType,
-        );
+    final uploaded = await api.uploadFile(
+      bytes: bytes,
+      filename: file.name,
+      mimeType: file.mimeType,
+    );
     return uploaded['url'] as String?;
   }
 
@@ -201,22 +219,70 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     }
   }
 
-  Future<void> _addPhoto(String kind) async {
+  Future<void> _addGalleryMedia() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_outlined, color: _accent),
+                title: const Text(
+                  'Escolher foto',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, 'photo'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.videocam_outlined, color: _accent),
+                title: const Text(
+                  'Escolher vídeo',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, 'video'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (choice == null) return;
+    await _addPhoto('GALLERY', video: choice == 'video');
+  }
+
+  Future<void> _addPhoto(String kind, {bool video = false}) async {
     final venueId = _venueId;
     if (venueId == null) return;
     final api = context.read<ApiClient>();
     setState(() => _loading = true);
     try {
-      final url = await _pickAndUpload();
+      final url = await _pickAndUpload(video: video);
       if (url == null) return;
       if (!mounted) return;
       await api.post('/venues/$venueId/photos', body: {
         'url': url,
         'kind': kind,
+        'mediaType': video ? 'VIDEO' : 'IMAGE',
       });
       await _load();
       if (!mounted) return;
-      _toast(kind == 'MENU' ? 'Foto do cardápio adicionada' : 'Foto adicionada');
+      if (kind == 'MENU') {
+        _toast('Foto do cardápio adicionada');
+      } else {
+        _toast(video ? 'Vídeo adicionado' : 'Foto adicionada');
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       _toast(e.message);
@@ -232,13 +298,15 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text(
-          'Remover foto',
-          style: TextStyle(fontFamily: AppTheme.fontFamily),
+        title: Text(
+          isVideoMedia(photo) ? 'Remover vídeo' : 'Remover foto',
+          style: const TextStyle(fontFamily: AppTheme.fontFamily),
         ),
-        content: const Text(
-          'Deseja remover esta imagem?',
-          style: TextStyle(fontFamily: AppTheme.fontFamily),
+        content: Text(
+          isVideoMedia(photo)
+              ? 'Deseja remover este vídeo?'
+              : 'Deseja remover esta imagem?',
+          style: const TextStyle(fontFamily: AppTheme.fontFamily),
         ),
         actions: [
           TextButton(
@@ -258,7 +326,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       await context.read<ApiClient>().delete('/venues/$venueId/photos/$photoId');
       await _load();
       if (!mounted) return;
-      _toast('Foto removida');
+      _toast(isVideoMedia(photo) ? 'Vídeo removido' : 'Foto removida');
     } on ApiException catch (e) {
       if (!mounted) return;
       _toast(e.message);
@@ -292,6 +360,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           'hasCoverCharge': _hasCoverCharge,
           'coverCharge': _coverCharge.text.trim(),
           'hasWheelchairAccess': _hasWheelchairAccess,
+          'isPetFriendly': _isPetFriendly,
         },
         'hoursJson': _buildHours(),
       });
@@ -410,9 +479,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           ),
         ),
       ),
-      body: _boot
-          ? const Center(child: CircularProgressIndicator(color: _accent))
-          : Center(
+      body: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
                 child: Column(
@@ -447,10 +514,10 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
                           if (_tab == 1)
                             _PhotoManager(
                               photos: _gallery,
-                              emptyLabel: 'Nenhuma foto na galeria.',
-                              addLabel: 'Adicionar foto',
+                              emptyLabel: 'Nenhuma foto ou vídeo na galeria.',
+                              addLabel: 'Adicionar foto ou vídeo',
                               loading: _loading,
-                              onAdd: () => _addPhoto('GALLERY'),
+                              onAdd: _addGalleryMedia,
                               onRemove: _removePhoto,
                             ),
                           if (_tab == 2)
@@ -509,6 +576,59 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     );
   }
 
+  Widget _amenityGrid() {
+    final items = <_AmenityTile>[
+      _AmenityTile(
+        icon: Icons.confirmation_number_outlined,
+        label: 'Vale-refeição',
+        value: _acceptsMealVoucher,
+        onChanged: (value) => setState(() => _acceptsMealVoucher = value),
+      ),
+      _AmenityTile(
+        icon: Icons.pets_outlined,
+        label: 'Pet friendly',
+        value: _isPetFriendly,
+        onChanged: (value) => setState(() => _isPetFriendly = value),
+      ),
+      _AmenityTile(
+        icon: Icons.child_care_outlined,
+        label: 'Espaço kids',
+        value: _hasKidsSpace,
+        onChanged: (value) => setState(() => _hasKidsSpace = value),
+      ),
+      _AmenityTile(
+        icon: Icons.accessible,
+        label: 'Acessível',
+        value: _hasWheelchairAccess,
+        onChanged: (value) => setState(() => _hasWheelchairAccess = value),
+      ),
+      _AmenityTile(
+        icon: Icons.payments_outlined,
+        label: 'Custo de entrada',
+        value: _hasCoverCharge,
+        onChanged: (value) => setState(() => _hasCoverCharge = value),
+      ),
+    ];
+    return Column(
+      children: [
+        for (var i = 0; i < items.length; i += 2)
+          Padding(
+            padding: EdgeInsets.only(bottom: i + 2 < items.length ? 8 : 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: items[i]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: i + 1 < items.length ? items[i + 1] : const SizedBox(),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _infoTab() {
     return _Card(
       child: Column(
@@ -556,21 +676,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
             onChanged: (value) => setState(() => _category = value),
           ),
           const SizedBox(height: 14),
-          _AmenityCheckbox(
-            value: _acceptsMealVoucher,
-            label: 'Aceita vale-refeição',
-            onChanged: (value) => setState(() => _acceptsMealVoucher = value),
-          ),
-          _AmenityCheckbox(
-            value: _hasKidsSpace,
-            label: 'Tem espaço kids',
-            onChanged: (value) => setState(() => _hasKidsSpace = value),
-          ),
-          _AmenityCheckbox(
-            value: _hasCoverCharge,
-            label: 'Tem custo de entrada',
-            onChanged: (value) => setState(() => _hasCoverCharge = value),
-          ),
+          _amenityGrid(),
           if (_hasCoverCharge) ...[
             const SizedBox(height: 8),
             TextField(
@@ -583,11 +689,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
               ),
             ),
           ],
-          _AmenityCheckbox(
-            value: _hasWheelchairAccess,
-            label: 'Acessibilidade para cadeirantes',
-            onChanged: (value) => setState(() => _hasWheelchairAccess = value),
-          ),
           const SizedBox(height: 10),
           TextField(
             controller: _address,
@@ -697,49 +798,65 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   }
 }
 
-class _AmenityCheckbox extends StatelessWidget {
-  const _AmenityCheckbox({
-    required this.value,
+class _AmenityTile extends StatelessWidget {
+  const _AmenityTile({
+    required this.icon,
     required this.label,
+    required this.value,
     required this.onChanged,
   });
 
-  final bool value;
+  final IconData icon;
   final String label;
+  final bool value;
   final ValueChanged<bool> onChanged;
+
+  static const _accent = Color(0xFFF58634);
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () => onChanged(!value),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
         child: Row(
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Checkbox(
-                value: value,
-                onChanged: (next) => onChanged(next ?? false),
-                activeColor: const Color(0xFFF58634),
-                side: const BorderSide(color: Color(0xFFC5D4CF), width: 1.4),
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
+            Icon(
+              icon,
+              size: 20,
+              color: value ? _accent : const Color(0xFF8B8B96),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
                   fontFamily: AppTheme.fontFamily,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF282829),
+                  fontSize: 12,
+                  height: 1.2,
+                  fontWeight: value ? FontWeight.w700 : FontWeight.w500,
+                  color: const Color(0xFF282829),
                 ),
               ),
+            ),
+            const SizedBox(width: 4),
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: value ? _accent : Colors.transparent,
+                border: Border.all(
+                  color: value ? _accent : const Color(0xFFC5D4CF),
+                  width: 1.6,
+                ),
+              ),
+              child: value
+                  ? const Icon(Icons.check, size: 13, color: Colors.white)
+                  : null,
             ),
           ],
         ),
@@ -967,7 +1084,12 @@ class _PhotoManager extends StatelessWidget {
           height: 42,
           child: OutlinedButton.icon(
             onPressed: loading ? null : onAdd,
-            icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+            icon: Icon(
+              addLabel.contains('vídeo')
+                  ? Icons.perm_media_outlined
+                  : Icons.add_photo_alternate_outlined,
+              size: 18,
+            ),
             label: Text(addLabel),
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFFF58634),
@@ -1006,10 +1128,21 @@ class _PhotoManager extends StatelessWidget {
             itemBuilder: (context, i) {
               final photo = photos[i] as Map<String, dynamic>;
               final url = ApiConfig.resolveMediaUrl(photo['url']?.toString());
+              final video = isVideoMedia(photo);
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(url, fit: BoxFit.cover),
+                  GalleryMediaThumb(
+                    url: url,
+                    video: video,
+                    onTap: url.isEmpty
+                        ? null
+                        : () => openExpandedMedia(
+                              context,
+                              url,
+                              video: video,
+                            ),
+                  ),
                   Positioned(
                     top: 4,
                     right: 4,

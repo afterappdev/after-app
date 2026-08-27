@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, UseGuards } from '@nestjs/common';
 import { IsOptional, IsString, MinLength } from 'class-validator';
 import {
   AuthUser,
@@ -62,5 +62,10 @@ export class UsersController {
       dto.currentPassword,
       dto.newPassword,
     );
+  }
+
+  @Delete('me')
+  deleteMe(@CurrentUser() user: AuthUser) {
+    return this.usersService.deleteAccount(user.userId);
   }
 }

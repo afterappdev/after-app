@@ -8,6 +8,16 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>After</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Usamos sua localização para mostrar a distância até os estabelecimentos.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Usamos sua localização para mostrar a distância até os estabelecimentos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Precisamos da galeria para você adicionar fotos e vídeos do local.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Precisamos da câmera para você enviar fotos e vídeos do local.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Precisamos do microfone para gravar o áudio dos vídeos.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

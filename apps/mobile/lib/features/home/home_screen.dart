@@ -302,6 +302,7 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_venueFilters.hasKidsSpace) 'hasKidsSpace': 'true',
           if (_venueFilters.hasCoverCharge) 'hasCoverCharge': 'true',
           if (_venueFilters.hasWheelchairAccess) 'hasWheelchairAccess': 'true',
+          if (_venueFilters.isPetFriendly) 'isPetFriendly': 'true',
         },
       );
       if (!mounted) return;
@@ -471,6 +472,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _venueFilters.hasKidsSpace = next.hasKidsSpace;
       _venueFilters.hasCoverCharge = next.hasCoverCharge;
       _venueFilters.hasWheelchairAccess = next.hasWheelchairAccess;
+      _venueFilters.isPetFriendly = next.isPetFriendly;
     });
     _searchVenues(_venueQuery.text);
   }
@@ -1618,6 +1620,7 @@ class _VenueSearchFilters {
   bool hasKidsSpace = false;
   bool hasCoverCharge = false;
   bool hasWheelchairAccess = false;
+  bool isPetFriendly = false;
 
   bool get isActive => count > 0;
 
@@ -1627,7 +1630,8 @@ class _VenueSearchFilters {
       (acceptsMealVoucher ? 1 : 0) +
       (hasKidsSpace ? 1 : 0) +
       (hasCoverCharge ? 1 : 0) +
-      (hasWheelchairAccess ? 1 : 0);
+      (hasWheelchairAccess ? 1 : 0) +
+      (isPetFriendly ? 1 : 0);
 
   void reset() {
     category = null;
@@ -1636,6 +1640,7 @@ class _VenueSearchFilters {
     hasKidsSpace = false;
     hasCoverCharge = false;
     hasWheelchairAccess = false;
+    isPetFriendly = false;
   }
 
   _VenueSearchFilters copy() {
@@ -1645,7 +1650,8 @@ class _VenueSearchFilters {
       ..acceptsMealVoucher = acceptsMealVoucher
       ..hasKidsSpace = hasKidsSpace
       ..hasCoverCharge = hasCoverCharge
-      ..hasWheelchairAccess = hasWheelchairAccess;
+      ..hasWheelchairAccess = hasWheelchairAccess
+      ..isPetFriendly = isPetFriendly;
   }
 }
 
@@ -1692,6 +1698,11 @@ class _VenueActiveFilters extends StatelessWidget {
         _filterChip(
           'Acessível',
           () => onClear(() => filters.hasWheelchairAccess = false),
+        ),
+      if (filters.isPetFriendly)
+        _filterChip(
+          'Pet friendly',
+          () => onClear(() => filters.isPetFriendly = false),
         ),
     ];
     return Wrap(
@@ -1917,6 +1928,11 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
               'Acessibilidade para cadeirantes',
               _draft.hasWheelchairAccess,
               (v) => setState(() => _draft.hasWheelchairAccess = v),
+            ),
+            _filterCheck(
+              'Pet friendly',
+              _draft.isPetFriendly,
+              (v) => setState(() => _draft.isPetFriendly = v),
             ),
             const SizedBox(height: 16),
             Row(

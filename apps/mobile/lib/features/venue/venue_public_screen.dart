@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../core/config/api_config.dart';
 import '../../core/location/device_position.dart';
 import '../../core/location/open_url.dart';
+import '../../core/media/gallery_media.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
@@ -322,7 +323,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                   ? _PhotoGrid(
                                                       photos: gallery,
                                                       emptyLabel:
-                                                          'Nenhuma foto do local ainda.',
+                                                          'Nenhuma foto ou vídeo do local ainda.',
                                                     )
                                                   : _tab == 2
                                                       ? _PhotoGrid(
@@ -772,6 +773,7 @@ class _AboutTab extends StatelessWidget {
     final hasCoverCharge = contactMap['hasCoverCharge'] == true;
     final coverCharge = contactMap['coverCharge']?.toString().trim() ?? '';
     final hasWheelchairAccess = contactMap['hasWheelchairAccess'] == true;
+    final isPetFriendly = contactMap['isPetFriendly'] == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -811,36 +813,45 @@ class _AboutTab extends StatelessWidget {
             );
           }),
         const _SectionDivider(),
-        _AmenityInfoRow(
-          icon: Icons.confirmation_number_outlined,
-          title: 'Vale-refeição',
-          detail: acceptsMealVoucher ? 'Aceita' : 'Não aceita',
-        ),
+        const _SectionHeader(title: 'Comodidades'),
         const SizedBox(height: 12),
-        _AmenityInfoRow(
-          icon: Icons.child_care_outlined,
-          title: 'Espaço kids',
-          detail: hasKidsSpace ? 'Tem espaço kids' : 'Não possui',
-        ),
-        const SizedBox(height: 12),
-        _AmenityInfoRow(
-          icon: Icons.payments_outlined,
-          title: 'Custo de entrada',
-          detail: hasCoverCharge
-              ? (coverCharge.isEmpty
-                  ? 'Tem custo de entrada'
-                  : (coverCharge.toLowerCase().startsWith('r\$')
+        _PublicAmenityGrid(
+          items: [
+            (
+              Icons.confirmation_number_outlined,
+              'Vale-refeição',
+              acceptsMealVoucher,
+              null,
+            ),
+            (
+              Icons.pets_outlined,
+              'Pet friendly',
+              isPetFriendly,
+              null,
+            ),
+            (
+              Icons.child_care_outlined,
+              'Espaço kids',
+              hasKidsSpace,
+              null,
+            ),
+            (
+              Icons.accessible,
+              'Acessível',
+              hasWheelchairAccess,
+              null,
+            ),
+            (
+              Icons.payments_outlined,
+              'Custo de entrada',
+              hasCoverCharge,
+              hasCoverCharge && coverCharge.isNotEmpty
+                  ? (coverCharge.toLowerCase().startsWith('r\$')
                       ? coverCharge
-                      : 'R\$ $coverCharge'))
-              : 'Não tem custo de entrada',
-        ),
-        const SizedBox(height: 12),
-        _AmenityInfoRow(
-          icon: Icons.accessible,
-          title: 'Acessibilidade',
-          detail: hasWheelchairAccess
-              ? 'Acessível para cadeirantes'
-              : 'Não informado para cadeirantes',
+                      : 'R\$ $coverCharge')
+                  : null,
+            ),
+          ],
         ),
         const _SectionDivider(),
         Row(
@@ -931,54 +942,117 @@ class _AboutTab extends StatelessWidget {
   }
 }
 
-class _AmenityInfoRow extends StatelessWidget {
-  const _AmenityInfoRow({
-    required this.icon,
-    required this.title,
-    required this.detail,
-  });
+class _PublicAmenityGrid extends StatelessWidget {
+  const _PublicAmenityGrid({required this.items});
 
-  final IconData icon;
-  final String title;
-  final String detail;
+  final List<(IconData, String, bool, String?)> items;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, color: const Color(0xFFF58634), size: 22),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: Color(0xFF282829),
+        for (var i = 0; i < items.length; i += 2)
+          Padding(
+            padding: EdgeInsets.only(bottom: i + 2 < items.length ? 8 : 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _PublicAmenityTile.fromRecord(items[i])),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: i + 1 < items.length
+                      ? _PublicAmenityTile.fromRecord(items[i + 1])
+                      : const SizedBox(),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                detail,
-                style: const TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontSize: 13,
-                  height: 1.35,
-                  color: Color(0xFF8B8B96),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
       ],
+    );
+  }
+}
+
+class _PublicAmenityTile extends StatelessWidget {
+  const _PublicAmenityTile({
+    required this.icon,
+    required this.label,
+    required this.enabled,
+    this.detail,
+  });
+
+  factory _PublicAmenityTile.fromRecord(
+    (IconData, String, bool, String?) item,
+  ) {
+    return _PublicAmenityTile(
+      icon: item.$1,
+      label: item.$2,
+      enabled: item.$3,
+      detail: item.$4,
+    );
+  }
+
+  final IconData icon;
+  final String label;
+  final bool enabled;
+  final String? detail;
+
+  static const _accent = Color(0xFFF58634);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: _accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 12,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+                if (detail != null && detail!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    detail!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 11,
+                      color: Color(0xFF8B8B96),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          if (enabled)
+            Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: _accent,
+              ),
+              child: const Icon(Icons.check, size: 13, color: Colors.white),
+            )
+          else
+            const Icon(Icons.close, size: 20, color: _accent),
+        ],
+      ),
     );
   }
 }
@@ -1155,12 +1229,15 @@ class _PhotoGrid extends StatelessWidget {
         mainAxisSpacing: 1,
       ),
       itemBuilder: (context, i) {
-        final url = ApiConfig.resolveMediaUrl((photos[i] as Map)['url']?.toString());
-        return GestureDetector(
-          onTap: url.isEmpty ? null : () => openExpandedImage(context, url),
-          child: url.isEmpty
-              ? const ColoredBox(color: Color(0xFFEEF3F1))
-              : Image.network(url, fit: BoxFit.cover),
+        final item = photos[i] as Map;
+        final url = ApiConfig.resolveMediaUrl(item['url']?.toString());
+        final video = isVideoMedia(item);
+        return GalleryMediaThumb(
+          url: url,
+          video: video,
+          onTap: url.isEmpty
+              ? null
+              : () => openExpandedMedia(context, url, video: video),
         );
       },
     );

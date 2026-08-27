@@ -22,6 +22,8 @@ class UserSession {
   bool get isVenue => role == 'VENUE';
 
   factory UserSession.fromJson(Map<String, dynamic> json) {
+    final venue = json['venue'];
+    final nestedId = venue is Map<String, dynamic> ? venue['id'] as String? : null;
     return UserSession(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -30,7 +32,7 @@ class UserSession {
       state: json['state'] as String,
       city: json['city'] as String,
       avatarUrl: json['avatarUrl'] as String?,
-      venueId: json['venueId'] as String?,
+      venueId: json['venueId'] as String? ?? nestedId,
     );
   }
 

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { deleteLocalUploads } from '../common/utils/local-uploads';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -23,7 +24,10 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
-    return user;
+    return {
+      ...user,
+      venueId: user.venue?.id ?? null,
+    };
   }
 
   async updateMe(
@@ -74,6 +78,34 @@ export class UsersService {
       where: { id: userId },
       data: { passwordHash },
     });
+    return { ok: true };
+  }
+
+  async deleteAccount(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        venue: {
+          include: {
+            photos: { select: { url: true } },
+            banners: { select: { imageUrl: true } },
+          },
+        },
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const urls: Array<string | null | undefined> = [user.avatarUrl];
+    if (user.venue) {
+      urls.push(user.venue.logoUrl, user.venue.coverUrl);
+      urls.push(...user.venue.photos.map((photo) => photo.url));
+      urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
+    }
+
+    await this.prisma.user.delete({ where: { id: userId } });
+    await deleteLocalUploads(urls);
     return { ok: true };
   }
 }

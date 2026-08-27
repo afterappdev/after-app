@@ -78,6 +78,18 @@ class ApiClient {
     required Uint8List bytes,
     required String filename,
     String? mimeType,
+  }) {
+    return uploadFile(
+      bytes: bytes,
+      filename: filename,
+      mimeType: mimeType,
+    );
+  }
+
+  Future<Map<String, dynamic>> uploadFile({
+    required Uint8List bytes,
+    required String filename,
+    String? mimeType,
   }) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}/uploads');
     final request = http.MultipartRequest('POST', uri);
@@ -85,9 +97,7 @@ class ApiClient {
       request.headers['Authorization'] = 'Bearer $_token';
     }
 
-    final mediaType = mimeType != null
-        ? MediaType.parse(mimeType)
-        : MediaType('image', 'jpeg');
+    final mediaType = _mediaTypeFor(filename, mimeType);
 
     request.files.add(
       http.MultipartFile.fromBytes(
@@ -101,6 +111,33 @@ class ApiClient {
     final streamed = await _client.send(request);
     final res = await http.Response.fromStream(streamed);
     return _decode(res) as Map<String, dynamic>;
+  }
+
+  MediaType _mediaTypeFor(String filename, String? mimeType) {
+    if (mimeType != null && mimeType.contains('/')) {
+      try {
+        return MediaType.parse(mimeType);
+      } catch (_) {}
+    }
+    final ext = filename.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'webp':
+        return MediaType('image', 'webp');
+      case 'mp4':
+        return MediaType('video', 'mp4');
+      case 'webm':
+        return MediaType('video', 'webm');
+      case 'mov':
+        return MediaType('video', 'quicktime');
+      case 'm4v':
+        return MediaType('video', 'x-m4v');
+      default:
+        return MediaType('image', 'jpeg');
+    }
   }
 
   dynamic _decode(http.Response res) {

@@ -3,11 +3,25 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import 'billing_channel.dart';
 import 'checkout_screen.dart';
 import 'credits_ui.dart';
+import 'pix_checkout.dart';
+import 'pix_pending_reconcile.dart';
+import 'purchase_labels.dart';
 
 class BuyCreditsScreen extends StatefulWidget {
-  const BuyCreditsScreen({super.key});
+  const BuyCreditsScreen({
+    super.key,
+    this.reconcilePendingPix,
+    this.usePixCheckout,
+  });
+
+  /// When null, follows [billingUsesPix] (Web yes, Android/iOS no).
+  final bool? reconcilePendingPix;
+
+  /// When null, follows [billingUsesPix] for checkout destination.
+  final bool? usePixCheckout;
 
   @override
   State<BuyCreditsScreen> createState() => _BuyCreditsScreenState();
@@ -21,6 +35,11 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   List<dynamic> _purchases = [];
   String? _selectedKey;
   bool _showAllPurchases = false;
+
+  bool get _reconcilePendingPix =>
+      widget.reconcilePendingPix ?? billingUsesPix();
+
+  bool get _usePixCheckout => widget.usePixCheckout ?? billingUsesPix();
 
   @override
   void initState() {
@@ -48,13 +67,38 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
             : null;
         _loading = false;
       });
+      if (_reconcilePendingPix) {
+        await _reconcilePendingPixPurchases();
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = e.statusCode == 401
+            ? friendlyPixError(e)
+            : e.message;
         _loading = false;
       });
     }
+  }
+
+  Future<void> _reconcilePendingPixPurchases() async {
+    final api = context.read<ApiClient>();
+    final snapshot = List<dynamic>.from(_purchases);
+    final result = await reconcilePendingPixPurchases(
+      purchases: snapshot,
+      fetchById: (id) async {
+        final body = await api.get('/credits/purchases/$id');
+        return Map<String, dynamic>.from(body as Map);
+      },
+    );
+    if (!mounted) return;
+    setState(() => _purchases = result.purchases);
+    if (!result.anyBecamePaid) return;
+    final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
+    if (!mounted) return;
+    setState(() {
+      _balance = wallet['balance'] as int? ?? 0;
+    });
   }
 
   Map<String, dynamic>? get _selected {
@@ -68,15 +112,19 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   Future<void> _continue() async {
     final pack = _selected;
     if (pack == null) return;
+    final dest = _usePixCheckout
+        ? PixCheckoutScreen(pack: pack)
+        : CheckoutScreen(pack: pack);
     final paid = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => CheckoutScreen(pack: pack)),
+      MaterialPageRoute(builder: (_) => dest),
     );
-    if (paid == true && mounted) {
+    if (!mounted) return;
+    if (paid == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Créditos adicionados à sua carteira.')),
       );
-      await _load();
     }
+    await _load();
   }
 
   void _scrollToPurchases() {
@@ -275,7 +323,13 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                     final credits = asInt(purchase['credits']);
                                     final paid = asMoney(purchase['amountPaid']);
                                     final status = purchase['status']?.toString() ?? '';
+                                    final provider = purchaseProviderLabel(
+                                      purchase['provider']?.toString(),
+                                    );
+                                    final statusLabel = purchaseStatusLabel(status);
                                     final isPaid = status == 'PAID';
+                                    final failed = status == 'FAILED' ||
+                                        status == 'CANCELLED';
                                     return Padding(
                                       padding: const EdgeInsets.symmetric(vertical: 10),
                                       child: Row(
@@ -286,6 +340,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                               children: [
                                                 Text(
                                                   credits == 1 ? '1 crédito' : '$credits créditos',
+                                                  overflow: TextOverflow.ellipsis,
                                                   style: const TextStyle(
                                                     fontFamily: AppTheme.fontFamily,
                                                     fontWeight: FontWeight.w700,
@@ -293,8 +348,19 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                                     color: kCreditsInk,
                                                   ),
                                                 ),
+                                                if (provider.isNotEmpty)
+                                                  Text(
+                                                    provider,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontFamily: AppTheme.fontFamily,
+                                                      fontSize: 12,
+                                                      color: kCreditsMuted,
+                                                    ),
+                                                  ),
                                                 Text(
                                                   formatPurchaseDate(purchase['createdAt']),
+                                                  overflow: TextOverflow.ellipsis,
                                                   style: const TextStyle(
                                                     fontFamily: AppTheme.fontFamily,
                                                     fontSize: 12,
@@ -314,19 +380,32 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                             ),
                                           ),
                                           const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                            decoration: BoxDecoration(
-                                              color: isPaid ? const Color(0xFFE6F6EC) : const Color(0xFFF0F0F3),
-                                              borderRadius: BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              isPaid ? 'Pago' : 'Pendente',
-                                              style: TextStyle(
-                                                fontFamily: AppTheme.fontFamily,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                                color: isPaid ? const Color(0xFF22A45A) : kCreditsMuted,
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: isPaid
+                                                    ? const Color(0xFFE6F6EC)
+                                                    : failed
+                                                        ? const Color(0xFFFDECEC)
+                                                        : const Color(0xFFF0F0F3),
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Text(
+                                                statusLabel,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontFamily: AppTheme.fontFamily,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: isPaid
+                                                      ? const Color(0xFF22A45A)
+                                                      : failed
+                                                          ? const Color(0xFFB3261E)
+                                                          : kCreditsMuted,
+                                                ),
                                               ),
                                             ),
                                           ),

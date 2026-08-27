@@ -7,6 +7,7 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
+import 'delete_account_button.dart';
 
 class VenueAccountScreen extends StatefulWidget {
   const VenueAccountScreen({super.key});
@@ -248,6 +249,7 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                         ),
                       ),
                     ),
+                    const DeleteAccountButton(forVenue: true),
                     const SizedBox(height: 8),
                     AfterBottomNav(
                       index: 3,

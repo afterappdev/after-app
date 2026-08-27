@@ -1,4 +1,11 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { IsIn, IsString, MinLength } from 'class-validator';
 import {
   AuthUser,
@@ -7,9 +14,9 @@ import {
 import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreditsService } from './credits.service';
+import { STORE_PROVIDER_INPUTS } from './providers/payment-provider';
 
 const PACKAGE_KEYS = CREDIT_PACKAGES.map((p) => p.key);
-const STORE_PROVIDERS = ['google_play', 'app_store'] as const;
 
 class CheckoutDto {
   @IsString()
@@ -26,8 +33,8 @@ class StoreConfirmDto {
   productId!: string;
 
   @IsString()
-  @IsIn(STORE_PROVIDERS)
-  provider!: (typeof STORE_PROVIDERS)[number];
+  @IsIn([...STORE_PROVIDER_INPUTS])
+  provider!: (typeof STORE_PROVIDER_INPUTS)[number];
 
   @IsString()
   purchaseId!: string;
@@ -35,6 +42,12 @@ class StoreConfirmDto {
   @IsString()
   @MinLength(1)
   verificationData!: string;
+}
+
+class PixCreateDto {
+  @IsString()
+  @IsIn(PACKAGE_KEYS)
+  packageKey!: (typeof PACKAGE_KEYS)[number];
 }
 
 @Controller('credits')
@@ -57,6 +70,14 @@ export class CreditsController {
     return this.creditsService.purchases(user.userId);
   }
 
+  @Get('purchases/:id')
+  purchaseById(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ) {
+    return this.creditsService.purchaseById(user.userId, id);
+  }
+
   @Post('checkout')
   checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
     return this.creditsService.checkout(user.userId, dto.packageKey);
@@ -65,6 +86,11 @@ export class CreditsController {
   @Post('store-confirm')
   storeConfirm(@CurrentUser() user: AuthUser, @Body() dto: StoreConfirmDto) {
     return this.creditsService.confirmStorePurchase(user.userId, dto);
+  }
+
+  @Post('pix/create')
+  createPix(@CurrentUser() user: AuthUser, @Body() dto: PixCreateDto) {
+    return this.creditsService.createPixCharge(user.userId, dto.packageKey);
   }
 
   @Post('dev-confirm/:purchaseId')
