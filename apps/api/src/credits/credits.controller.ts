@@ -90,7 +90,11 @@ export class CreditsController {
 
   @Post('pix/create')
   createPix(@CurrentUser() user: AuthUser, @Body() dto: PixCreateDto) {
-    return this.creditsService.createPixCharge(user.userId, dto.packageKey);
+    return this.creditsService.createPixCharge(
+      user.userId,
+      dto.packageKey,
+      user.email,
+    );
   }
 
   @Post('dev-confirm/:purchaseId')

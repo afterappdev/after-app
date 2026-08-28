@@ -19,7 +19,12 @@ import {
   pixOrderIdFromProviderTxId,
 } from './providers/payment-provider';
 import { PaymentProviderRegistry } from './providers/payment-providers';
-import { PixVerifiedOrder, PixWebhookMeta } from './providers/pix.provider';
+import {
+  PIX_INVALID_PAYER_EMAIL_MESSAGE,
+  PixVerifiedOrder,
+  PixWebhookMeta,
+  normalizePixPayerEmail,
+} from './providers/pix.provider';
 import { asMoney, toPublicPurchase } from './purchase-public';
 
 @Injectable()
@@ -196,7 +201,11 @@ export class CreditsService {
     return toPublicPurchase(purchase);
   }
 
-  async createPixCharge(userId: string, packageKey: string) {
+  async createPixCharge(
+    userId: string,
+    packageKey: string,
+    authenticatedEmail?: string,
+  ) {
     const pack = CREDIT_PACKAGES.find((p) => p.key === packageKey);
     if (!pack) {
       throw new BadRequestException('Pacote inválido');
@@ -216,11 +225,14 @@ export class CreditsService {
 
     const venue = await this.requireVenueOwned(userId);
     const sandbox = isMercadoPagoSandbox();
-    const email = venue.owner?.email?.trim();
+    const email =
+      normalizePixPayerEmail(venue.owner?.email) ??
+      normalizePixPayerEmail(authenticatedEmail);
     if (!sandbox && !email) {
-      throw new BadRequestException(
-        'E-mail do pagador ausente no perfil. Atualize o cadastro para pagar com PIX.',
+      this.logger.warn(
+        'PIX recusado: e-mail do pagador ausente ou inválido no perfil.',
       );
+      throw new BadRequestException(PIX_INVALID_PAYER_EMAIL_MESSAGE);
     }
 
     const purchase = await this.prisma.creditPurchase.create({

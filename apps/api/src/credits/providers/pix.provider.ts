@@ -29,6 +29,45 @@ export const MERCADO_PAGO_SANDBOX_PAYER = {
   firstName: 'APRO',
 } as const;
 
+export const PIX_INVALID_PAYER_EMAIL_MESSAGE =
+  'E-mail do pagador ausente ou inválido no perfil. Atualize o cadastro com um e-mail real para pagar com PIX.';
+
+/** IANA special-use / Mercado Pago-rejected TLDs. `.local` is the seed/demo domain. */
+const RESERVED_PAYER_EMAIL_TLDS = new Set([
+  'local',
+  'test',
+  'example',
+  'invalid',
+  'localhost',
+]);
+
+/**
+ * Normalizes the authenticated payer e-mail for Mercado Pago production PIX.
+ * Returns null when empty, malformed, `@testuser.com`, or a reserved TLD.
+ */
+export function normalizePixPayerEmail(value?: string | null): string | null {
+  const email = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!email || email.length > 254) return null;
+  const at = email.lastIndexOf('@');
+  if (at < 1 || at !== email.indexOf('@')) return null;
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (!local || !domain || local.length > 64) return null;
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return null;
+  if (!/^[a-z0-9._%+\-]+$/.test(local)) return null;
+  if (
+    !/^[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?)+$/.test(
+      domain,
+    )
+  ) {
+    return null;
+  }
+  const tld = domain.slice(domain.lastIndexOf('.') + 1);
+  if (tld.length < 2 || RESERVED_PAYER_EMAIL_TLDS.has(tld)) return null;
+  if (domain === 'testuser.com' || domain.endsWith('.testuser.com')) return null;
+  return email;
+}
+
 export type PixCreateChargeInput = {
   purchaseId: string;
   packageKey: string;
@@ -222,11 +261,9 @@ export class PixPaymentProvider implements PaymentProvider {
         first_name: MERCADO_PAGO_SANDBOX_PAYER.firstName,
       };
     }
-    const email = input.payerEmail?.trim();
+    const email = normalizePixPayerEmail(input.payerEmail);
     if (!email) {
-      throw new BadRequestException(
-        'E-mail do pagador ausente no perfil. Atualize o cadastro para pagar com PIX.',
-      );
+      throw new BadRequestException(PIX_INVALID_PAYER_EMAIL_MESSAGE);
     }
     return {
       email,

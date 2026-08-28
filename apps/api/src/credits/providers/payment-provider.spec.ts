@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -7,8 +8,10 @@ import { createHmac } from 'crypto';
 import { AppleAppStorePaymentProvider } from './apple-app-store.provider';
 import {
   extractMercadoPagoOrderId,
+  formatMercadoPagoErrorLog,
   mapMercadoPagoOrderStatus,
   MercadoPagoOrdersClient,
+  mercadoPagoErrorLogDetails,
   sanitizeProviderError,
   verifyMercadoPagoWebhookSignature,
 } from './mercado-pago-orders';
@@ -17,7 +20,12 @@ import {
   normalizeProviderId,
   pixOrderIdFromProviderTxId,
 } from './payment-provider';
-import { MERCADO_PAGO_SANDBOX_PAYER, PixPaymentProvider } from './pix.provider';
+import {
+  MERCADO_PAGO_SANDBOX_PAYER,
+  PIX_INVALID_PAYER_EMAIL_MESSAGE,
+  PixPaymentProvider,
+  normalizePixPayerEmail,
+} from './pix.provider';
 
 function mpPixOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -227,6 +235,103 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
     expect(sanitized).not.toContain('APP_USR-abc');
     expect(sanitized).not.toMatch(/Bearer\s+APP_USR/i);
   });
+
+  it('HTTP 402 preserva campos seguros de diagnóstico e não vaza credenciais', () => {
+    const body = {
+      status: 'failed',
+      status_code: 402,
+      error: 'failed',
+      message: 'There was an error processing one of the transactions',
+      status_detail: 'failed',
+      description: 'AFTER créditos unit_1',
+      authorization: 'Bearer APP_USR-prod-secret-token',
+      access_token: 'APP_USR-prod-secret-token',
+      payer: { email: 'venue@test.com' },
+      errors: [
+        {
+          code: 'failed',
+          message: 'Collector is not able to receive PIX',
+          status_detail: 'processing_error',
+        },
+      ],
+      cause: [
+        {
+          code: 2167,
+          description: 'PIX unavailable for this collector',
+          data: 'agency=0001 account=12345-6',
+        },
+      ],
+      transactions: {
+        payments: [
+          {
+            status: 'failed',
+            status_detail: 'processing_error',
+            payment_method: {
+              id: 'pix',
+              qr_code: '00020126secret-pix-payload',
+              token: 'card-token-should-not-log',
+            },
+          },
+        ],
+      },
+    };
+
+    const details = mercadoPagoErrorLogDetails(body);
+    const logged = formatMercadoPagoErrorLog(body);
+
+    expect(details.status).toBe('failed');
+    expect(details.status_code).toBe(402);
+    expect(details.code).toBe('failed');
+    expect(details.error).toBe('failed');
+    expect(details.message).toBe('Collector is not able to receive PIX');
+    expect(details.status_detail).toBe('processing_error');
+    expect(details.cause).toEqual([
+      { code: 2167, description: 'PIX unavailable for this collector' },
+    ]);
+    expect(details).not.toHaveProperty('description');
+    expect(details).not.toHaveProperty('authorization');
+    expect(details).not.toHaveProperty('access_token');
+    expect(details).not.toHaveProperty('payer');
+    expect(details).not.toHaveProperty('transactions');
+    expect(logged).toContain('Collector is not able to receive PIX');
+    expect(logged).toContain('processing_error');
+    expect(logged).toContain('PIX unavailable for this collector');
+    expect(logged).not.toContain('APP_USR-prod-secret-token');
+    expect(logged).not.toContain('Bearer ');
+    expect(logged).not.toContain('00020126secret-pix-payload');
+    expect(logged).not.toContain('card-token-should-not-log');
+    expect(logged).not.toContain('agency=0001');
+    expect(logged).not.toContain('AFTER créditos unit_1');
+  });
+
+  it('redige Access Token embutido em message de um HTTP 402', () => {
+    const logged = formatMercadoPagoErrorLog({
+      status: 402,
+      error: 'failed',
+      message: 'rejected Authorization: Bearer APP_USR-secret.jwt-token',
+    });
+    expect(logged).toContain('402');
+    expect(logged).toContain('failed');
+    expect(logged).toContain('Bearer [redacted]');
+    expect(logged).not.toContain('APP_USR-secret');
+  });
+});
+
+describe('normalizePixPayerEmail', () => {
+  it('aceita e-mail válido e normaliza espaços/caixa', () => {
+    expect(normalizePixPayerEmail('  Venue@After.COM  ')).toBe('venue@after.com');
+    expect(normalizePixPayerEmail('venue@test.com')).toBe('venue@test.com');
+  });
+
+  it('rejeita ausente, formato inválido, @testuser.com e TLD reservado', () => {
+    expect(normalizePixPayerEmail(undefined)).toBeNull();
+    expect(normalizePixPayerEmail('')).toBeNull();
+    expect(normalizePixPayerEmail('   ')).toBeNull();
+    expect(normalizePixPayerEmail('nao-e-email')).toBeNull();
+    expect(normalizePixPayerEmail('soseubar@after.local')).toBeNull();
+    expect(normalizePixPayerEmail('test_user_br@testuser.com')).toBeNull();
+    expect(normalizePixPayerEmail('user@localhost')).toBeNull();
+  });
 });
 
 describe('PixPaymentProvider Mercado Pago Orders', () => {
@@ -329,6 +434,72 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     }
   });
 
+  it('HTTP 402 registra detalhes seguros do Mercado Pago sem vazar credenciais', async () => {
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const createOrder = jest.fn().mockResolvedValue({
+      status: 402,
+      data: {
+        status: 'failed',
+        status_code: 402,
+        error: 'failed',
+        message: 'There was an error processing one of the transactions',
+        errors: [
+          {
+            code: 'failed',
+            message: 'Collector is not able to receive PIX',
+            status_detail: 'processing_error',
+          },
+        ],
+        cause: [
+          {
+            code: 2167,
+            description: 'PIX unavailable for this collector',
+            data: 'agency=0001 account=12345-6',
+          },
+        ],
+        authorization: 'Bearer APP_USR-test-token-secret',
+        transactions: {
+          payments: [
+            {
+              status: 'failed',
+              status_detail: 'processing_error',
+              payment_method: {
+                qr_code: '00020126secret-pix-payload',
+              },
+            },
+          ],
+        },
+      },
+    });
+    const pix = providerWithClient({ createOrder });
+
+    try {
+      await expect(
+        pix.createCharge({
+          purchaseId: 'purchase-1',
+          packageKey: 'unit_1',
+          amountBrl: 25,
+          payerEmail: 'venue@test.com',
+          idempotencyKey: 'idem-402',
+        }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+      const logged = errorSpy.mock.calls.map((call) => String(call[0])).join('\n');
+
+      expect(logged).toContain('Mercado Pago create order failed (402)');
+      expect(logged).toContain('Collector is not able to receive PIX');
+      expect(logged).toContain('processing_error');
+      expect(logged).toContain('2167');
+      expect(logged).toContain('PIX unavailable for this collector');
+      expect(logged).not.toContain('APP_USR-test-token-secret');
+      expect(logged).not.toMatch(/Bearer\s+APP_USR/i);
+      expect(logged).not.toContain('00020126secret-pix-payload');
+      expect(logged).not.toContain('agency=0001');
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('rejeita webhook com HMAC inválido quando o secret está configurado', () => {
     process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'whsec_test';
     const pix = providerWithClient({});
@@ -394,7 +565,7 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     expect(body.payer.email).not.toBe('venue@after.local');
   });
 
-  it('sandbox=false usa o e-mail real e nunca injeta @testuser.com', async () => {
+  it('sandbox=false usa o e-mail real normalizado e nunca injeta @testuser.com', async () => {
     process.env.NODE_ENV = 'test';
     process.env.MERCADO_PAGO_SANDBOX = 'false';
     const createOrder = jest.fn().mockResolvedValue({
@@ -407,7 +578,7 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
       purchaseId: 'purchase-1',
       packageKey: 'unit_1',
       amountBrl: 25,
-      payerEmail: 'venue@after.local',
+      payerEmail: '  Venue@After.COM  ',
       payerName: 'Venue Owner',
       idempotencyKey: 'idem-live',
     });
@@ -415,7 +586,7 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     const body = createOrder.mock.calls[0][2] as {
       payer: { email: string; first_name?: string };
     };
-    expect(body.payer.email).toBe('venue@after.local');
+    expect(body.payer.email).toBe('venue@after.com');
     expect(body.payer.email).not.toContain('@testuser.com');
     expect(body.payer.first_name).toBe('Venue');
   });
@@ -460,6 +631,39 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
         idempotencyKey: 'idem-no-email',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('fora do sandbox rejeita e-mail .local, @testuser.com e formato inválido', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createOrder = jest.fn();
+    const pix = providerWithClient({ createOrder });
+
+    for (const payerEmail of [
+      'soseubar@after.local',
+      'test_user_br@testuser.com',
+      'nao-e-email',
+      'venue@',
+    ]) {
+      try {
+        await pix.createCharge({
+          purchaseId: 'purchase-1',
+          packageKey: 'unit_1',
+          amountBrl: 25,
+          payerEmail,
+          idempotencyKey: `idem-invalid-${payerEmail}`,
+        });
+        throw new Error(`expected reject for ${payerEmail}`);
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        const serialized = JSON.stringify(
+          (err as BadRequestException).getResponse?.() ?? err,
+        );
+        expect(serialized).toContain(PIX_INVALID_PAYER_EMAIL_MESSAGE);
+        expect(serialized).not.toContain(payerEmail);
+      }
+    }
     expect(createOrder).not.toHaveBeenCalled();
   });
 });

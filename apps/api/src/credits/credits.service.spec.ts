@@ -266,8 +266,134 @@ describe('CreditsService billing', () => {
     expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
   });
 
+  it('fora do sandbox rejeita e-mail .local e @testuser.com sem criar compra', async () => {
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createCharge = jest.fn();
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
+      owner: { email: 'soseubar@after.local', name: 'Venue' },
+    });
+    await expect(
+      service.createPixCharge(USER_ID, 'unit_1', 'soseubar@after.local'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
+    expect(createCharge).not.toHaveBeenCalled();
+
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
+      owner: { email: 'test_user_br@testuser.com', name: 'Venue' },
+    });
+    await expect(service.createPixCharge(USER_ID, 'unit_1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
+    expect(createCharge).not.toHaveBeenCalled();
+  });
+
+  it('normaliza espaços/caixa do e-mail do perfil e não usa @testuser.com', async () => {
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createCharge = jest.fn().mockResolvedValue({
+      orderId: 'ORD01TESTPIX',
+      paymentId: 'PAY01TESTPIX',
+      qrCodeText: '00020126copia-e-cola',
+      qrCodeImage: 'data:image/png;base64,aGVsbG8=',
+      expiresAt: null,
+    });
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
+      owner: { email: '  Venue@After.COM  ', name: 'Venue Owner' },
+    });
+    prisma.creditPurchase.create.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+    prisma.creditPurchase.update.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+
+    await service.createPixCharge(USER_ID, 'unit_1', '  Venue@After.COM  ');
+    expect(createCharge.mock.calls[0][0].payerEmail).toBe('venue@after.com');
+    expect(createCharge.mock.calls[0][0].payerEmail).not.toContain('@testuser.com');
+  });
+
+  it('usa e-mail autenticado quando o e-mail do perfil do estabelecimento é inválido', async () => {
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createCharge = jest.fn().mockResolvedValue({
+      orderId: 'ORD01TESTPIX',
+      paymentId: 'PAY01TESTPIX',
+      qrCodeText: '00020126copia-e-cola',
+      qrCodeImage: 'data:image/png;base64,aGVsbG8=',
+      expiresAt: null,
+    });
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
+      owner: { email: 'soseubar@after.local', name: 'Venue' },
+    });
+    prisma.creditPurchase.create.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+    prisma.creditPurchase.update.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+
+    await service.createPixCharge(USER_ID, 'unit_1', 'owner@venue.com');
+    expect(createCharge.mock.calls[0][0].payerEmail).toBe('owner@venue.com');
+    expect(prisma.creditPurchase.create).toHaveBeenCalled();
+  });
+
+  it('sandbox=true cria PIX mesmo com e-mail .local no perfil', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.MERCADO_PAGO_SANDBOX = 'true';
+    const createCharge = jest.fn().mockResolvedValue({
+      orderId: 'ORD01TESTPIX',
+      paymentId: 'PAY01TESTPIX',
+      qrCodeText: '00020126copia-e-cola',
+      qrCodeImage: 'data:image/png;base64,aGVsbG8=',
+      expiresAt: null,
+    });
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
+      owner: { email: 'soseubar@after.local', name: 'Venue' },
+    });
+    prisma.creditPurchase.create.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+    prisma.creditPurchase.update.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+
+    await service.createPixCharge(USER_ID, 'unit_1', 'soseubar@after.local');
+    expect(prisma.creditPurchase.create).toHaveBeenCalled();
+    expect(createCharge).toHaveBeenCalled();
+  });
+
   it('pix/create só recebe packageKey — pagador não vem do frontend', async () => {
-    expect(service.createPixCharge.length).toBe(2);
+    expect(service.createPixCharge.length).toBe(3);
     const createCharge = jest.fn().mockResolvedValue({
       orderId: 'ORD01TESTPIX',
       paymentId: 'PAY01TESTPIX',
