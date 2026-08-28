@@ -156,13 +156,58 @@ export function verifyMercadoPagoWebhookSignature(input: {
   return timingSafeEqualHex(computed, hash);
 }
 
+const SAFE_DIAGNOSTIC_KEYS = [
+  'status',
+  'status_code',
+  'code',
+  'message',
+  'error',
+  'status_detail',
+  'cause',
+] as const;
+
+/** Nested MP `cause[]` / `errors[]` items use `description` for the actual reason. */
+const NESTED_DIAGNOSTIC_KEYS = [...SAFE_DIAGNOSTIC_KEYS, 'description'] as const;
+
+const GENERIC_DIAGNOSTIC_VALUES = new Set(['', 'failed', 'error', '402']);
+
 export function sanitizeProviderError(message: unknown): string {
   const text = typeof message === 'string' ? message : String(message ?? '');
   return text
     .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
     .replace(/APP_USR-[A-Za-z0-9._-]+/g, '[redacted]')
     .replace(/TEST-[A-Za-z0-9._-]+/g, '[redacted]')
-    .replace(/MERCADO_PAGO_ACCESS_TOKEN[=:\s]+\S+/gi, 'MERCADO_PAGO_ACCESS_TOKEN=[redacted]');
+    .replace(/MERCADO_PAGO_ACCESS_TOKEN[=:\s]+\S+/gi, 'MERCADO_PAGO_ACCESS_TOKEN=[redacted]')
+    .replace(/MERCADO_PAGO_WEBHOOK_SECRET[=:\s]+\S+/gi, 'MERCADO_PAGO_WEBHOOK_SECRET=[redacted]')
+    .replace(/(?:client_secret|Client Secret)[=:\s]+\S+/gi, 'client_secret=[redacted]')
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g, '[redacted]');
+}
+
+/**
+ * Compact, allowlisted view of a Mercado Pago error body for logs.
+ * Orders API HTTP 402 uses code `failed`; the actionable reason is in
+ * `message` / `status_detail` / `cause` / `errors[]`, not the code alone.
+ */
+export function mercadoPagoErrorLogDetails(data: unknown): Record<string, unknown> {
+  const record = asRecord(data);
+  if (!record) return {};
+
+  const details = pickSafeDiagnosticRecord(record);
+  const payment = firstOrderPayment(record as MercadoPagoOrder);
+  if (payment) {
+    mergePreferSpecific(details, pickSafeDiagnosticRecord(payment as Record<string, unknown>));
+  }
+  const firstError = firstErrorRecord(record);
+  if (firstError) mergePreferSpecific(details, pickSafeDiagnosticRecord(firstError, 1));
+  return details;
+}
+
+export function formatMercadoPagoErrorLog(data: unknown): string {
+  try {
+    return JSON.stringify(mercadoPagoErrorLogDetails(data));
+  } catch {
+    return '{}';
+  }
 }
 
 export function mercadoPagoPublicErrorMessage(data: unknown, fallback: string): string {
@@ -229,6 +274,72 @@ function isNotificationEnvelopeId(id: string): boolean {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+function firstErrorRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+  const errors = record.errors;
+  if (Array.isArray(errors)) return asRecord(errors[0]);
+  return asRecord(errors);
+}
+
+function isGenericDiagnostic(value: unknown): boolean {
+  if (value == null) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value as object).length === 0;
+  return GENERIC_DIAGNOSTIC_VALUES.has(String(value).trim().toLowerCase());
+}
+
+function mergePreferSpecific(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
+  for (const [key, candidate] of Object.entries(source)) {
+    if (candidate === undefined) continue;
+    const current = target[key];
+    if (current === undefined) {
+      target[key] = candidate;
+      continue;
+    }
+    if (!isGenericDiagnostic(candidate)) {
+      target[key] = candidate;
+    }
+  }
+}
+
+function pickSafeDiagnosticRecord(
+  record: Record<string, unknown>,
+  depth = 0,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const keys = depth === 0 ? SAFE_DIAGNOSTIC_KEYS : NESTED_DIAGNOSTIC_KEYS;
+  for (const key of keys) {
+    if (!(key in record) || record[key] === undefined) continue;
+    const picked = pickSafeDiagnosticValue(record[key], depth);
+    if (picked === undefined) continue;
+    if (isGenericDiagnostic(picked) && out[key] !== undefined) continue;
+    out[key] = picked;
+  }
+  return out;
+}
+
+function pickSafeDiagnosticValue(value: unknown, depth: number): unknown {
+  if (value == null || depth > 4) return undefined;
+  if (typeof value === 'string') {
+    const sanitized = sanitizeProviderError(value).trim().slice(0, 280);
+    return sanitized || undefined;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, 8)
+      .map((item) => pickSafeDiagnosticValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+    return items.length ? items : undefined;
+  }
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const picked = pickSafeDiagnosticRecord(record, depth + 1);
+  return Object.keys(picked).length ? picked : undefined;
 }
 
 @Injectable()

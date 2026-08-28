@@ -16,10 +16,10 @@ import {
   extractMercadoPagoOrderId,
   firstOrderPayment,
   formatBrlAmount,
+  formatMercadoPagoErrorLog,
   mapMercadoPagoOrderStatus,
   mercadoPagoPublicErrorMessage,
   parseBrlAmount,
-  sanitizeProviderError,
   verifyMercadoPagoWebhookSignature,
 } from './mercado-pago-orders';
 
@@ -102,7 +102,7 @@ export class PixPaymentProvider implements PaymentProvider {
     const result = await this.mp.createOrder(token, input.idempotencyKey, body);
     if (result.status < 200 || result.status >= 300) {
       this.logger.error(
-        `Mercado Pago create order failed (${result.status}) ${mpErrorCode(result.data)}`,
+        `Mercado Pago create order failed (${result.status}) ${formatMercadoPagoErrorLog(result.data)}`,
       );
       throw new ServiceUnavailableException(
         mercadoPagoPublicErrorMessage(
@@ -148,7 +148,7 @@ export class PixPaymentProvider implements PaymentProvider {
     const result = await this.mp.getOrder(token, id);
     if (result.status < 200 || result.status >= 300) {
       this.logger.error(
-        `Mercado Pago get order failed (${result.status}) ${mpErrorCode(result.data)}`,
+        `Mercado Pago get order failed (${result.status}) ${formatMercadoPagoErrorLog(result.data)}`,
       );
       throw new ServiceUnavailableException(
         mercadoPagoPublicErrorMessage(
@@ -282,14 +282,4 @@ function splitPersonName(name?: string): { first_name?: string; last_name?: stri
 
 function sanitizeExternalReference(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
-}
-
-function mpErrorCode(data: unknown): string {
-  const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
-  const errors = record?.errors;
-  const first = Array.isArray(errors) && errors[0] && typeof errors[0] === 'object'
-    ? (errors[0] as Record<string, unknown>)
-    : null;
-  const code = first?.code ?? record?.error ?? record?.message ?? '';
-  return sanitizeProviderError(String(code)).slice(0, 80);
 }
