@@ -255,7 +255,7 @@ export class CreditsService {
         purchaseId: purchase.id,
         packageKey: pack.key,
         amountBrl: pack.priceBrl,
-        payerEmail: email,
+        payerEmail: email ?? undefined,
         payerName: venue.owner?.name,
         idempotencyKey: randomUUID(),
       });
