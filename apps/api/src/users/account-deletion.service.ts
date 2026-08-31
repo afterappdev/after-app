@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { deleteLocalUploads } from '../common/utils/local-uploads';
 import { UsersService } from './users.service';
 import { AccountDeletionMailer } from './account-deletion.mailer';
+import { sanitizeSmtpError } from './smtp-account-deletion.mailer';
 import {
   ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
   ACCOUNT_DELETION_MAIL_UNAVAILABLE_MESSAGE,
@@ -77,17 +78,18 @@ export class AccountDeletionService {
 
     try {
       await this.mailer.sendDeletionLink({ to: normalized, confirmUrl });
-    } catch {
+    } catch (err) {
       await this.prisma.accountDeletionRequest.updateMany({
         where: { tokenHash, usedAt: null },
         data: { usedAt: new Date() },
       });
+      const smtp = JSON.stringify(sanitizeSmtpError(err));
       if (!isProduction()) {
         this.logger.warn(
-          `Falha ao enviar instruções de exclusão para ${maskEmailForLog(normalized)}`,
+          `Falha ao enviar instruções de exclusão para ${maskEmailForLog(normalized)} ${smtp}`,
         );
       } else {
-        this.logger.warn('Falha ao enviar instruções de exclusão de conta');
+        this.logger.warn(`Falha ao enviar instruções de exclusão de conta ${smtp}`);
       }
       return generic;
     }
