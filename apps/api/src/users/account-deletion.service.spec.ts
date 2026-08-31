@@ -81,7 +81,7 @@ describe('AccountDeletionService', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'test';
     process.env.PUBLIC_APP_URL = 'https://app-after.com.br';
-    delete process.env.SMTP_HOST;
+    delete process.env.RESEND_API_KEY;
     prisma = createPrisma();
     mailer = new CapturingMailer();
     users = {
@@ -238,7 +238,7 @@ describe('AccountDeletionService', () => {
     expect(logs.join('\n')).not.toContain(token);
   });
 
-  it('em production sem SMTP configurado não cria falsa expectativa', async () => {
+  it('em production sem Resend configurado não cria falsa expectativa', async () => {
     process.env.NODE_ENV = 'production';
     mailer.configured = false;
     await expect(service.requestDeletion('user@after.local')).rejects.toBeInstanceOf(
@@ -248,7 +248,7 @@ describe('AccountDeletionService', () => {
     expect(prisma.accountDeletionRequest.create).not.toHaveBeenCalled();
   });
 
-  it('falha de SMTP após criar pedido não revela se a conta existe', async () => {
+  it('falha de e-mail após criar pedido não revela se a conta existe', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
