@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { deleteLocalUploads } from '../common/utils/local-uploads';
 import { PrismaService } from '../prisma/prisma.service';
@@ -82,7 +83,16 @@ export class UsersService {
   }
 
   async deleteAccount(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const urls = await this.deleteUserRecord(this.prisma, userId);
+    await deleteLocalUploads(urls);
+    return { ok: true };
+  }
+
+  async deleteUserRecord(
+    db: PrismaService | Prisma.TransactionClient,
+    userId: string,
+  ): Promise<Array<string | null | undefined>> {
+    const user = await db.user.findUnique({
       where: { id: userId },
       include: {
         venue: {
@@ -104,8 +114,7 @@ export class UsersService {
       urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
     }
 
-    await this.prisma.user.delete({ where: { id: userId } });
-    await deleteLocalUploads(urls);
-    return { ok: true };
+    await db.user.delete({ where: { id: userId } });
+    return urls;
   }
 }

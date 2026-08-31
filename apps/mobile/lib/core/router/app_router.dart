@@ -1,4 +1,5 @@
 class AppRoutes {
+  static const root = '/';
   static const login = '/login';
   static const register = '/register';
   static const home = '/home';
@@ -9,4 +10,8 @@ class AppRoutes {
   static const credits = '/credits';
   static const favorites = '/favorites';
   static const notifications = '/notifications';
+  static const privacy = '/politica-de-privacidade';
+  static const accountDeletion = '/exclusao-de-conta';
+  static const confirmDeletion = '/confirmar-exclusao';
+  static const contact = '/contato';
 }

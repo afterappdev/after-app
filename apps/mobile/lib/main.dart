@@ -10,7 +10,6 @@ import 'core/network/api_client.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/auth_controller.dart';
-import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/credits/credits_screen.dart';
 import 'features/home/home_screen.dart';
@@ -20,6 +19,11 @@ import 'features/notifications/notifications_screen.dart';
 import 'features/profile/favorites_screen.dart';
 import 'features/profile/user_profile_screen.dart';
 import 'features/profile/venue_account_screen.dart';
+import 'features/public/account_deletion_pages.dart';
+import 'features/public/account_deletion_uri.dart';
+import 'features/public/legal_pages.dart';
+import 'features/public/privacy_policy_page.dart';
+import 'features/public/web_root.dart';
 import 'features/venue/venue_edit_screen.dart';
 import 'features/venue/venue_public_screen.dart';
 
@@ -58,6 +62,9 @@ Future<void> main() async {
 Future<void> _consumePendingOAuthToken(AuthController auth) async {
   try {
     if (kIsWeb) {
+      if (isAccountDeletionConfirmUri(Uri.base)) {
+        return;
+      }
       final token = oauthTokenFromUri(Uri.base);
       if (token != null) {
         await auth.loginWithAccessToken(token);
@@ -115,11 +122,12 @@ class _AfterAppState extends State<AfterApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // Usa `home` em vez de `initialRoute: /login` para evitar
-      // a rota implícita "/" que quebrava o web com tela branca.
-      home: const AppStartup(),
+      // `/` definido em `routes` (não usar `initialRoute: /login` sem `/`,
+      // isso gerava tela branca no web). Web: landing. Nativo: intro.
       routes: {
-        AppRoutes.login: (_) => const LoginScreen(),
+        AppRoutes.root: (_) =>
+            kIsWeb ? const WebRoot() : const AppStartup(),
+        AppRoutes.login: (_) => const LoginScreenRoute(),
         AppRoutes.register: (_) => const RegisterScreen(),
         AppRoutes.home: (_) => const HomeScreen(),
         AppRoutes.userProfile: (_) => const UserProfileScreen(),
@@ -128,8 +136,21 @@ class _AfterAppState extends State<AfterApp> {
         AppRoutes.credits: (_) => const CreditsScreen(),
         AppRoutes.favorites: (_) => const FavoritesScreen(),
         AppRoutes.notifications: (_) => const NotificationsScreen(),
+        AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
+        AppRoutes.accountDeletion: (_) => const AccountDeletionPage(),
+        AppRoutes.confirmDeletion: (_) => const ConfirmAccountDeletionPage(),
+        AppRoutes.contact: (_) => const ContactPage(),
       },
       onGenerateRoute: (settings) {
+        final routePath = deletionConfirmPath(settings.name);
+        if (routePath == AppRoutes.confirmDeletion) {
+          return MaterialPageRoute(
+            builder: (_) => ConfirmAccountDeletionPage(
+              token: deletionConfirmTokenFromRouteName(settings.name) ?? '',
+            ),
+            settings: settings,
+          );
+        }
         if (settings.name == AppRoutes.venuePublic) {
           final args = settings.arguments;
           late final String venueId;
