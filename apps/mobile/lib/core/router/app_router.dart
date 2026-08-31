@@ -13,5 +13,7 @@ class AppRoutes {
   static const privacy = '/politica-de-privacidade';
   static const accountDeletion = '/exclusao-de-conta';
   static const confirmDeletion = '/confirmar-exclusao';
+  static const forgotPassword = '/esqueci-minha-senha';
+  static const resetPassword = '/redefinir-senha';
   static const contact = '/contato';
 }

@@ -55,6 +55,19 @@ model User {
   reviews       Review[]
   notifications Notification[]
   deletionRequests AccountDeletionRequest[]
+  passwordResets   PasswordResetRequest[]
+}
+
+model PasswordResetRequest {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model AccountDeletionRequest {

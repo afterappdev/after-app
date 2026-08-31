@@ -10,6 +10,8 @@ import 'core/network/api_client.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/auth_controller.dart';
+import 'features/auth/password_reset_pages.dart';
+import 'features/auth/password_reset_uri.dart';
 import 'features/auth/register_screen.dart';
 import 'features/credits/credits_screen.dart';
 import 'features/home/home_screen.dart';
@@ -62,7 +64,8 @@ Future<void> main() async {
 Future<void> _consumePendingOAuthToken(AuthController auth) async {
   try {
     if (kIsWeb) {
-      if (isAccountDeletionConfirmUri(Uri.base)) {
+      if (isAccountDeletionConfirmUri(Uri.base) ||
+          isPasswordResetUri(Uri.base)) {
         return;
       }
       final token = oauthTokenFromUri(Uri.base);
@@ -139,14 +142,25 @@ class _AfterAppState extends State<AfterApp> {
         AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
         AppRoutes.accountDeletion: (_) => const AccountDeletionPage(),
         AppRoutes.confirmDeletion: (_) => const ConfirmAccountDeletionPage(),
+        AppRoutes.forgotPassword: (_) => const ForgotPasswordPage(),
+        AppRoutes.resetPassword: (_) => const ResetPasswordPage(),
         AppRoutes.contact: (_) => const ContactPage(),
       },
       onGenerateRoute: (settings) {
-        final routePath = deletionConfirmPath(settings.name);
-        if (routePath == AppRoutes.confirmDeletion) {
+        final confirmPath = deletionConfirmPath(settings.name);
+        if (confirmPath == AppRoutes.confirmDeletion) {
           return MaterialPageRoute(
             builder: (_) => ConfirmAccountDeletionPage(
               token: deletionConfirmTokenFromRouteName(settings.name) ?? '',
+            ),
+            settings: settings,
+          );
+        }
+        final resetPath = passwordResetPath(settings.name);
+        if (resetPath == AppRoutes.resetPassword) {
+          return MaterialPageRoute(
+            builder: (_) => ResetPasswordPage(
+              token: passwordResetTokenFromRouteName(settings.name) ?? '',
             ),
             settings: settings,
           );

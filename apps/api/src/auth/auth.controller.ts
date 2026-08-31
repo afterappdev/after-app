@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Post,
   Query,
   Res,
@@ -14,10 +15,18 @@ import { AppleLoginDto } from './dto/apple-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import {
+  PasswordResetConfirmDto,
+  PasswordResetRequestDto,
+} from './password-reset.dto';
+import { PasswordResetService } from './password-reset.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
 
   @Get('providers')
   providers() {
@@ -89,5 +98,17 @@ export class AuthController {
   ) {
     const target = await this.authService.appleCallback(body);
     return res.redirect(target);
+  }
+
+  @Post('password-reset/request')
+  @HttpCode(200)
+  requestPasswordReset(@Body() dto: PasswordResetRequestDto) {
+    return this.passwordReset.requestReset(dto.email);
+  }
+
+  @Post('password-reset/confirm')
+  @HttpCode(200)
+  confirmPasswordReset(@Body() dto: PasswordResetConfirmDto) {
+    return this.passwordReset.confirmReset(dto);
   }
 }

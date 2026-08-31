@@ -10,14 +10,40 @@ export function parseAudienceList(...values: Array<string | undefined>): string[
   return [...ids];
 }
 
+export function parseAllowedRedirectOrigins(
+  ...values: Array<string | undefined>
+): string[] {
+  const origins = new Set<string>();
+  for (const raw of parseAudienceList(...values)) {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        origins.add(url.origin);
+      }
+    } catch {
+      // ignore entradas inválidas da allowlist
+    }
+  }
+  return [...origins];
+}
+
 export function isAllowedOAuthRedirect(
   redirect: string,
   extraOrigins: string[] = [],
+  options: { production?: boolean } = {},
 ): boolean {
+  if (!redirect || /\s/.test(redirect)) {
+    return false;
+  }
+
   let url: URL;
   try {
     url = new URL(redirect);
   } catch {
+    return false;
+  }
+
+  if (url.username || url.password) {
     return false;
   }
 
@@ -29,12 +55,17 @@ export function isAllowedOAuthRedirect(
     return false;
   }
 
-  const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return true;
+  const production = Boolean(options.production);
+  if (production && url.protocol !== 'https:') {
+    return false;
   }
 
-  return extraOrigins.some((origin) => origin === url.origin);
+  const host = url.hostname.toLowerCase();
+  if (production && (host === 'workers.dev' || host.endsWith('.workers.dev'))) {
+    return false;
+  }
+
+  return extraOrigins.includes(url.origin);
 }
 
 export function attachOAuthToken(redirect: string, token: string): string {

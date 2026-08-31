@@ -21,8 +21,10 @@ import { RegisterDto } from './dto/register.dto';
 import {
   attachOAuthToken,
   isAllowedOAuthRedirect,
+  parseAllowedRedirectOrigins,
   parseAudienceList,
 } from './oauth.util';
+import { isProduction } from '../common/env';
 
 const SOCIAL_DEFAULT_STATE = 'SP';
 const SOCIAL_DEFAULT_CITY = 'São Paulo';
@@ -215,16 +217,16 @@ export class AuthService {
   }
 
   oauthCancelRedirect(state: string | undefined) {
-    if (!state) {
-      return this.config.get<string>('OAUTH_REDIRECT_ORIGINS')?.split(',')[0]?.trim() ||
-        'http://localhost:8080/';
+    if (state) {
+      try {
+        const payload = this.jwt.verify<OAuthStatePayload>(state);
+        return this.requireRedirect(payload.redirect);
+      } catch {
+        // cai no fallback seguro
+      }
     }
-    try {
-      const payload = this.jwt.verify<OAuthStatePayload>(state);
-      return payload.redirect;
-    } catch {
-      return 'http://localhost:8080/';
-    }
+    const origins = this.oauthAllowedOrigins();
+    return origins[0] ? `${origins[0]}/` : 'http://localhost:8080/';
   }
 
   appleStartUrl(redirect: string): string {
@@ -428,13 +430,21 @@ export class AuthService {
     if (!redirect) {
       throw new BadRequestException('Redirect OAuth ausente.');
     }
-    const extra = parseAudienceList(
-      this.config.get<string>('OAUTH_REDIRECT_ORIGINS'),
-    );
-    if (!isAllowedOAuthRedirect(redirect, extra)) {
+    if (
+      !isAllowedOAuthRedirect(redirect, this.oauthAllowedOrigins(), {
+        production: isProduction(),
+      })
+    ) {
       throw new BadRequestException('Redirect OAuth não permitido.');
     }
     return redirect;
+  }
+
+  private oauthAllowedOrigins() {
+    return parseAllowedRedirectOrigins(
+      this.config.get<string>('OAUTH_REDIRECT_ORIGINS'),
+      this.config.get<string>('PUBLIC_APP_URL'),
+    );
   }
 
   private signOAuthState(payload: OAuthStatePayload) {

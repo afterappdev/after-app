@@ -43,10 +43,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _comingSoon(String feature) {
-    _showErrorSnackBar('$feature em breve.');
-  }
-
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -202,6 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 28),
                       TextField(
+                        key: const Key('login-email'),
                         controller: _email,
                         style: _inputTextStyle,
                         keyboardType: TextInputType.emailAddress,
@@ -215,6 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                       TextField(
+                        key: const Key('login-password'),
                         controller: _password,
                         focusNode: _passwordFocus,
                         style: _inputTextStyle,
@@ -243,8 +241,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () =>
-                              _comingSoon('Recuperação de senha'),
+                          key: const Key('forgot-password'),
+                          onPressed: () {
+                            Navigator.of(context).pushNamed(
+                              AppRoutes.forgotPassword,
+                            );
+                          },
                           style: TextButton.styleFrom(
                             foregroundColor: _accent,
                             padding: const EdgeInsets.symmetric(
