@@ -18,16 +18,8 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <!-- Allow pinch-zoom. Do not set user-scalable=no or maximum-scale=1. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Encontre restaurantes, bares, casas de show e promoções do dia na sua cidade.">
-  <style>
-    /* Flutter full-page embedding sets inline touch-action:none on body,
-       which blocks native pinch-zoom even with a correct viewport. */
-    html, body {
-      touch-action: pan-x pan-y pinch-zoom !important;
-    }
-  </style>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -50,37 +42,6 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script>
-    // Flutter Web replaces any viewport meta on bootstrap (flt-viewport).
-    // Keep pinch-zoom allowed if the engine injects user-scalable=no or
-    // maximum-scale=1. Flutter 3.47 already uses maximum-scale=5.0.
-    (function () {
-      var allowed = 'width=device-width, initial-scale=1.0, maximum-scale=5.0';
-      var locked = /user-scalable\s*=\s*no/i;
-      var maxOne = /maximum-scale\s*=\s*1(\.0)?\b/i;
-      function unlockViewport() {
-        var tags = document.querySelectorAll('meta[name="viewport"]');
-        for (var i = 0; i < tags.length; i++) {
-          var content = tags[i].getAttribute('content') || '';
-          if (locked.test(content) || maxOne.test(content)) {
-            tags[i].setAttribute('content', allowed);
-          }
-        }
-        if (document.documentElement) {
-          document.documentElement.style.setProperty('touch-action', 'pan-x pan-y pinch-zoom', 'important');
-        }
-        if (document.body) {
-          document.body.style.setProperty('touch-action', 'pan-x pan-y pinch-zoom', 'important');
-        }
-      }
-      var observer = new MutationObserver(unlockViewport);
-      if (document.head) {
-        observer.observe(document.head, { childList: true, subtree: true, attributes: true });
-      }
-      document.addEventListener('DOMContentLoaded', unlockViewport);
-      window.addEventListener('load', unlockViewport);
-    })();
-  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

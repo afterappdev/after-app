@@ -156,6 +156,25 @@ Future<void> _expectStackedLanding(
   final hero = tester.getRect(_art(const Key('landing-art-hero')));
   expect(hero.top, closeTo(header.bottom, 0.6));
 
+  final barRect = tester.getRect(_art(const Key('landing-header-bar')));
+  expect(barRect.top, closeTo(0, 0.6));
+  expect(barRect.height, closeTo(expectedHeaderH, 0.6));
+  expect(barRect.height, lessThan(size.height - 1));
+  expect(barRect.bottom, closeTo(hero.top, 0.6));
+
+  expect(
+    find.descendant(
+      of: find.byType(LandingPage),
+      matching: find.byType(InteractiveViewer),
+    ),
+    findsNothing,
+  );
+
+  final loginRect = tester.getRect(find.byKey(const Key('public-header-entrar')));
+  expect(loginRect.width, lessThan(header.width * 0.7));
+  expect(loginRect.height, lessThanOrEqualTo(header.height + 0.6));
+  expect(loginRect.bottom, lessThanOrEqualTo(barRect.bottom + 0.6));
+
   for (var i = 0; i < scrollKeys.length - 1; i++) {
     final a = tester.getRect(_art(scrollKeys[i]));
     final b = tester.getRect(_art(scrollKeys[i + 1]));
@@ -368,11 +387,46 @@ void main() {
     expect(find.byKey(const Key('public-header-entrar')), findsOneWidget);
   });
 
+  testWidgets('layout 320x568 da landing não estoura', (tester) async {
+    await _surface(tester, const Size(320, 568));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+    await _expectMobileStackedArt(tester, const Size(320, 568));
+  });
+
   testWidgets('layout 360x800 da landing não estoura', (tester) async {
     await _surface(tester, const Size(360, 800));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
     await _expectMobileStackedArt(tester, const Size(360, 800));
+  });
+
+  testWidgets('layout 375x812 da landing não estoura', (tester) async {
+    await _surface(tester, const Size(375, 812));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+    await _expectMobileStackedArt(tester, const Size(375, 812));
+  });
+
+  testWidgets('layout 412x915 da landing não estoura', (tester) async {
+    await _surface(tester, const Size(412, 915));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+    await _expectMobileStackedArt(tester, const Size(412, 915));
+  });
+
+  testWidgets('layout 599x900 da landing não estoura', (tester) async {
+    await _surface(tester, const Size(599, 900));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+    await _expectMobileStackedArt(tester, const Size(599, 900));
+  });
+
+  testWidgets('layout 600x900 da landing não estoura', (tester) async {
+    await _surface(tester, const Size(600, 900));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+    await _expectDesktopStackedArt(tester, const Size(600, 900));
   });
 
   testWidgets('layout 768x1024 da landing não estoura', (tester) async {
@@ -509,19 +563,29 @@ void main() {
     expect(find.byType(ContactPage), findsOneWidget);
   });
 
-  test('web/index.html permite pinch-zoom nativo', () {
+  test('web/index.html não customiza touch-action nem viewport', () {
     final html = File('web/index.html').readAsStringSync();
+    expect(html.contains('touch-action'), isFalse);
+    expect(html.contains('MutationObserver'), isFalse);
+    expect(html.contains('pinch-zoom'), isFalse);
+    expect(html.contains('flt-viewport'), isFalse);
+    expect(html.contains('user-scalable=no'), isFalse);
     final viewport = RegExp(
       r'<meta\s+name="viewport"\s+content="([^"]*)"',
       caseSensitive: false,
     ).firstMatch(html);
     expect(viewport, isNotNull, reason: 'viewport meta ausente');
     final content = viewport!.group(1)!;
-    expect(content.contains('user-scalable=no'), isFalse);
-    expect(RegExp(r'maximum-scale\s*=\s*1(\.0)?\b').hasMatch(content), isFalse);
-    expect(content.contains('width=device-width'), isTrue);
-    expect(content.contains('initial-scale=1'), isTrue);
-    expect(html.contains('touch-action'), isTrue);
+    expect(content, 'width=device-width, initial-scale=1.0');
+  });
+
+  test('landing_page.dart não intercepta scale/pointer globais', () {
+    final src = File('lib/features/public/landing_page.dart').readAsStringSync();
+    expect(src.contains('InteractiveViewer'), isFalse);
+    expect(src.contains('onScale'), isFalse);
+    expect(src.contains('PointerMoveEvent'), isFalse);
+    expect(src.contains('Listener('), isFalse);
+    expect(src.contains('PageView'), isFalse);
   });
 
   testWidgets('login direto tem Voltar para o início e vai para /',

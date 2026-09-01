@@ -35,21 +35,21 @@ class LandingArt {
 }
 
 class MobileLandingArt {
-  static const header = 'assets/images/landing_mobile/mobile_header.png';
-  static const hero = 'assets/images/landing_mobile/mobile_hero.png';
-  static const intro = 'assets/images/landing_mobile/mobile_intro.png';
-  static const features = 'assets/images/landing_mobile/mobile_features.png';
-  static const business = 'assets/images/landing_mobile/mobile_business.png';
-  static const footer = 'assets/images/landing_mobile/mobile_footer.png';
+  static const header = 'assets/images/landing_mobile/mobile_header.jpg';
+  static const hero = 'assets/images/landing_mobile/mobile_hero.jpg';
+  static const intro = 'assets/images/landing_mobile/mobile_intro.jpg';
+  static const features = 'assets/images/landing_mobile/mobile_features.jpg';
+  static const business = 'assets/images/landing_mobile/mobile_business.jpg';
+  static const footer = 'assets/images/landing_mobile/mobile_footer.jpg';
 
   static const assets = [header, hero, intro, features, business, footer];
 
-  static const headerAspect = 391 / 138;
-  static const heroAspect = 391 / 845;
-  static const introAspect = 391 / 845;
-  static const featuresAspect = 391 / 845;
-  static const businessAspect = 391 / 845;
-  static const footerAspect = 391 / 826;
+  static const headerAspect = 1024 / 360;
+  static const heroAspect = 473 / 1024;
+  static const introAspect = 473 / 1024;
+  static const featuresAspect = 473 / 1024;
+  static const businessAspect = 473 / 1024;
+  static const footerAspect = 483 / 1024;
 }
 
 class LandingHotspot {
@@ -300,6 +300,7 @@ class _DesktopLanding extends StatelessWidget {
               top: 0,
               left: 0,
               right: 0,
+              height: overlayHeight,
               child: _StickyLandingHeader(
                 topInset: topInset,
                 maxArtWidth: kLandingArtMaxWidth,
@@ -446,6 +447,7 @@ class _MobileLanding extends StatelessWidget {
               top: 0,
               left: 0,
               right: 0,
+              height: overlayHeight,
               child: _StickyLandingHeader(
                 topInset: topInset,
                 asset: MobileLandingArt.header,
