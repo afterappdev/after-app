@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../../core/router/app_router.dart';
@@ -7,6 +9,11 @@ import 'public_chrome.dart';
 const double kLandingArtMaxWidth = 1024;
 
 const Color _kLandingBg = Color(0xFF05050C);
+
+/// Sticky header glass: dark translucent tint over a light backdrop blur.
+const double _kHeaderBlurSigma = 16;
+const double _kHeaderArtOpacity = 0.94;
+const Color _kHeaderGlassTint = Color(0x66000000);
 
 class LandingArt {
   static const header = 'assets/images/landing_final/landing_header.jpg';
@@ -76,7 +83,7 @@ class LandingArtSlice extends StatelessWidget {
                 asset,
                 width: width,
                 height: height,
-                fit: BoxFit.fill,
+                fit: BoxFit.fitWidth,
                 alignment: Alignment.topCenter,
                 filterQuality: FilterQuality.high,
                 gaplessPlayback: true,
@@ -177,18 +184,18 @@ class _LandingPageState extends State<LandingPage> {
                           hotspots: const [
                             LandingHotspot(
                               key: Key('landing-badge-play'),
-                              left: 0.469,
-                              top: 0.677,
-                              width: 0.273,
-                              height: 0.144,
+                              left: 0.555,
+                              top: 0.652,
+                              width: 0.185,
+                              height: 0.150,
                               semanticLabel: 'Google Play',
                             ),
                             LandingHotspot(
                               key: Key('landing-badge-store'),
-                              left: 0.742,
-                              top: 0.677,
+                              left: 0.738,
+                              top: 0.652,
                               width: 0.195,
-                              height: 0.144,
+                              height: 0.150,
                               semanticLabel: 'App Store',
                             ),
                           ],
@@ -256,28 +263,74 @@ class _LandingPageState extends State<LandingPage> {
               top: 0,
               left: 0,
               right: 0,
-              child: ColoredBox(
-                color: _kLandingBg,
-                child: Padding(
-                  padding: EdgeInsets.only(top: topInset),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(maxWidth: kLandingArtMaxWidth),
-                      child: LandingArtSlice(
-                        key: const Key('landing-art-header'),
-                        asset: LandingArt.header,
-                        aspectRatio: LandingArt.headerAspect,
-                        semanticLabel: 'After',
-                        hotspots: _headerHotspots(context),
-                      ),
+              child: _StickyLandingHeader(
+                topInset: topInset,
+                hotspots: _headerHotspots(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fixed header: glass tint + blur, with a short fade at the bottom so the
+/// bar does not read as a solid slab over the scrolling art.
+class _StickyLandingHeader extends StatelessWidget {
+  const _StickyLandingHeader({
+    required this.topInset,
+    required this.hotspots,
+  });
+
+  final double topInset;
+  final List<LandingHotspot> hotspots;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: ShaderMask(
+        blendMode: BlendMode.dstIn,
+        shaderCallback: (bounds) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFFFFFFF),
+              Color(0xFFFFFFFF),
+              Color(0x00FFFFFF),
+            ],
+            stops: [0.0, 0.90, 1.0],
+          ).createShader(bounds);
+        },
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: _kHeaderBlurSigma,
+            sigmaY: _kHeaderBlurSigma,
+          ),
+          child: ColoredBox(
+            color: _kHeaderGlassTint,
+            child: Padding(
+              padding: EdgeInsets.only(top: topInset),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(maxWidth: kLandingArtMaxWidth),
+                  child: Opacity(
+                    opacity: _kHeaderArtOpacity,
+                    child: LandingArtSlice(
+                      key: const Key('landing-art-header'),
+                      asset: LandingArt.header,
+                      aspectRatio: LandingArt.headerAspect,
+                      semanticLabel: 'After',
+                      hotspots: hotspots,
                     ),
                   ),
                 ),
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
