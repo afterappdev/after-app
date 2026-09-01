@@ -163,8 +163,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           ],
           const SizedBox(height: 20),
           TextButton(
+            key: const Key('forgot-back-login'),
             onPressed: () {
-              Navigator.of(context).pushNamed(AppRoutes.login);
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                AppRoutes.login,
+                (route) => false,
+              );
             },
             child: const Text('Voltar para o login'),
           ),

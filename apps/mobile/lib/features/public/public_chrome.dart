@@ -15,6 +15,38 @@ void goToLogin(BuildContext context) {
   Navigator.of(context).pushNamed(AppRoutes.login);
 }
 
+/// Explicit return to `/` — does not use [Navigator.pop], so it works on a
+/// cold deep-link with no history.
+class PublicHomeLink extends StatelessWidget {
+  const PublicHomeLink({super.key});
+
+  static const label = 'Voltar para o início';
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: const Key('public-home-back'),
+      onPressed: () => goToPublicHome(context),
+      style: TextButton.styleFrom(
+        foregroundColor: AppTheme.ink,
+        minimumSize: const Size(48, 48),
+        tapTargetSize: MaterialTapTargetSize.padded,
+        textStyle: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      ),
+      icon: const Icon(Icons.arrow_back_rounded, size: 18),
+      label: const Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
 class PublicChrome extends StatelessWidget {
   const PublicChrome({
     super.key,
@@ -64,47 +96,85 @@ class _PublicHeader extends StatelessWidget {
               horizontal: compact ? 16 : 32,
               vertical: 10,
             ),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: onRoot ? null : () => goToPublicHome(context),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    AfterLogo.assetPath,
-                    height: 40,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    semanticLabel: 'After',
+            child: compact
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          _PublicLogo(onRoot: onRoot),
+                          const Spacer(),
+                          _PublicEnterButton(compact: compact),
+                        ],
+                      ),
+                      const PublicHomeLink(),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      _PublicLogo(onRoot: onRoot),
+                      const SizedBox(width: 8),
+                      const PublicHomeLink(),
+                      const Spacer(),
+                      _PublicEnterButton(compact: compact),
+                    ],
                   ),
-                ),
-                const Spacer(),
-                FilledButton(
-                  key: const Key('public-header-entrar'),
-                  onPressed: () => goToLogin(context),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppTheme.ink,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(88, 40),
-                    padding: EdgeInsets.symmetric(
-                      horizontal: compact ? 16 : 22,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
-                  child: const Text('Entrar'),
-                ),
-              ],
-            ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PublicLogo extends StatelessWidget {
+  const _PublicLogo({required this.onRoot});
+
+  final bool onRoot;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onRoot ? null : () => goToPublicHome(context),
+      borderRadius: BorderRadius.circular(8),
+      child: Image.asset(
+        AfterLogo.assetPath,
+        height: 40,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        semanticLabel: 'After',
+      ),
+    );
+  }
+}
+
+class _PublicEnterButton extends StatelessWidget {
+  const _PublicEnterButton({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      key: const Key('public-header-entrar'),
+      onPressed: () => goToLogin(context),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppTheme.ink,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(88, 40),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 16 : 22,
+          vertical: 12,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+        textStyle: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      child: const Text('Entrar'),
     );
   }
 }

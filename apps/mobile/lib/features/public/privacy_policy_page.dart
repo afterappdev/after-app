@@ -220,7 +220,7 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
                   child: TextButton(
                     key: const Key('privacy-back'),
                     onPressed: () => goToPublicHome(context),
-                    child: const Text('Voltar ao site'),
+                    child: const Text('Voltar para o início'),
                   ),
                 ),
                 const SizedBox(height: 8),

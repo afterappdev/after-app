@@ -68,6 +68,11 @@ Future<void> _consumePendingOAuthToken(AuthController auth) async {
           isPasswordResetUri(Uri.base)) {
         return;
       }
+      final onboarding = oauthOnboardingFromUri(Uri.base);
+      if (onboarding != null) {
+        auth.beginSocialOnboardingFromToken(onboarding);
+        return;
+      }
       final token = oauthTokenFromUri(Uri.base);
       if (token != null) {
         await auth.loginWithAccessToken(token);
@@ -76,6 +81,11 @@ Future<void> _consumePendingOAuthToken(AuthController auth) async {
     }
     final initial = await AppLinks().getInitialLink();
     if (initial == null) return;
+    final onboarding = oauthOnboardingFromUri(initial);
+    if (onboarding != null) {
+      auth.beginSocialOnboardingFromToken(onboarding);
+      return;
+    }
     final token = oauthTokenFromUri(initial);
     if (token != null) {
       await auth.loginWithAccessToken(token);
@@ -100,6 +110,11 @@ class _AfterAppState extends State<AfterApp> {
     super.initState();
     if (!kIsWeb) {
       AppLinks().uriLinkStream.listen((uri) async {
+        final onboarding = oauthOnboardingFromUri(uri);
+        if (onboarding != null) {
+          widget.auth.beginSocialOnboardingFromToken(onboarding);
+          return;
+        }
         final token = oauthTokenFromUri(uri);
         if (token == null) return;
         try {
@@ -112,7 +127,7 @@ class _AfterAppState extends State<AfterApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'After',
+      title: 'After | O que temos pra hoje?',
       theme: AppTheme.light,
       debugShowCheckedModeBanner: false,
       locale: const Locale('pt', 'BR'),
@@ -131,7 +146,8 @@ class _AfterAppState extends State<AfterApp> {
         AppRoutes.root: (_) =>
             kIsWeb ? const WebRoot() : const AppStartup(),
         AppRoutes.login: (_) => const LoginScreenRoute(),
-        AppRoutes.register: (_) => const RegisterScreen(),
+        AppRoutes.register: (_) =>
+            RegisterScreen(showPublicHomeLink: kIsWeb),
         AppRoutes.home: (_) => const HomeScreen(),
         AppRoutes.userProfile: (_) => const UserProfileScreen(),
         AppRoutes.venueAccount: (_) => const VenueAccountScreen(),

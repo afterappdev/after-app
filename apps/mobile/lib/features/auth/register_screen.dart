@@ -4,10 +4,15 @@ import 'package:provider/provider.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
+import '../public/public_chrome.dart';
 import 'auth_controller.dart';
+import 'models/social_onboarding.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({super.key, this.showPublicHomeLink = false});
+
+  /// Web `/register` and WebRoot social onboarding. Native AppStartup stays false.
+  final bool showPublicHomeLink;
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -32,11 +37,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
 
-  /// Exactly one role: USER or VENUE. Never both, never none.
+  /// Exactly one role: USER or VENUE. Never both. Empty until chosen on social.
   String _role = 'USER';
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  SocialOnboarding? _social;
+  bool _appliedSocial = false;
 
   List<Map<String, dynamic>> _states = [];
   List<Map<String, dynamic>> _cities = [];
@@ -54,6 +61,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _password.addListener(_onFormChanged);
     _confirmPassword.addListener(_onFormChanged);
     _loadStates();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_appliedSocial) return;
+    _appliedSocial = true;
+    final social = context.read<AuthController>().pendingSocialOnboarding;
+    if (social == null) return;
+    _social = social;
+    _name.text = social.name;
+    _email.text = social.email;
+    _role = '';
   }
 
   void _onFormChanged() {
@@ -81,13 +101,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
   }
 
+  bool get _isSocial => _social != null;
+
   bool get _canSubmit {
+    final passwordOk = _isSocial
+        ? true
+        : (_password.text.length >= 6 &&
+            _password.text == _confirmPassword.text);
     return _isValidEmail(_email.text.trim()) &&
         _name.text.trim().length >= 2 &&
         _selectedUf != null &&
         _selectedCity != null &&
-        _password.text.length >= 6 &&
-        _password.text == _confirmPassword.text &&
+        passwordOk &&
         (_role == 'USER' || _role == 'VENUE') &&
         !_loading;
   }
@@ -172,14 +197,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _showErrorSnackBar('Selecione se você é usuário ou estabelecimento.');
       return;
     }
-    if (!_isValidEmail(email) || password.length < 6) {
-      _showErrorSnackBar(
-        'Preencha um email válido, e a senha deverá conter no mínimo 6 caracteres.',
-      );
-      return;
-    }
-    if (password != _confirmPassword.text) {
-      _showErrorSnackBar('As senhas não coincidem.');
+    if (!_isSocial) {
+      if (!_isValidEmail(email) || password.length < 6) {
+        _showErrorSnackBar(
+          'Preencha um email válido, e a senha deverá conter no mínimo 6 caracteres.',
+        );
+        return;
+      }
+      if (password != _confirmPassword.text) {
+        _showErrorSnackBar('As senhas não coincidem.');
+        return;
+      }
+    } else if (!_isValidEmail(email)) {
+      _showErrorSnackBar('E-mail da conta social indisponível. Tente entrar de novo.');
       return;
     }
     if (name.length < 2) {
@@ -193,14 +223,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      await context.read<AuthController>().register(
-            name: name,
-            email: email,
-            password: password,
-            state: _selectedUf!,
-            city: _selectedCity!,
-            role: _role,
-          );
+      final auth = context.read<AuthController>();
+      if (_social != null) {
+        await auth.completeSocialRegistration(
+          onboardingToken: _social!.onboardingToken,
+          accountType: _role == 'VENUE' ? 'venue' : 'user',
+          name: name,
+          state: _selectedUf!,
+          city: _selectedCity!,
+        );
+      } else {
+        await auth.register(
+          name: name,
+          email: email,
+          password: password,
+          state: _selectedUf!,
+          city: _selectedCity!,
+          role: _role,
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
     } on ApiException catch (e) {
@@ -242,17 +283,43 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && _social != null && context.mounted) {
+          context.read<AuthController>().clearPendingSocialOnboarding();
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          color: const Color(0xFF333333),
-        ),
+        leadingWidth: widget.showPublicHomeLink ? 220 : 56,
+        leading: widget.showPublicHomeLink
+            ? TextButton.icon(
+                key: const Key('public-home-back'),
+                onPressed: () {
+                  if (_social != null) {
+                    context
+                        .read<AuthController>()
+                        .clearPendingSocialOnboarding();
+                  }
+                  goToPublicHome(context);
+                },
+                icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                label: const Text(PublicHomeLink.label),
+              )
+            : IconButton(
+                onPressed: () {
+                  if (_social != null) {
+                    context.read<AuthController>().clearPendingSocialOnboarding();
+                  }
+                  Navigator.of(context).maybePop();
+                },
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                color: const Color(0xFF333333),
+              ),
       ),
       body: SafeArea(
         child: Center(
@@ -263,6 +330,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 const AfterLogo(height: 48),
                 const SizedBox(height: 16),
+                if (_social?.avatarUrl != null &&
+                    _social!.avatarUrl!.isNotEmpty) ...[
+                  Center(
+                    child: CircleAvatar(
+                      key: const Key('register-avatar'),
+                      radius: 32,
+                      backgroundColor: _inputFill,
+                      child: ClipOval(
+                        child: Image.network(
+                          _social!.avatarUrl!,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const Icon(
+                            Icons.person_outline_rounded,
+                            color: _accent,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Text(
                   'Crie sua conta',
                   textAlign: TextAlign.center,
@@ -274,15 +365,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.verified_user_outlined, size: 16, color: _accent),
-                    SizedBox(width: 6),
+                    const Icon(Icons.verified_user_outlined, size: 16, color: _accent),
+                    const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Todos os campos são obrigatórios',
-                        style: TextStyle(
+                        _isSocial
+                            ? 'Escolha o tipo de conta para concluir o cadastro'
+                            : 'Todos os campos são obrigatórios',
+                        style: const TextStyle(
                           fontFamily: AppTheme.fontFamily,
                           color: _subtitle,
                           fontSize: 13,
@@ -307,6 +400,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     Expanded(
                       child: _AccountTypeButton(
+                        key: const Key('register-role-user'),
                         label: 'Usuário',
                         icon: Icons.person_outline_rounded,
                         selected: _role == 'USER',
@@ -316,6 +410,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _AccountTypeButton(
+                        key: const Key('register-role-venue'),
                         label: 'Local',
                         icon: Icons.apartment_outlined,
                         selected: _role == 'VENUE',
@@ -326,11 +421,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
                 TextField(
+                  key: const Key('register-email'),
                   controller: _email,
                   style: _inputTextStyle,
+                  readOnly: _isSocial,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.email],
+                  autofillHints: _isSocial ? null : const [AutofillHints.email],
                   decoration: _fieldDecoration(
                     hint: 'Digite seu e-mail',
                     icon: Icons.mail_outline_rounded,
@@ -338,6 +435,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  key: const Key('register-name'),
                   controller: _name,
                   style: _inputTextStyle,
                   textInputAction: TextInputAction.next,
@@ -363,6 +461,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 8),
                 ],
                 DropdownButtonFormField<String>(
+                  key: const Key('register-state'),
                   // ignore: deprecated_member_use
                   value: _selectedUf,
                   isExpanded: true,
@@ -407,6 +506,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  key: const Key('register-city'),
                   // ignore: deprecated_member_use
                   value: _selectedCity,
                   isExpanded: true,
@@ -446,57 +546,63 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       : (city) => setState(() => _selectedCity = city),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  style: _inputTextStyle,
-                  obscureText: _obscurePassword,
-                  textInputAction: TextInputAction.next,
-                  autofillHints: const [AutofillHints.newPassword],
-                  decoration: _fieldDecoration(
-                    hint: 'Digite sua senha',
-                    icon: Icons.lock_outline_rounded,
-                    suffix: IconButton(
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        color: _hint,
-                        size: 22,
+                if (!_isSocial) ...[
+                  TextField(
+                    key: const Key('register-password'),
+                    controller: _password,
+                    style: _inputTextStyle,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.newPassword],
+                    decoration: _fieldDecoration(
+                      hint: 'Digite sua senha',
+                      icon: Icons.lock_outline_rounded,
+                      suffix: IconButton(
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: _hint,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _confirmPassword,
-                  style: _inputTextStyle,
-                  obscureText: _obscureConfirm,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) {
-                    if (_canSubmit) _submit();
-                  },
-                  decoration: _fieldDecoration(
-                    hint: 'Confirme sua senha',
-                    icon: Icons.lock_outline_rounded,
-                    suffix: IconButton(
-                      onPressed: () =>
-                          setState(() => _obscureConfirm = !_obscureConfirm),
-                      icon: Icon(
-                        _obscureConfirm
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        color: _hint,
-                        size: 22,
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('register-confirm-password'),
+                    controller: _confirmPassword,
+                    style: _inputTextStyle,
+                    obscureText: _obscureConfirm,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (_canSubmit) _submit();
+                    },
+                    decoration: _fieldDecoration(
+                      hint: 'Confirme sua senha',
+                      icon: Icons.lock_outline_rounded,
+                      suffix: IconButton(
+                        onPressed: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                        icon: Icon(
+                          _obscureConfirm
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: _hint,
+                          size: 22,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
+                ] else
+                  const SizedBox(height: 24),
                 SizedBox(
                   height: 52,
                   child: ElevatedButton(
+                    key: const Key('register-submit'),
                     onPressed: _canSubmit ? _submit : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor:
@@ -531,12 +637,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }
 
 class _AccountTypeButton extends StatelessWidget {
   const _AccountTypeButton({
+    super.key,
     required this.label,
     required this.icon,
     required this.selected,

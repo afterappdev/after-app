@@ -321,7 +321,7 @@ class _ConfirmAccountDeletionPageState extends State<ConfirmAccountDeletionPage>
           TextButton(
             key: const Key('deletion-confirm-back'),
             onPressed: () => goToPublicHome(context),
-            child: const Text('Voltar ao site'),
+            child: const Text('Voltar para o início'),
           ),
         ],
       ),
