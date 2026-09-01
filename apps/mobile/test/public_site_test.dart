@@ -22,8 +22,16 @@ import 'package:after_app/features/public/legal_pages.dart';
 import 'package:after_app/features/public/privacy_policy_page.dart';
 import 'package:after_app/features/public/web_root.dart';
 
-const _scrollArtKeys = [
+const _desktopScrollArtKeys = [
   Key('landing-art-hero'),
+  Key('landing-art-features'),
+  Key('landing-art-business'),
+  Key('landing-art-footer'),
+];
+
+const _mobileScrollArtKeys = [
+  Key('landing-art-hero'),
+  Key('landing-art-intro'),
   Key('landing-art-features'),
   Key('landing-art-business'),
   Key('landing-art-footer'),
@@ -78,12 +86,27 @@ Future<void> _surface(WidgetTester tester, Size size) async {
 
 Finder _art(Key key) => find.byKey(key, skipOffstage: false);
 
-Future<void> _expectStackedArt(WidgetTester tester, Size size) async {
+bool _isAsset(Image image, String needle) {
+  final provider = image.image;
+  return provider is AssetImage && provider.assetName.contains(needle);
+}
+
+Future<void> _expectStackedLanding(
+  WidgetTester tester,
+  Size size, {
+  required double maxW,
+  required double headerAspect,
+  required double heroAspect,
+  required List<Key> scrollKeys,
+  required String assetFolder,
+  required String forbiddenFolder,
+  required Key variantKey,
+}) async {
   expect(tester.takeException(), isNull);
   expect(find.byType(LandingPage), findsOneWidget);
+  expect(find.byKey(variantKey), findsOneWidget);
 
-  final maxW = size.width < kLandingArtMaxWidth ? size.width : kLandingArtMaxWidth;
-  final expectedHeaderH = maxW / LandingArt.headerAspect;
+  final expectedHeaderH = maxW / headerAspect;
 
   expect(_art(const Key('landing-art-header')), findsOneWidget);
   expect(_art(const Key('landing-header-bar')), findsOneWidget);
@@ -100,10 +123,7 @@ Future<void> _expectStackedArt(WidgetTester tester, Size size) async {
   );
   expect(headerBox.size.width, closeTo(maxW, 0.6));
   expect(headerBox.size.height, closeTo(expectedHeaderH, 0.6));
-  expect(
-    headerBox.size.aspectRatio,
-    closeTo(LandingArt.headerAspect, 0.02),
-  );
+  expect(headerBox.size.aspectRatio, closeTo(headerAspect, 0.02));
   expect(
     find.descendant(
       of: find.byKey(const Key('landing-header-bar')),
@@ -121,9 +141,11 @@ Future<void> _expectStackedArt(WidgetTester tester, Size size) async {
   expect(landingImages, isNotEmpty);
   for (final image in landingImages) {
     expect(image.fit, BoxFit.fitWidth);
+    expect(_isAsset(image, assetFolder), isTrue);
+    expect(_isAsset(image, forbiddenFolder), isFalse);
   }
 
-  for (final key in _scrollArtKeys) {
+  for (final key in scrollKeys) {
     expect(_art(key), findsOneWidget);
     final box = tester.renderObject<RenderBox>(_art(key));
     expect(box.size.width, closeTo(maxW, 0.6));
@@ -134,9 +156,9 @@ Future<void> _expectStackedArt(WidgetTester tester, Size size) async {
   final hero = tester.getRect(_art(const Key('landing-art-hero')));
   expect(hero.top, closeTo(header.bottom, 0.6));
 
-  for (var i = 0; i < _scrollArtKeys.length - 1; i++) {
-    final a = tester.getRect(_art(_scrollArtKeys[i]));
-    final b = tester.getRect(_art(_scrollArtKeys[i + 1]));
+  for (var i = 0; i < scrollKeys.length - 1; i++) {
+    final a = tester.getRect(_art(scrollKeys[i]));
+    final b = tester.getRect(_art(scrollKeys[i + 1]));
     expect(b.top, closeTo(a.bottom, 0.6));
     expect(b.left, closeTo(a.left, 0.6));
     expect(b.width, closeTo(a.width, 0.6));
@@ -144,7 +166,38 @@ Future<void> _expectStackedArt(WidgetTester tester, Size size) async {
 
   expect(
     tester.getSize(_art(const Key('landing-art-hero'))).aspectRatio,
-    closeTo(LandingArt.heroAspect, 0.02),
+    closeTo(heroAspect, 0.02),
+  );
+}
+
+Future<void> _expectDesktopStackedArt(WidgetTester tester, Size size) async {
+  final maxW =
+      size.width < kLandingArtMaxWidth ? size.width : kLandingArtMaxWidth;
+  await _expectStackedLanding(
+    tester,
+    size,
+    maxW: maxW,
+    headerAspect: LandingArt.headerAspect,
+    heroAspect: LandingArt.heroAspect,
+    scrollKeys: _desktopScrollArtKeys,
+    assetFolder: 'landing_final',
+    forbiddenFolder: 'landing_mobile',
+    variantKey: const Key('landing-desktop'),
+  );
+  expect(_art(const Key('landing-art-intro')), findsNothing);
+}
+
+Future<void> _expectMobileStackedArt(WidgetTester tester, Size size) async {
+  await _expectStackedLanding(
+    tester,
+    size,
+    maxW: size.width,
+    headerAspect: MobileLandingArt.headerAspect,
+    heroAspect: MobileLandingArt.heroAspect,
+    scrollKeys: _mobileScrollArtKeys,
+    assetFolder: 'landing_mobile',
+    forbiddenFolder: 'landing_final',
+    variantKey: const Key('landing-mobile'),
   );
 }
 
@@ -167,7 +220,10 @@ void main() {
     expect(find.byKey(const Key('landing-badge-store')), findsOneWidget);
     expect(_art(const Key('landing-art-header')), findsOneWidget);
     expect(_art(const Key('landing-header-bar')), findsOneWidget);
+    expect(_art(const Key('landing-desktop')), findsOneWidget);
+    expect(_art(const Key('landing-mobile')), findsNothing);
     expect(_art(const Key('landing-art-hero')), findsOneWidget);
+    expect(_art(const Key('landing-art-intro')), findsNothing);
     expect(_art(const Key('landing-art-features')), findsOneWidget);
     expect(_art(const Key('landing-art-business')), findsOneWidget);
     expect(_art(const Key('landing-art-footer')), findsOneWidget);
@@ -308,7 +364,7 @@ void main() {
     await _surface(tester, const Size(390, 844));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
-    await _expectStackedArt(tester, const Size(390, 844));
+    await _expectMobileStackedArt(tester, const Size(390, 844));
     expect(find.byKey(const Key('public-header-entrar')), findsOneWidget);
   });
 
@@ -316,21 +372,21 @@ void main() {
     await _surface(tester, const Size(360, 800));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
-    await _expectStackedArt(tester, const Size(360, 800));
+    await _expectMobileStackedArt(tester, const Size(360, 800));
   });
 
   testWidgets('layout 768x1024 da landing não estoura', (tester) async {
     await _surface(tester, const Size(768, 1024));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
-    await _expectStackedArt(tester, const Size(768, 1024));
+    await _expectDesktopStackedArt(tester, const Size(768, 1024));
   });
 
   testWidgets('layout 1440x900 da landing não estoura', (tester) async {
     await _surface(tester, const Size(1440, 900));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
-    await _expectStackedArt(tester, const Size(1440, 900));
+    await _expectDesktopStackedArt(tester, const Size(1440, 900));
     expect(find.byKey(const Key('public-header-entrar')), findsOneWidget);
   });
 
@@ -338,7 +394,7 @@ void main() {
     await _surface(tester, const Size(1920, 1080));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
-    await _expectStackedArt(tester, const Size(1920, 1080));
+    await _expectDesktopStackedArt(tester, const Size(1920, 1080));
   });
 
   testWidgets('header da landing permanece fixo ao rolar', (tester) async {
@@ -367,6 +423,90 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('header mobile permanece fixo ao rolar', (tester) async {
+    await _surface(tester, const Size(390, 844));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+
+    final bar = find.byKey(const Key('landing-header-bar'));
+    final before = tester.getTopLeft(bar).dy;
+    expect(before, closeTo(0, 0.6));
+    expect(find.byKey(const Key('landing-mobile')), findsOneWidget);
+
+    await tester.fling(
+      find.byKey(const Key('landing-scroll')),
+      const Offset(0, -500),
+      3000,
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(bar).dy, closeTo(before, 0.6));
+    expect(find.byKey(const Key('public-header-entrar')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: bar,
+        matching: find.byType(BackdropFilter),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('login mobile leva ao login existente', (tester) async {
+    await _surface(tester, const Size(390, 844));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('public-header-entrar')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Bem-vindo(a)!'), findsOneWidget);
+  });
+
+  testWidgets('badges mobile não navegam', (tester) async {
+    await _surface(tester, const Size(390, 1200));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('landing-badge-play')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('landing-badge-store')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LoginScreen), findsNothing);
+    expect(find.byType(LandingPage), findsOneWidget);
+    expect(find.byKey(const Key('landing-mobile')), findsOneWidget);
+  });
+
+  testWidgets('links do rodapé mobile funcionam', (tester) async {
+    await _surface(tester, const Size(390, 1800));
+    await tester.pumpWidget(_publicSite());
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('public-footer-privacy'), skipOffstage: false),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('public-footer-privacy')));
+    await tester.pumpAndSettle();
+    expect(find.text('Política de Privacidade'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('privacy-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('landing-mobile')), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('public-footer-contact'), skipOffstage: false),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('public-footer-contact')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactPage), findsOneWidget);
   });
 
   test('web/index.html permite pinch-zoom nativo', () {

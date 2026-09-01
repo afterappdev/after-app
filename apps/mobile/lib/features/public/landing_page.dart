@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import '../../core/router/app_router.dart';
 import 'public_chrome.dart';
 
-/// Native width of every landing art slice.
+/// Native width of every desktop landing art slice.
 const double kLandingArtMaxWidth = 1024;
+
+/// Web phones use the dedicated mobile arts below this width.
+const double kLandingMobileBreakpoint = 600;
 
 const Color _kLandingBg = Color(0xFF05050C);
 
@@ -29,6 +32,24 @@ class LandingArt {
   static const featuresAspect = 1024 / 897;
   static const businessAspect = 1024 / 353;
   static const footerAspect = 1024 / 218;
+}
+
+class MobileLandingArt {
+  static const header = 'assets/images/landing_mobile/mobile_header.png';
+  static const hero = 'assets/images/landing_mobile/mobile_hero.png';
+  static const intro = 'assets/images/landing_mobile/mobile_intro.png';
+  static const features = 'assets/images/landing_mobile/mobile_features.png';
+  static const business = 'assets/images/landing_mobile/mobile_business.png';
+  static const footer = 'assets/images/landing_mobile/mobile_footer.png';
+
+  static const assets = [header, hero, intro, features, business, footer];
+
+  static const headerAspect = 391 / 138;
+  static const heroAspect = 391 / 845;
+  static const introAspect = 391 / 845;
+  static const featuresAspect = 391 / 845;
+  static const businessAspect = 391 / 845;
+  static const footerAspect = 391 / 826;
 }
 
 class LandingHotspot {
@@ -127,6 +148,29 @@ class LandingPage extends StatefulWidget {
 }
 
 class _LandingPageState extends State<LandingPage> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final mobile = MediaQuery.sizeOf(context).width < kLandingMobileBreakpoint;
+    final assets = mobile ? MobileLandingArt.assets : LandingArt.assets;
+    for (final asset in assets) {
+      precacheImage(AssetImage(asset), context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < kLandingMobileBreakpoint) {
+      return const _MobileLanding();
+    }
+    return const _DesktopLanding();
+  }
+}
+
+class _DesktopLanding extends StatelessWidget {
+  const _DesktopLanding();
+
   List<LandingHotspot> _headerHotspots(BuildContext context) {
     return [
       LandingHotspot(
@@ -142,14 +186,6 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    for (final asset in LandingArt.assets) {
-      precacheImage(AssetImage(asset), context);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final topInset = media.padding.top;
@@ -162,6 +198,7 @@ class _LandingPageState extends State<LandingPage> {
     return Scaffold(
       backgroundColor: _kLandingBg,
       body: ColoredBox(
+        key: const Key('landing-desktop'),
         color: _kLandingBg,
         child: Stack(
           children: [
@@ -265,6 +302,154 @@ class _LandingPageState extends State<LandingPage> {
               right: 0,
               child: _StickyLandingHeader(
                 topInset: topInset,
+                maxArtWidth: kLandingArtMaxWidth,
+                asset: LandingArt.header,
+                aspectRatio: LandingArt.headerAspect,
+                hotspots: _headerHotspots(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileLanding extends StatelessWidget {
+  const _MobileLanding();
+
+  List<LandingHotspot> _headerHotspots(BuildContext context) {
+    return [
+      LandingHotspot(
+        key: const Key('public-header-entrar'),
+        left: 0.52,
+        top: 0.18,
+        width: 0.45,
+        height: 0.68,
+        semanticLabel: 'Login/ Cadastre-se',
+        onTap: () => goToLogin(context),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final topInset = media.padding.top;
+    final pageWidth = media.size.width;
+    final headerHeight = pageWidth / MobileLandingArt.headerAspect;
+    final overlayHeight = topInset + headerHeight;
+
+    return Scaffold(
+      backgroundColor: _kLandingBg,
+      body: ColoredBox(
+        key: const Key('landing-mobile'),
+        color: _kLandingBg,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: SingleChildScrollView(
+                key: const Key('landing-scroll'),
+                padding: EdgeInsets.only(top: overlayHeight),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    LandingArtSlice(
+                      key: const Key('landing-art-hero'),
+                      asset: MobileLandingArt.hero,
+                      aspectRatio: MobileLandingArt.heroAspect,
+                      semanticLabel: 'After — O que temos pra hoje?',
+                      hotspots: const [
+                        LandingHotspot(
+                          key: Key('landing-badge-play'),
+                          left: 0.04,
+                          top: 0.83,
+                          width: 0.46,
+                          height: 0.11,
+                          semanticLabel: 'Google Play',
+                        ),
+                        LandingHotspot(
+                          key: Key('landing-badge-store'),
+                          left: 0.50,
+                          top: 0.83,
+                          width: 0.46,
+                          height: 0.11,
+                          semanticLabel: 'App Store',
+                        ),
+                      ],
+                    ),
+                    const LandingArtSlice(
+                      key: Key('landing-art-intro'),
+                      asset: MobileLandingArt.intro,
+                      aspectRatio: MobileLandingArt.introAspect,
+                      semanticLabel:
+                          'Quer saber o que tem de bom no dia, de onde estiver?',
+                    ),
+                    const LandingArtSlice(
+                      key: Key('landing-art-features'),
+                      asset: MobileLandingArt.features,
+                      aspectRatio: MobileLandingArt.featuresAspect,
+                      semanticLabel:
+                          'Descomplique sua busca por diversão e lazer',
+                    ),
+                    const LandingArtSlice(
+                      key: Key('landing-art-business'),
+                      asset: MobileLandingArt.business,
+                      aspectRatio: MobileLandingArt.businessAspect,
+                      semanticLabel:
+                          'Cadastre gratuitamente seu estabelecimento no After',
+                    ),
+                    LandingArtSlice(
+                      key: const Key('landing-art-footer'),
+                      asset: MobileLandingArt.footer,
+                      aspectRatio: MobileLandingArt.footerAspect,
+                      semanticLabel: 'Páginas e recursos After',
+                      hotspots: [
+                        LandingHotspot(
+                          key: const Key('public-footer-contact'),
+                          left: 0.10,
+                          top: 0.450,
+                          width: 0.80,
+                          height: 0.068,
+                          semanticLabel: 'Fale conosco (whats)',
+                          onTap: () => Navigator.of(context)
+                              .pushNamed(AppRoutes.contact),
+                        ),
+                        LandingHotspot(
+                          key: const Key('public-footer-privacy'),
+                          left: 0.10,
+                          top: 0.520,
+                          width: 0.80,
+                          height: 0.068,
+                          semanticLabel: 'Política de Privacidade',
+                          onTap: () => Navigator.of(context)
+                              .pushNamed(AppRoutes.privacy),
+                        ),
+                        LandingHotspot(
+                          key: const Key('public-footer-deletion'),
+                          left: 0.10,
+                          top: 0.590,
+                          width: 0.80,
+                          height: 0.068,
+                          semanticLabel: 'Exclusão de conta',
+                          onTap: () => Navigator.of(context)
+                              .pushNamed(AppRoutes.accountDeletion),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              key: const Key('landing-header-bar'),
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _StickyLandingHeader(
+                topInset: topInset,
+                asset: MobileLandingArt.header,
+                aspectRatio: MobileLandingArt.headerAspect,
                 hotspots: _headerHotspots(context),
               ),
             ),
@@ -280,14 +465,37 @@ class _LandingPageState extends State<LandingPage> {
 class _StickyLandingHeader extends StatelessWidget {
   const _StickyLandingHeader({
     required this.topInset,
+    required this.asset,
+    required this.aspectRatio,
     required this.hotspots,
+    this.maxArtWidth,
   });
 
   final double topInset;
+  final String asset;
+  final double aspectRatio;
   final List<LandingHotspot> hotspots;
+  final double? maxArtWidth;
 
   @override
   Widget build(BuildContext context) {
+    Widget art = LandingArtSlice(
+      key: const Key('landing-art-header'),
+      asset: asset,
+      aspectRatio: aspectRatio,
+      semanticLabel: 'After',
+      hotspots: hotspots,
+    );
+    if (maxArtWidth != null) {
+      art = Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxArtWidth!),
+          child: art,
+        ),
+      );
+    }
+
     return ClipRect(
       child: ShaderMask(
         blendMode: BlendMode.dstIn,
@@ -312,22 +520,9 @@ class _StickyLandingHeader extends StatelessWidget {
             color: _kHeaderGlassTint,
             child: Padding(
               padding: EdgeInsets.only(top: topInset),
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints:
-                      const BoxConstraints(maxWidth: kLandingArtMaxWidth),
-                  child: Opacity(
-                    opacity: _kHeaderArtOpacity,
-                    child: LandingArtSlice(
-                      key: const Key('landing-art-header'),
-                      asset: LandingArt.header,
-                      aspectRatio: LandingArt.headerAspect,
-                      semanticLabel: 'After',
-                      hotspots: hotspots,
-                    ),
-                  ),
-                ),
+              child: Opacity(
+                opacity: _kHeaderArtOpacity,
+                child: art,
               ),
             ),
           ),
