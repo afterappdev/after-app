@@ -12,6 +12,7 @@ import {
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AppleLoginDto } from './dto/apple-login.dto';
+import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -51,6 +52,11 @@ export class AuthController {
   @Post('apple')
   loginApple(@Body() dto: AppleLoginDto) {
     return this.authService.loginWithApple(dto);
+  }
+
+  @Post('social/complete-registration')
+  completeSocialRegistration(@Body() dto: CompleteSocialRegistrationDto) {
+    return this.authService.completeSocialRegistration(dto);
   }
 
   @Get('google/start')

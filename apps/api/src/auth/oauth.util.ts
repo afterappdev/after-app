@@ -79,3 +79,18 @@ export function attachOAuthToken(redirect: string, token: string): string {
   url.hash = `/oauth?token=${encodeURIComponent(token)}`;
   return url.toString();
 }
+
+export function attachOAuthOnboarding(
+  redirect: string,
+  onboardingToken: string,
+): string {
+  if (redirect.startsWith('after:')) {
+    const url = new URL(redirect);
+    url.searchParams.set('onboarding', onboardingToken);
+    return url.toString();
+  }
+
+  const url = new URL(redirect);
+  url.hash = `/register?onboarding=${encodeURIComponent(onboardingToken)}`;
+  return url.toString();
+}

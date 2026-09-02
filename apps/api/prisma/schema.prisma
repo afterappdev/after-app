@@ -58,6 +58,23 @@ model User {
   passwordResets   PasswordResetRequest[]
 }
 
+/// Temporary Google/Apple identity before the user picks USER vs VENUE.
+/// Not a session. Single-use; the signed onboarding JWT references `id` as `jti`.
+model SocialOnboardingToken {
+  id         String    @id @default(cuid())
+  provider   String
+  providerId String
+  email      String
+  name       String
+  avatarUrl  String?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([provider, providerId])
+  @@index([expiresAt])
+}
+
 model PasswordResetRequest {
   id        String    @id @default(cuid())
   userId    String

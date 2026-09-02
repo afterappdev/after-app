@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Role } from '@prisma/client';
+import { Role, PurchaseStatus } from '@prisma/client';
 import appleSignin from 'apple-signin-auth';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -18,16 +18,25 @@ import { AppleLoginDto } from './dto/apple-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import {
+  attachOAuthOnboarding,
   attachOAuthToken,
   isAllowedOAuthRedirect,
   parseAllowedRedirectOrigins,
   parseAudienceList,
 } from './oauth.util';
+import {
+  SOCIAL_EMAIL_TAKEN_MESSAGE,
+  SOCIAL_ONBOARDING_EXPIRED_MESSAGE,
+  SOCIAL_ONBOARDING_INVALID_MESSAGE,
+  SOCIAL_ONBOARDING_TTL_SECONDS,
+  SOCIAL_ONBOARDING_TYP,
+  SOCIAL_ONBOARDING_USED_MESSAGE,
+  type SocialOnboardingJwtPayload,
+  type SocialProvider,
+} from './social-onboarding';
 import { isProduction } from '../common/env';
-
-const SOCIAL_DEFAULT_STATE = 'SP';
-const SOCIAL_DEFAULT_CITY = 'São Paulo';
 
 type OAuthStatePayload = {
   redirect: string;
@@ -44,6 +53,39 @@ type AuthUserRecord = {
   avatarUrl: string | null;
   venue: { id: string } | null;
 };
+
+type SocialProfileInput = {
+  provider: SocialProvider;
+  providerId: string;
+  email?: string | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+};
+
+type SocialAuthResult =
+  | {
+      needsRegistration: true;
+      onboardingToken: string;
+      profile: {
+        provider: SocialProvider;
+        email: string;
+        name: string;
+        avatarUrl: string | null;
+      };
+    }
+  | {
+      accessToken: string;
+      user: {
+        id: string;
+        name: string;
+        email: string;
+        role: Role;
+        state: string;
+        city: string;
+        avatarUrl: string | null;
+        venueId: string | null;
+      };
+    };
 
 @Injectable()
 export class AuthService {
@@ -80,24 +122,7 @@ export class AuthService {
         city: dto.city,
         role: dto.role,
         ...(dto.role === Role.VENUE
-          ? {
-              venue: {
-                create: {
-                  name: dto.name,
-                  city: dto.city,
-                  state: dto.state,
-                  wallet: { create: { balance: VENUE_SIGNUP_BONUS_CREDITS } },
-                  purchases: {
-                    create: {
-                      packageKey: 'welcome',
-                      amountPaid: 0,
-                      credits: VENUE_SIGNUP_BONUS_CREDITS,
-                      status: 'PAID',
-                    },
-                  },
-                },
-              },
-            }
+          ? this.venueCreateNested(dto.name, dto.city, dto.state)
           : {}),
       },
       include: { venue: true },
@@ -125,7 +150,7 @@ export class AuthService {
 
   async loginWithGoogle(dto: GoogleLoginDto) {
     const payload = await this.verifyGoogleIdToken(dto.idToken);
-    return this.upsertSocialUser({
+    return this.resolveSocialLogin({
       provider: 'google',
       providerId: payload.sub,
       email: payload.email,
@@ -136,12 +161,91 @@ export class AuthService {
 
   async loginWithApple(dto: AppleLoginDto) {
     const payload = await this.verifyAppleIdToken(dto.identityToken);
-    return this.upsertSocialUser({
+    return this.resolveSocialLogin({
       provider: 'apple',
       providerId: payload.sub,
-      email: dto.email || payload.email,
+      email: payload.email || dto.email,
       name: dto.fullName,
     });
+  }
+
+  async completeSocialRegistration(dto: CompleteSocialRegistrationDto) {
+    const payload = this.readSocialOnboardingToken(dto.onboardingToken);
+    const role = dto.accountType === 'venue' ? Role.VENUE : Role.USER;
+    const passwordHash = dto.password
+      ? await bcrypt.hash(dto.password, 10)
+      : await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+
+    try {
+      const user = await this.prisma.$transaction(async (tx) => {
+        const consumed = await tx.socialOnboardingToken.updateMany({
+          where: {
+            id: payload.jti,
+            usedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          data: { usedAt: new Date() },
+        });
+        if (consumed.count !== 1) {
+          const existing = await tx.socialOnboardingToken.findUnique({
+            where: { id: payload.jti },
+          });
+          if (!existing) {
+            throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
+          }
+          if (existing.usedAt) {
+            throw new UnauthorizedException(SOCIAL_ONBOARDING_USED_MESSAGE);
+          }
+          throw new UnauthorizedException(SOCIAL_ONBOARDING_EXPIRED_MESSAGE);
+        }
+
+        const row = await tx.socialOnboardingToken.findUnique({
+          where: { id: payload.jti },
+        });
+        if (!row) {
+          throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
+        }
+        if (
+          row.provider !== payload.provider ||
+          row.providerId !== payload.providerId ||
+          row.email !== payload.email
+        ) {
+          throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
+        }
+
+        const providerData =
+          row.provider === 'google'
+            ? { googleId: row.providerId }
+            : { appleId: row.providerId };
+
+        return tx.user.create({
+          data: {
+            name: dto.name.trim(),
+            email: row.email,
+            passwordHash,
+            state: dto.state,
+            city: dto.city,
+            role,
+            avatarUrl: row.avatarUrl,
+            ...providerData,
+            ...(role === Role.VENUE
+              ? this.venueCreateNested(dto.name.trim(), dto.city, dto.state)
+              : {}),
+          },
+          include: { venue: true },
+        });
+      });
+
+      return this.buildAuthResponse(user);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code === 'P2002') {
+        throw new ConflictException(
+          'Não foi possível concluir o cadastro. Tente novamente.',
+        );
+      }
+      throw error;
+    }
   }
 
   googleStartUrl(redirect: string): string {
@@ -205,7 +309,7 @@ export class AuthService {
     }
 
     const payload = await this.verifyGoogleIdToken(tokenJson.id_token);
-    const auth = await this.upsertSocialUser({
+    const result = await this.resolveSocialLogin({
       provider: 'google',
       providerId: payload.sub,
       email: payload.email,
@@ -213,7 +317,7 @@ export class AuthService {
       avatarUrl: payload.picture,
     });
 
-    return attachOAuthToken(redirect, auth.accessToken);
+    return this.attachSocialRedirect(redirect, result);
   }
 
   oauthCancelRedirect(state: string | undefined) {
@@ -276,14 +380,14 @@ export class AuthService {
       }
     }
 
-    const auth = await this.upsertSocialUser({
+    const result = await this.resolveSocialLogin({
       provider: 'apple',
       providerId: payload.sub,
       email: payload.email,
       name: fullName,
     });
 
-    return attachOAuthToken(redirect, auth.accessToken);
+    return this.attachSocialRedirect(redirect, result);
   }
 
   private async verifyGoogleIdToken(idToken: string) {
@@ -360,70 +464,174 @@ export class AuthService {
     }
   }
 
-  private async upsertSocialUser(input: {
-    provider: 'google' | 'apple';
-    providerId: string;
-    email?: string | null;
-    name?: string | null;
-    avatarUrl?: string | null;
-  }) {
-    const email = input.email?.trim().toLowerCase() || null;
-    const providerData =
-      input.provider === 'google'
-        ? { googleId: input.providerId }
-        : { appleId: input.providerId };
+  private attachSocialRedirect(redirect: string, result: SocialAuthResult) {
+    if ('onboardingToken' in result) {
+      return attachOAuthOnboarding(redirect, result.onboardingToken);
+    }
+    return attachOAuthToken(redirect, result.accessToken);
+  }
 
-    let user =
-      input.provider === 'google'
-        ? await this.prisma.user.findUnique({
-            where: { googleId: input.providerId },
-            include: { venue: true },
-          })
-        : await this.prisma.user.findUnique({
-            where: { appleId: input.providerId },
-            include: { venue: true },
-          });
+  private async resolveSocialLogin(
+    input: SocialProfileInput,
+  ): Promise<SocialAuthResult> {
+    const user = await this.findUserByProvider(input.provider, input.providerId);
+    if (user) {
+      return this.buildAuthResponse(user);
+    }
 
-    if (!user && email) {
-      user = await this.prisma.user.findUnique({
-        where: { email },
-        include: { venue: true },
+    let email = input.email?.trim().toLowerCase() || null;
+    let name = input.name?.trim() || '';
+    let avatarUrl = input.avatarUrl ?? null;
+
+    if (!email) {
+      const pending = await this.prisma.socialOnboardingToken.findFirst({
+        where: {
+          provider: input.provider,
+          providerId: input.providerId,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
       });
-      if (user) {
-        user = await this.prisma.user.update({
-          where: { id: user.id },
-          data: {
-            ...providerData,
-            avatarUrl: user.avatarUrl ?? input.avatarUrl ?? undefined,
-          },
+      if (pending) {
+        email = pending.email;
+        name = name || pending.name;
+        avatarUrl = avatarUrl || pending.avatarUrl;
+      }
+    }
+
+    if (!email) {
+      throw new UnauthorizedException(
+        'Não foi possível obter o e-mail da conta. Autorize o e-mail no próximo login.',
+      );
+    }
+
+    const existingByEmail = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existingByEmail) {
+      throw new ConflictException(SOCIAL_EMAIL_TAKEN_MESSAGE);
+    }
+
+    const displayName = name || email.split('@')[0];
+    const onboardingToken = await this.issueSocialOnboardingToken({
+      provider: input.provider,
+      providerId: input.providerId,
+      email,
+      name: displayName,
+      avatarUrl,
+    });
+
+    return {
+      needsRegistration: true,
+      onboardingToken,
+      profile: {
+        provider: input.provider,
+        email,
+        name: displayName,
+        avatarUrl,
+      },
+    };
+  }
+
+  private async findUserByProvider(provider: SocialProvider, providerId: string) {
+    return provider === 'google'
+      ? this.prisma.user.findUnique({
+          where: { googleId: providerId },
+          include: { venue: true },
+        })
+      : this.prisma.user.findUnique({
+          where: { appleId: providerId },
           include: { venue: true },
         });
-      }
-    }
+  }
 
-    if (!user) {
-      if (!email) {
-        throw new UnauthorizedException(
-          'Não foi possível obter o e-mail da conta. Autorize o e-mail no próximo login.',
-        );
-      }
-      const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
-      user = await this.prisma.user.create({
-        data: {
-          name: input.name?.trim() || email.split('@')[0],
-          email,
-          passwordHash,
-          role: Role.USER,
-          state: SOCIAL_DEFAULT_STATE,
-          city: SOCIAL_DEFAULT_CITY,
-          avatarUrl: input.avatarUrl ?? null,
-          ...providerData,
+  private async issueSocialOnboardingToken(input: {
+    provider: SocialProvider;
+    providerId: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+  }) {
+    const expiresAt = new Date(Date.now() + SOCIAL_ONBOARDING_TTL_SECONDS * 1000);
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.socialOnboardingToken.updateMany({
+        where: {
+          provider: input.provider,
+          providerId: input.providerId,
+          usedAt: null,
         },
-        include: { venue: true },
+        data: { usedAt: new Date() },
       });
-    }
+      return tx.socialOnboardingToken.create({
+        data: {
+          provider: input.provider,
+          providerId: input.providerId,
+          email: input.email,
+          name: input.name,
+          avatarUrl: input.avatarUrl,
+          expiresAt,
+        },
+      });
+    });
 
-    return this.buildAuthResponse(user);
+    return this.jwt.sign(
+      {
+        typ: SOCIAL_ONBOARDING_TYP,
+        jti: row.id,
+        provider: input.provider,
+        providerId: input.providerId,
+        email: input.email,
+        name: input.name,
+        avatarUrl: input.avatarUrl,
+      },
+      { expiresIn: '15m' },
+    );
+  }
+
+  private readSocialOnboardingToken(token: string): SocialOnboardingJwtPayload {
+    try {
+      const payload = this.jwt.verify<SocialOnboardingJwtPayload>(token);
+      if (
+        payload.typ !== SOCIAL_ONBOARDING_TYP ||
+        !payload.jti ||
+        (payload.provider !== 'google' && payload.provider !== 'apple') ||
+        !payload.providerId ||
+        !payload.email
+      ) {
+        throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
+      }
+      return payload;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      const name = (error as { name?: string }).name;
+      if (name === 'TokenExpiredError') {
+        throw new UnauthorizedException(SOCIAL_ONBOARDING_EXPIRED_MESSAGE);
+      }
+      throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
+    }
+  }
+
+  private venueCreateNested(name: string, city: string, state: string) {
+    return {
+      venue: {
+        create: {
+          name,
+          city,
+          state,
+          wallet: { create: { balance: VENUE_SIGNUP_BONUS_CREDITS } },
+          purchases: {
+            create: {
+              packageKey: 'welcome',
+              amountPaid: 0,
+              credits: VENUE_SIGNUP_BONUS_CREDITS,
+              status: PurchaseStatus.PAID,
+            },
+          },
+        },
+      },
+    };
   }
 
   private requireRedirect(redirect: string | undefined) {

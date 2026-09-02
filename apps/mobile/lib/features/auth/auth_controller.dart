@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
 import 'models/user_session.dart';
+import 'models/social_onboarding.dart';
 
 class AuthController extends ChangeNotifier {
   AuthController({
@@ -16,6 +17,7 @@ class AuthController extends ChangeNotifier {
   final AuthStorage storage;
 
   UserSession? user;
+  SocialOnboarding? pendingSocialOnboarding;
   bool bootstrapping = true;
   String? error;
 
@@ -63,7 +65,7 @@ class AuthController extends ChangeNotifier {
       final data = await api.post('/auth/google', body: {
         'idToken': idToken,
       }) as Map<String, dynamic>;
-      await _persist(data);
+      await _applySocialAuthResponse(data);
     } on ApiException catch (e) {
       error = e.message;
       notifyListeners();
@@ -87,7 +89,7 @@ class AuthController extends ChangeNotifier {
         if (email != null && email.isNotEmpty) 'email': email,
         if (fullName != null && fullName.isNotEmpty) 'fullName': fullName,
       }) as Map<String, dynamic>;
-      await _persist(data);
+      await _applySocialAuthResponse(data);
     } on ApiException catch (e) {
       error = e.message;
       notifyListeners();
@@ -152,10 +154,54 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> completeSocialRegistration({
+    required String onboardingToken,
+    required String accountType,
+    required String name,
+    required String state,
+    required String city,
+    String? password,
+  }) async {
+    error = null;
+    notifyListeners();
+    try {
+      final data = await api.post('/auth/social/complete-registration', body: {
+        'onboardingToken': onboardingToken,
+        'accountType': accountType,
+        'name': name.trim(),
+        'state': state.trim(),
+        'city': city.trim(),
+        if (password != null && password.isNotEmpty) 'password': password,
+      }) as Map<String, dynamic>;
+      pendingSocialOnboarding = null;
+      await _persist(data);
+    } on ApiException catch (e) {
+      error = e.message;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  void beginSocialOnboardingFromToken(String onboardingToken) {
+    final payload = decodeUnverifiedJwtPayload(onboardingToken);
+    if (payload == null || payload['typ'] != 'social_onboarding') {
+      return;
+    }
+    pendingSocialOnboarding = SocialOnboarding.fromJwt(onboardingToken);
+    notifyListeners();
+  }
+
+  void clearPendingSocialOnboarding() {
+    if (pendingSocialOnboarding == null) return;
+    pendingSocialOnboarding = null;
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     await storage.clear();
     api.setToken(null);
     user = null;
+    pendingSocialOnboarding = null;
     notifyListeners();
   }
 
@@ -221,6 +267,16 @@ class AuthController extends ChangeNotifier {
       'currentPassword': currentPassword,
       'newPassword': newPassword,
     });
+  }
+
+  Future<void> _applySocialAuthResponse(Map<String, dynamic> data) async {
+    if (data['needsRegistration'] == true) {
+      pendingSocialOnboarding = SocialOnboarding.fromResponse(data);
+      notifyListeners();
+      return;
+    }
+    pendingSocialOnboarding = null;
+    await _persist(data);
   }
 
   Future<void> _updateStoredUser(UserSession session) async {

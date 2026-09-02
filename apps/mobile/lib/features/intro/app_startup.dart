@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../auth/auth_controller.dart';
 import '../auth/login_screen.dart';
+import '../auth/register_screen.dart';
 import '../home/home_screen.dart';
 import 'after_intro_screen.dart';
 import 'intro_style.dart';
@@ -32,6 +33,10 @@ class _AppStartupState extends State<AppStartup> {
     if (!_introDone) {
       return AfterIntroScreen(onFinished: _finishIntro);
     }
-    return auth.user == null ? const LoginScreen() : const HomeScreen();
+    return auth.pendingSocialOnboarding != null
+        ? const RegisterScreen()
+        : auth.user == null
+            ? const LoginScreen()
+            : const HomeScreen();
   }
 }
