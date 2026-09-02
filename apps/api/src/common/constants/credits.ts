@@ -12,4 +12,4 @@ export const CREDIT_PACKAGES = [
 export type CreditPackageKey = (typeof CREDIT_PACKAGES)[number]['key'];
 
 /** Free credits granted when a venue account is created. */
-export const VENUE_SIGNUP_BONUS_CREDITS = 1;
+export const VENUE_SIGNUP_BONUS_CREDITS = 2;
