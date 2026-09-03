@@ -140,6 +140,25 @@ describe('AdminPushService', () => {
     service = new AdminPushService(prisma as never, messaging);
   });
 
+  it('USER gera exatamente um ACCOUNT_CREATED e nenhum VENUE_CREATED', async () => {
+    const user = {
+      id: 'user-1',
+      name: 'João Silva',
+      role: Role.USER,
+      venue: null,
+    };
+    await service.notifyConsumerAccountCreated(user);
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0].title).toBe('Nova conta no After');
+    expect(messaging.calls[0].data.type).toBe(
+      AdminPushEventType.ACCOUNT_CREATED,
+    );
+    expect(messaging.calls[0].data.entityId).toBe('user-1');
+    expect(messaging.calls.map((item) => item.data.type)).not.toContain(
+      AdminPushEventType.VENUE_CREATED,
+    );
+  });
+
   it('ACCOUNT_CREATED é idempotente', async () => {
     const user = {
       id: 'user-1',
@@ -151,14 +170,34 @@ describe('AdminPushService', () => {
     await service.notifyConsumerAccountCreated(user);
     expect(prisma.adminPushEvent.create).toHaveBeenCalledTimes(2);
     expect(messaging.calls).toHaveLength(1);
-    expect(messaging.calls[0].title).toBe('Nova conta no After');
-    expect(messaging.calls[0].data.type).toBe(
-      AdminPushEventType.ACCOUNT_CREATED,
-    );
-    expect(messaging.calls[0].data.entityId).toBe('user-1');
   });
 
-  it('VENUE_CREATED é idempotente e gera dois eventos na primeira vez', async () => {
+  it('VENUE gera exatamente um VENUE_CREATED e nenhum ACCOUNT_CREATED', async () => {
+    const user = {
+      id: 'user-2',
+      name: 'Maria',
+      role: Role.VENUE,
+      venue: { id: 'venue-9', name: 'Bar Central' },
+    };
+    await service.notifyConsumerAccountCreated(user);
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0].data.type).toBe(AdminPushEventType.VENUE_CREATED);
+    expect(messaging.calls[0].data.entityId).toBe('venue-9');
+    expect(messaging.calls[0].data.accountId).toBe('user-2');
+    expect(messaging.calls[0].title).toBe('Novo estabelecimento');
+    expect(messaging.calls.map((item) => item.data.type)).not.toContain(
+      AdminPushEventType.ACCOUNT_CREATED,
+    );
+    expect(prisma.adminPushEvent.create).toHaveBeenCalledTimes(1);
+    expect(prisma.adminPushEvent.create).toHaveBeenCalledWith({
+      data: {
+        type: AdminPushEventType.VENUE_CREATED,
+        entityId: 'venue-9',
+      },
+    });
+  });
+
+  it('VENUE_CREATED é idempotente', async () => {
     const user = {
       id: 'user-2',
       name: 'Maria',
@@ -167,15 +206,22 @@ describe('AdminPushService', () => {
     };
     await service.notifyConsumerAccountCreated(user);
     await service.notifyConsumerAccountCreated(user);
-    expect(prisma.adminPushEvent.create).toHaveBeenCalledTimes(4);
-    expect(messaging.calls).toHaveLength(2);
-    expect(messaging.calls.map((item) => item.data.type)).toEqual([
-      'ACCOUNT_CREATED',
-      'VENUE_CREATED',
-    ]);
+    expect(prisma.adminPushEvent.create).toHaveBeenCalledTimes(2);
+    expect(messaging.calls).toHaveLength(1);
     expect(accountCreatedCopy(Role.VENUE, 'Maria').body).toContain(
       'conta de estabelecimento',
     );
+  });
+
+  it('VENUE sem estabelecimento associado não gera push algum', async () => {
+    await service.notifyConsumerAccountCreated({
+      id: 'user-3',
+      name: 'Sem venue',
+      role: Role.VENUE,
+      venue: null,
+    });
+    expect(prisma.adminPushEvent.create).not.toHaveBeenCalled();
+    expect(messaging.calls).toHaveLength(0);
   });
 
   it('PURCHASE_PAID é idempotente', async () => {

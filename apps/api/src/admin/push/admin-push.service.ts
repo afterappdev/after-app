@@ -35,19 +35,20 @@ export class AdminPushService {
 
   async notifyConsumerAccountCreated(user: AccountCreatedInput): Promise<void> {
     try {
-      if (user.role !== Role.USER && user.role !== Role.VENUE) return;
-
-      await this.dispatch({
-        type: AdminPushEventType.ACCOUNT_CREATED,
-        entityId: user.id,
-        payload: {
-          ...accountCreatedCopy(user.role, user.name),
-          data: {
-            type: AdminPushEventType.ACCOUNT_CREATED,
-            entityId: user.id,
+      if (user.role === Role.USER) {
+        await this.dispatch({
+          type: AdminPushEventType.ACCOUNT_CREATED,
+          entityId: user.id,
+          payload: {
+            ...accountCreatedCopy(user.role, user.name),
+            data: {
+              type: AdminPushEventType.ACCOUNT_CREATED,
+              entityId: user.id,
+            },
           },
-        },
-      });
+        });
+        return;
+      }
 
       if (user.role === Role.VENUE && user.venue?.id) {
         await this.dispatch({
