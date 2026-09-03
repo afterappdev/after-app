@@ -1,5 +1,9 @@
 import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import {
+  ADMIN_MIN_PASSWORD_LENGTH,
+  upsertAdminFromEnv,
+} from './admin-bootstrap';
 
 const prisma = new PrismaClient();
 
@@ -344,50 +348,29 @@ async function upsertVenue(seed: SeedVenue, passwordHash: string, day: Date) {
   return seed;
 }
 
-async function upsertAdminFromEnv() {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase() || '';
-  const password = process.env.ADMIN_PASSWORD ?? '';
-  if (!email || !password) {
+async function seedAdminFromEnv() {
+  const result = await upsertAdminFromEnv(prisma);
+
+  if (result.status === 'missing-credentials') {
     console.log(
       'Seed admin: ADMIN_EMAIL/ADMIN_PASSWORD não definidos — pulando conta ADMIN.',
     );
     return;
   }
-  if (password.length < 6) {
+  if (result.status === 'weak-password') {
     console.warn(
-      'Seed admin: ADMIN_PASSWORD deve ter no mínimo 6 caracteres — pulando.',
+      `Seed admin: ADMIN_PASSWORD deve ter no mínimo ${ADMIN_MIN_PASSWORD_LENGTH} caracteres — pulando.`,
+    );
+    return;
+  }
+  if (result.status === 'email-taken') {
+    console.warn(
+      `Seed admin: ${result.email} já pertence a uma conta ${result.role} — pulando.`,
     );
     return;
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { email },
-    select: { id: true, role: true },
-  });
-  if (existing && existing.role !== Role.ADMIN) {
-    console.warn(
-      `Seed admin: ${email} já pertence a uma conta ${existing.role} — pulando.`,
-    );
-    return;
-  }
-
-  const adminPasswordHash = await bcrypt.hash(password, 10);
-  await prisma.user.upsert({
-    where: { email },
-    update: {
-      role: Role.ADMIN,
-      passwordHash: adminPasswordHash,
-    },
-    create: {
-      name: 'After Admin',
-      email,
-      passwordHash: adminPasswordHash,
-      role: Role.ADMIN,
-      state: 'SP',
-      city: 'São Paulo',
-    },
-  });
-  console.log(`Seed admin: conta ADMIN pronta para ${email}`);
+  console.log(`Seed admin: conta ADMIN pronta para ${result.email}`);
 }
 
 async function main() {
@@ -435,7 +418,7 @@ async function main() {
     },
   });
 
-  await upsertAdminFromEnv();
+  await seedAdminFromEnv();
 
   console.log(
     'Seed ok — 10 estabelecimentos em São Paulo com promoções do dia',
