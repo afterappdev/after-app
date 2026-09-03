@@ -589,4 +589,16 @@ describe('AuthService social onboarding', () => {
     });
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('DTO de conclusão rejeita accountType admin', async () => {
+    const dto = plainToInstance(CompleteSocialRegistrationDto, {
+      onboardingToken: 'a'.repeat(24),
+      accountType: 'admin',
+      name: 'Nova',
+      state: 'SP',
+      city: 'São Paulo',
+    });
+    const errors = await validate(dto);
+    expect(errors.some((error) => error.property === 'accountType')).toBe(true);
+  });
 });

@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   USER
   VENUE
+  ADMIN
 }
 
 enum PhotoKind {
@@ -38,24 +39,59 @@ enum BannerStatus {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  name         String
-  email        String     @unique
-  passwordHash String
-  googleId     String?    @unique
-  appleId      String?    @unique
-  role         Role       @default(USER)
-  state        String
-  city         String
-  avatarUrl    String?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  venue         Venue?
-  favorites     Favorite[]
-  reviews       Review[]
-  notifications Notification[]
-  deletionRequests AccountDeletionRequest[]
-  passwordResets   PasswordResetRequest[]
+  id                String                   @id @default(cuid())
+  name              String
+  email             String                   @unique
+  passwordHash      String
+  googleId          String?                  @unique
+  appleId           String?                  @unique
+  role              Role                     @default(USER)
+  state             String
+  city              String
+  avatarUrl         String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  venue             Venue?
+  favorites         Favorite[]
+  reviews           Review[]
+  notifications     Notification[]
+  deletionRequests  AccountDeletionRequest[]
+  passwordResets    PasswordResetRequest[]
+  adminDeviceTokens AdminDeviceToken[]
+
+  @@index([role, createdAt])
+}
+
+enum AdminPushEventType {
+  ACCOUNT_CREATED
+  VENUE_CREATED
+  PURCHASE_PAID
+}
+
+/// FCM registration tokens for After Admin devices. Not used by the consumer app.
+model AdminDeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// Idempotency outbox for administrative FCM. Unique per logical event.
+model AdminPushEvent {
+  id        String             @id @default(cuid())
+  type      AdminPushEventType
+  entityId  String
+  createdAt DateTime           @default(now())
+  sentAt    DateTime?
+  error     String?
+
+  @@unique([type, entityId])
+  @@index([createdAt])
 }
 
 /// Temporary Google/Apple identity before the user picks USER vs VENUE.
@@ -100,28 +136,28 @@ model AccountDeletionRequest {
 }
 
 model Venue {
-  id          String           @id @default(cuid())
-  ownerUserId String           @unique
-  owner       User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  category    String?
-  logoUrl     String?
-  coverUrl    String?
-  city        String
-  state       String
-  lat         Float?
-  lng         Float?
-  contacts    Json?
+  id            String           @id @default(cuid())
+  ownerUserId   String           @unique
+  owner         User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  category      String?
+  logoUrl       String?
+  coverUrl      String?
+  city          String
+  state         String
+  lat           Float?
+  lng           Float?
+  contacts      Json?
   /// Weekly hours JSON, e.g. { "mon": { "open": "10:00", "close": "22:00" }, ... }
-  hoursJson   Json?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  photos      VenuePhoto[]
-  favorites   Favorite[]
-  reviews     Review[]
-  wallet      CreditWallet?
-  purchases   CreditPurchase[]
+  hoursJson     Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  photos        VenuePhoto[]
+  favorites     Favorite[]
+  reviews       Review[]
+  wallet        CreditWallet?
+  purchases     CreditPurchase[]
   banners       Banner[]
   notifications Notification[]
 }
@@ -166,9 +202,9 @@ model Review {
 }
 
 model CreditWallet {
-  venueId String @id
-  venue   Venue  @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  balance Int    @default(0)
+  venueId   String   @id
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  balance   Int      @default(0)
   updatedAt DateTime @updatedAt
 }
 
@@ -189,19 +225,21 @@ model CreditPurchase {
   updatedAt    DateTime       @updatedAt
 
   @@index([venueId, createdAt])
+  @@index([status, confirmedAt])
+  @@index([provider, status, confirmedAt])
 }
 
 model Banner {
-  id          String           @id @default(cuid())
-  venueId     String
-  venue       Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  imageUrl    String
-  title       String?
-  description String?
-  creditsCost Int
-  status      BannerStatus     @default(ACTIVE)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  venueId       String
+  venue         Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  imageUrl      String
+  title         String?
+  description   String?
+  creditsCost   Int
+  status        BannerStatus     @default(ACTIVE)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   schedules     BannerSchedule[]
   notifications Notification[]
 
@@ -209,11 +247,11 @@ model Banner {
 }
 
 model BannerSchedule {
-  id            String   @id @default(cuid())
-  bannerId      String
-  banner        Banner   @relation(fields: [bannerId], references: [id], onDelete: Cascade)
-  displayDate   DateTime @db.Date
-  citySnapshot  String
+  id           String   @id @default(cuid())
+  bannerId     String
+  banner       Banner   @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  displayDate  DateTime @db.Date
+  citySnapshot String
 
   @@index([citySnapshot, displayDate])
   @@index([bannerId])

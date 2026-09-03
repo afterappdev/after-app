@@ -1,5 +1,8 @@
-import { IsEmail, IsEnum, IsString, MinLength } from 'class-validator';
-import { Role } from '@prisma/client';
+import { IsEmail, IsIn, IsString, MinLength } from 'class-validator';
+
+/** Public signup may only create consumer accounts. ADMIN is seed-only. */
+export const PUBLIC_REGISTER_ROLES = ['USER', 'VENUE'] as const;
+export type PublicRegisterRole = (typeof PUBLIC_REGISTER_ROLES)[number];
 
 export class RegisterDto {
   @IsString()
@@ -21,6 +24,6 @@ export class RegisterDto {
   @MinLength(2)
   city!: string;
 
-  @IsEnum(Role)
-  role!: Role;
+  @IsIn(PUBLIC_REGISTER_ROLES)
+  role!: PublicRegisterRole;
 }

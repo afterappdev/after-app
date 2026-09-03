@@ -35,17 +35,15 @@ function createPrisma() {
     },
     $transaction: jest.fn(),
   };
-  prisma.$transaction.mockImplementation(
-    async (arg: unknown) => {
-      if (typeof arg === 'function') {
-        return (arg as (tx: typeof prisma) => unknown)(prisma);
-      }
-      if (Array.isArray(arg)) {
-        return Promise.all(arg);
-      }
-      return arg;
-    },
-  );
+  prisma.$transaction.mockImplementation(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return (arg as (tx: typeof prisma) => unknown)(prisma);
+    }
+    if (Array.isArray(arg)) {
+      return Promise.all(arg);
+    }
+    return arg;
+  });
   return prisma;
 }
 
@@ -58,7 +56,10 @@ class CapturingMailer extends AccountDeletionMailer {
     return this.configured;
   }
 
-  async sendDeletionLink(mail: { to: string; confirmUrl: string }): Promise<void> {
+  async sendDeletionLink(mail: {
+    to: string;
+    confirmUrl: string;
+  }): Promise<void> {
     if (this.fail) throw new Error('smtp down');
     this.last = mail;
   }
@@ -121,7 +122,7 @@ describe('AccountDeletionService', () => {
   });
 
   it('e-mail existente retorna a mesma mensagem genérica', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
 
@@ -129,12 +130,12 @@ describe('AccountDeletionService', () => {
     expect(result).toEqual({ message: GENERIC });
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { email: 'user@after.local' },
-      select: { id: true },
+      select: { id: true, role: true },
     });
   });
 
   it('token é armazenado somente como hash', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
 
@@ -171,9 +172,9 @@ describe('AccountDeletionService', () => {
 
   it('token expirado ou inexistente é rejeitado', async () => {
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
-    await expect(service.confirmDeletion(generateDeletionToken())).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.confirmDeletion(generateDeletionToken()),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(users.deleteUserRecord).not.toHaveBeenCalled();
   });
 
@@ -188,13 +189,13 @@ describe('AccountDeletionService', () => {
 
   it('token inválido é rejeitado', async () => {
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
-    await expect(service.confirmDeletion('token-invalido-sem-pedido')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.confirmDeletion('token-invalido-sem-pedido'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('conta só é excluída após confirmação', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     await service.requestDeletion('user@after.local');
@@ -220,16 +221,21 @@ describe('AccountDeletionService', () => {
   it('response não permite inferir se o e-mail existe', async () => {
     prisma.user.findUnique.mockResolvedValueOnce(null);
     const missing = await service.requestDeletion('a@after.local');
-    prisma.user.findUnique.mockResolvedValueOnce({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      role: 'USER',
+    });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     const existing = await service.requestDeletion('b@after.local');
     expect(missing).toEqual(existing);
-    expect(JSON.stringify(missing)).not.toMatch(/user-1|existe|não encontrado/i);
+    expect(JSON.stringify(missing)).not.toMatch(
+      /user-1|existe|não encontrado/i,
+    );
   });
 
   it('nenhum token aparece nos logs ou na response do request', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     const result = await service.requestDeletion('user@after.local');
@@ -241,20 +247,28 @@ describe('AccountDeletionService', () => {
   it('em production sem Resend configurado não cria falsa expectativa', async () => {
     process.env.NODE_ENV = 'production';
     mailer.configured = false;
-    await expect(service.requestDeletion('user@after.local')).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
+    await expect(
+      service.requestDeletion('user@after.local'),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.user.findUnique).not.toHaveBeenCalled();
     expect(prisma.accountDeletionRequest.create).not.toHaveBeenCalled();
   });
 
   it('falha de e-mail após criar pedido não revela se a conta existe', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     mailer.fail = true;
     const result = await service.requestDeletion('user@after.local');
     expect(result).toEqual({ message: GENERIC });
     expect(users.deleteUserRecord).not.toHaveBeenCalled();
+  });
+
+  it('e-mail de conta ADMIN retorna a mesma mensagem genérica e não cria pedido', async () => {
+    prisma.user.findUnique.mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
+    const result = await service.requestDeletion('admin@after.local');
+    expect(result).toEqual({ message: GENERIC });
+    expect(prisma.accountDeletionRequest.create).not.toHaveBeenCalled();
+    expect(mailer.last).toBeNull();
   });
 });

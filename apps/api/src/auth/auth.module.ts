@@ -6,9 +6,11 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { PasswordResetService } from './password-reset.service';
+import { AdminPushModule } from '../admin/push/admin-push.module';
 
 @Module({
   imports: [
+    AdminPushModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -17,12 +19,12 @@ import { PasswordResetService } from './password-reset.service';
         secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
           expiresIn: config.get('JWT_EXPIRES_IN') ?? '7d',
-        } as { expiresIn: `${number}d` },
+        },
       }),
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, PasswordResetService],
-  exports: [JwtModule],
+  exports: [JwtModule, AuthService],
 })
 export class AuthModule {}

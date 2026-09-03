@@ -7,8 +7,10 @@ import { GooglePlayPaymentProvider } from './providers/google-play.provider';
 import { PaymentProviderRegistry } from './providers/payment-providers';
 import { MercadoPagoOrdersClient } from './providers/mercado-pago-orders';
 import { PixPaymentProvider } from './providers/pix.provider';
+import { AdminPushModule } from '../admin/push/admin-push.module';
 
 @Module({
+  imports: [AdminPushModule],
   controllers: [CreditsController, CreditsWebhooksController],
   providers: [
     CreditsService,

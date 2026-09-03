@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { CREDIT_PACKAGES, CreditPackageKey } from '../common/constants/credits';
@@ -26,6 +27,7 @@ import {
   normalizePixPayerEmail,
 } from './providers/pix.provider';
 import { asMoney, toPublicPurchase } from './purchase-public';
+import { AdminPushService } from '../admin/push/admin-push.service';
 
 @Injectable()
 export class CreditsService {
@@ -34,6 +36,7 @@ export class CreditsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly payments: PaymentProviderRegistry,
+    @Optional() private readonly adminPush?: AdminPushService,
   ) {}
 
   packages() {
@@ -198,7 +201,8 @@ export class CreditsService {
       providerTxId,
       productId: pack.storeProductId,
     });
-    return toPublicPurchase(purchase);
+    this.enqueuePurchasePaid(purchase);
+    return toPublicPurchase(purchase.record);
   }
 
   async createPixCharge(
@@ -360,7 +364,10 @@ export class CreditsService {
   ): Promise<CreditPurchase> {
     if (order.status === 'PAID') {
       const expected = asMoney(purchase.amountPaid);
-      if (order.amountBrl != null && Math.abs(order.amountBrl - expected) > 0.009) {
+      if (
+        order.amountBrl != null &&
+        Math.abs(order.amountBrl - expected) > 0.009
+      ) {
         this.logger.warn(`PIX amount mismatch for purchase ${purchase.id}`);
         return purchase;
       }
@@ -368,7 +375,10 @@ export class CreditsService {
         purchase.id,
         buildProviderTxId('pix', order.orderId),
       );
-      return paid ?? purchase;
+      if (paid.newlyPaid && paid.purchase) {
+        this.enqueuePurchasePaid({ record: paid.purchase, created: true });
+      }
+      return paid.purchase ?? purchase;
     }
 
     if (
@@ -415,7 +425,7 @@ export class CreditsService {
   private async confirmPixPurchaseAtomic(
     purchaseId: string,
     providerTxId: string,
-  ) {
+  ): Promise<{ purchase: CreditPurchase | null; newlyPaid: boolean }> {
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.creditPurchase.updateMany({
         where: { id: purchaseId, status: 'PENDING' },
@@ -426,20 +436,23 @@ export class CreditsService {
         },
       });
       if (claimed.count === 0) {
-        return tx.creditPurchase.findUnique({ where: { id: purchaseId } });
+        const existing = await tx.creditPurchase.findUnique({
+          where: { id: purchaseId },
+        });
+        return { purchase: existing, newlyPaid: false };
       }
 
       const paid = await tx.creditPurchase.findUnique({
         where: { id: purchaseId },
       });
-      if (!paid) return null;
+      if (!paid) return { purchase: null, newlyPaid: false };
 
       await tx.creditWallet.upsert({
         where: { venueId: paid.venueId },
         create: { venueId: paid.venueId, balance: paid.credits },
         update: { balance: { increment: paid.credits } },
       });
-      return paid;
+      return { purchase: paid, newlyPaid: true };
     });
   }
 
@@ -457,8 +470,9 @@ export class CreditsService {
         });
         if (claimed.count === 0) {
           return (
-            (await tx.creditPurchase.findUnique({ where: { id: purchase.id } })) ??
-            purchase
+            (await tx.creditPurchase.findUnique({
+              where: { id: purchase.id },
+            })) ?? purchase
           );
         }
         await tx.creditWallet.upsert({
@@ -467,8 +481,9 @@ export class CreditsService {
           update: { balance: { increment: -purchase.credits } },
         });
         return (
-          (await tx.creditPurchase.findUnique({ where: { id: purchase.id } })) ??
-          purchase
+          (await tx.creditPurchase.findUnique({
+            where: { id: purchase.id },
+          })) ?? purchase
         );
       });
     }
@@ -486,7 +501,7 @@ export class CreditsService {
     provider: CanonicalPaymentProvider;
     providerTxId: string;
     productId: string;
-  }) {
+  }): Promise<{ record: CreditPurchase; created: boolean }> {
     try {
       return await this.prisma.$transaction(async (tx) => {
         const existing = await tx.creditPurchase.findUnique({
@@ -496,7 +511,7 @@ export class CreditsService {
           if (existing.venueId !== input.venueId) {
             throw new BadRequestException('Esta compra já foi utilizada.');
           }
-          return existing;
+          return { record: existing, created: false };
         }
 
         const purchase = await tx.creditPurchase.create({
@@ -520,7 +535,7 @@ export class CreditsService {
           update: { balance: { increment: input.pack.credits } },
         });
 
-        return purchase;
+        return { record: purchase, created: true };
       });
     } catch (error) {
       if (error instanceof BadRequestException) {
@@ -531,13 +546,25 @@ export class CreditsService {
         const again = await this.prisma.creditPurchase.findUnique({
           where: { providerTxId: input.providerTxId },
         });
-        if (again && again.venueId === input.venueId) return again;
+        if (again && again.venueId === input.venueId) {
+          return { record: again, created: false };
+        }
         if (again) {
           throw new BadRequestException('Esta compra já foi utilizada.');
         }
       }
       throw error;
     }
+  }
+
+  private enqueuePurchasePaid(input: {
+    record: CreditPurchase;
+    created: boolean;
+  }) {
+    if (!input.created) return;
+    void this.adminPush?.notifyPurchasePaid(input.record).catch(() => {
+      this.logger.warn(`Admin FCM skipped after purchase ${input.record.id}`);
+    });
   }
 
   private async requireVenueOwned(userId: string) {

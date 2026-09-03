@@ -61,6 +61,7 @@ describe('CreditsService billing', () => {
     storeProvider: jest.Mock;
     pixProvider: jest.Mock;
   };
+  let adminPush: { notifyPurchasePaid: jest.Mock };
   let service: CreditsService;
 
   beforeEach(() => {
@@ -78,9 +79,13 @@ describe('CreditsService billing', () => {
       }),
       pixProvider: jest.fn().mockReturnValue(new PixPaymentProvider()),
     };
+    adminPush = {
+      notifyPurchasePaid: jest.fn().mockResolvedValue(undefined),
+    };
     service = new CreditsService(
       prisma as never,
       payments as unknown as PaymentProviderRegistry,
+      adminPush as never,
     );
   });
 
@@ -192,6 +197,79 @@ describe('CreditsService billing', () => {
       create: { venueId: VENUE.id, balance: UNIT.credits },
       update: { balance: { increment: UNIT.credits } },
     });
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
+  });
+
+  it('retry de store-confirm não gera segundo evento de push', async () => {
+    googleVerify.mockResolvedValue({
+      provider: 'google_play',
+      productId: UNIT.storeProductId,
+      externalId: 'order-retry',
+    });
+    const paid = {
+      id: 'p-retry',
+      venueId: VENUE.id,
+      status: 'PAID',
+      provider: 'google_play',
+      packageKey: 'unit_1',
+      credits: UNIT.credits,
+      amountPaid: UNIT.priceBrl,
+      confirmedAt: new Date(),
+      providerTxId: 'google_play:order-retry',
+    };
+    prisma.creditPurchase.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(paid);
+    prisma.creditPurchase.create.mockResolvedValue(paid);
+    prisma.creditWallet.upsert.mockResolvedValue({
+      venueId: VENUE.id,
+      balance: UNIT.credits,
+    });
+
+    await service.confirmStorePurchase(USER_ID, {
+      ...storeDto,
+      purchaseId: 'order-retry',
+    });
+    await service.confirmStorePurchase(USER_ID, {
+      ...storeDto,
+      purchaseId: 'order-retry',
+    });
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
+    expect(prisma.creditPurchase.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha do Firebase não desfaz pagamento da loja', async () => {
+    adminPush.notifyPurchasePaid.mockRejectedValue(new Error('FCM down'));
+    googleVerify.mockResolvedValue({
+      provider: 'google_play',
+      productId: UNIT.storeProductId,
+      externalId: 'order-fcm',
+    });
+    const paid = {
+      id: 'p-fcm',
+      venueId: VENUE.id,
+      status: 'PAID',
+      provider: 'google_play',
+      packageKey: 'unit_1',
+      credits: UNIT.credits,
+      amountPaid: UNIT.priceBrl,
+      confirmedAt: new Date(),
+      providerTxId: 'google_play:order-fcm',
+    };
+    prisma.creditPurchase.findUnique.mockResolvedValue(null);
+    prisma.creditPurchase.create.mockResolvedValue(paid);
+    prisma.creditWallet.upsert.mockResolvedValue({
+      venueId: VENUE.id,
+      balance: UNIT.credits,
+    });
+
+    await expect(
+      service.confirmStorePurchase(USER_ID, {
+        ...storeDto,
+        purchaseId: 'order-fcm',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ status: 'PAID', id: 'p-fcm' }));
+    expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
   });
 
   it('rejeita provider inválido sem creditar', async () => {
@@ -570,6 +648,7 @@ describe('CreditsService billing', () => {
     await service.handlePixWebhook({ data: { id: 'ORD01TESTPIX' } });
 
     expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
     expect(prisma.creditWallet.upsert).toHaveBeenCalledWith({
       where: { venueId: VENUE.id },
       create: { venueId: VENUE.id, balance: 1 },
@@ -728,6 +807,7 @@ describe('CreditsService billing', () => {
     ]);
 
     expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
   });
 
   it('GET PIX continua PENDING enquanto o provedor está created/processing/action_required', async () => {

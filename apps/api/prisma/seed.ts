@@ -59,8 +59,7 @@ const VENUES: SeedVenue[] = [
     lng: -46.6559,
     logoUrl:
       'https://images.unsplash.com/photo-1579584425555-c3ce17fd4351?w=200',
-    coverUrl:
-      'https://images.unsplash.com/photo-1553621042-f6e147245754?w=800',
+    coverUrl: 'https://images.unsplash.com/photo-1553621042-f6e147245754?w=800',
     promoImageUrl:
       'https://images.unsplash.com/photo-1611143669185-af224c5e3252?w=800',
     promoTitle: 'Combo 30 peças por R$ 59',
@@ -77,8 +76,7 @@ const VENUES: SeedVenue[] = [
     lng: -46.6623,
     logoUrl:
       'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200',
-    coverUrl:
-      'https://images.unsplash.com/photo-1550547660-d9450f859349?w=800',
+    coverUrl: 'https://images.unsplash.com/photo-1550547660-d9450f859349?w=800',
     promoImageUrl:
       'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800',
     promoTitle: '2 burgers + batata por R$ 49',
@@ -149,8 +147,7 @@ const VENUES: SeedVenue[] = [
     lng: -46.6412,
     logoUrl:
       'https://images.unsplash.com/photo-1529193595785-44bcd67eec0d?w=200',
-    coverUrl:
-      'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
+    coverUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
     promoImageUrl:
       'https://images.unsplash.com/photo-1544025162-d76694265947?w=800',
     promoTitle: 'Rodízio freestyle R$ 89',
@@ -347,6 +344,52 @@ async function upsertVenue(seed: SeedVenue, passwordHash: string, day: Date) {
   return seed;
 }
 
+async function upsertAdminFromEnv() {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase() || '';
+  const password = process.env.ADMIN_PASSWORD ?? '';
+  if (!email || !password) {
+    console.log(
+      'Seed admin: ADMIN_EMAIL/ADMIN_PASSWORD não definidos — pulando conta ADMIN.',
+    );
+    return;
+  }
+  if (password.length < 6) {
+    console.warn(
+      'Seed admin: ADMIN_PASSWORD deve ter no mínimo 6 caracteres — pulando.',
+    );
+    return;
+  }
+
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, role: true },
+  });
+  if (existing && existing.role !== Role.ADMIN) {
+    console.warn(
+      `Seed admin: ${email} já pertence a uma conta ${existing.role} — pulando.`,
+    );
+    return;
+  }
+
+  const adminPasswordHash = await bcrypt.hash(password, 10);
+  await prisma.user.upsert({
+    where: { email },
+    update: {
+      role: Role.ADMIN,
+      passwordHash: adminPasswordHash,
+    },
+    create: {
+      name: 'After Admin',
+      email,
+      passwordHash: adminPasswordHash,
+      role: Role.ADMIN,
+      state: 'SP',
+      city: 'São Paulo',
+    },
+  });
+  console.log(`Seed admin: conta ADMIN pronta para ${email}`);
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash('senha123', 10);
   const day = todayUtcDate();
@@ -392,7 +435,11 @@ async function main() {
     },
   });
 
-  console.log('Seed ok — 10 estabelecimentos em São Paulo com promoções do dia');
+  await upsertAdminFromEnv();
+
+  console.log(
+    'Seed ok — 10 estabelecimentos em São Paulo com promoções do dia',
+  );
   console.log('');
   console.log('Usuário comum: user@after.local / senha123');
   console.log('Senha de todos os estabelecimentos: senha123');

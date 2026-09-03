@@ -223,7 +223,7 @@ export class VenuesService {
   }
 
   async upsertReview(
-    user: { userId: string; role: 'USER' | 'VENUE' },
+    user: { userId: string; role: 'USER' | 'VENUE' | 'ADMIN' },
     venueId: string,
     data: { rating: number; testimonial?: string },
   ) {

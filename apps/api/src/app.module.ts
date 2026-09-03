@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { AdminModule } from './admin/admin.module';
 import { BannersModule } from './banners/banners.module';
 import { CreditsModule } from './credits/credits.module';
 import { FavoritesModule } from './favorites/favorites.module';
@@ -17,6 +18,7 @@ import { VenuesModule } from './venues/venues.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    AdminModule,
     UsersModule,
     VenuesModule,
     HomeModule,

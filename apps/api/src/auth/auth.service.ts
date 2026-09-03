@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -37,6 +39,7 @@ import {
   type SocialProvider,
 } from './social-onboarding';
 import { isProduction } from '../common/env';
+import { AdminPushService } from '../admin/push/admin-push.service';
 
 type OAuthStatePayload = {
   redirect: string;
@@ -89,16 +92,21 @@ type SocialAuthResult =
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    @Optional() private readonly adminPush?: AdminPushService,
   ) {}
 
   providers() {
     return {
       google: this.googleAudiences().length > 0,
-      googleBrowser: Boolean(this.googleWebClientId() && this.googleClientSecret()),
+      googleBrowser: Boolean(
+        this.googleWebClientId() && this.googleClientSecret(),
+      ),
       apple: true,
       appleBrowser: Boolean(this.appleServiceId()),
     };
@@ -128,6 +136,7 @@ export class AuthService {
       include: { venue: true },
     });
 
+    this.enqueueAccountCreated(user);
     return this.buildAuthResponse(user);
   }
 
@@ -142,6 +151,31 @@ export class AuthService {
 
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    if (user.role === Role.ADMIN) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    return this.buildAuthResponse(user);
+  }
+
+  async loginAdmin(dto: LoginDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase() },
+      include: { venue: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    const ok = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    if (user.role !== Role.ADMIN) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
@@ -236,6 +270,7 @@ export class AuthService {
         });
       });
 
+      this.enqueueAccountCreated(user);
       return this.buildAuthResponse(user);
     } catch (error) {
       const code = (error as { code?: string }).code;
@@ -265,7 +300,10 @@ export class AuthService {
       scope: 'openid email profile',
       access_type: 'online',
       prompt: 'select_account',
-      state: this.signOAuthState({ redirect: safeRedirect, provider: 'google' }),
+      state: this.signOAuthState({
+        redirect: safeRedirect,
+        provider: 'google',
+      }),
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -474,8 +512,14 @@ export class AuthService {
   private async resolveSocialLogin(
     input: SocialProfileInput,
   ): Promise<SocialAuthResult> {
-    const user = await this.findUserByProvider(input.provider, input.providerId);
+    const user = await this.findUserByProvider(
+      input.provider,
+      input.providerId,
+    );
     if (user) {
+      if (user.role === Role.ADMIN) {
+        throw new UnauthorizedException('Credenciais inválidas');
+      }
       return this.buildAuthResponse(user);
     }
 
@@ -535,7 +579,10 @@ export class AuthService {
     };
   }
 
-  private async findUserByProvider(provider: SocialProvider, providerId: string) {
+  private async findUserByProvider(
+    provider: SocialProvider,
+    providerId: string,
+  ) {
     return provider === 'google'
       ? this.prisma.user.findUnique({
           where: { googleId: providerId },
@@ -554,7 +601,9 @@ export class AuthService {
     name: string;
     avatarUrl: string | null;
   }) {
-    const expiresAt = new Date(Date.now() + SOCIAL_ONBOARDING_TTL_SECONDS * 1000);
+    const expiresAt = new Date(
+      Date.now() + SOCIAL_ONBOARDING_TTL_SECONDS * 1000,
+    );
     const row = await this.prisma.$transaction(async (tx) => {
       await tx.socialOnboardingToken.updateMany({
         where: {
@@ -611,6 +660,17 @@ export class AuthService {
       }
       throw new UnauthorizedException(SOCIAL_ONBOARDING_INVALID_MESSAGE);
     }
+  }
+
+  private enqueueAccountCreated(user: {
+    id: string;
+    name: string;
+    role: Role;
+    venue?: { id: string; name: string } | null;
+  }) {
+    void this.adminPush?.notifyConsumerAccountCreated(user).catch(() => {
+      this.logger.warn(`Admin FCM skipped after account ${user.id}`);
+    });
   }
 
   private venueCreateNested(name: string, city: string, state: string) {

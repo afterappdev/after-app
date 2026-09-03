@@ -8,7 +8,7 @@ import { SOCIAL_ONBOARDING_TYP } from './social-onboarding';
 type JwtPayload = {
   sub?: string;
   email?: string;
-  role?: 'USER' | 'VENUE';
+  role?: 'USER' | 'VENUE' | 'ADMIN';
   typ?: string;
 };
 
@@ -23,7 +23,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload): AuthUser {
-    if (payload.typ === SOCIAL_ONBOARDING_TYP || !payload.sub || !payload.email || !payload.role) {
+    if (
+      payload.typ === SOCIAL_ONBOARDING_TYP ||
+      !payload.sub ||
+      !payload.email ||
+      !payload.role
+    ) {
       throw new UnauthorizedException();
     }
     return {

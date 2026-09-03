@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { deleteLocalUploads } from '../common/utils/local-uploads';
@@ -33,7 +37,12 @@ export class UsersService {
 
   async updateMe(
     userId: string,
-    data: { name?: string; city?: string; state?: string; avatarUrl?: string | null },
+    data: {
+      name?: string;
+      city?: string;
+      state?: string;
+      avatarUrl?: string | null;
+    },
   ) {
     return this.prisma.user.update({
       where: { id: userId },
@@ -105,6 +114,11 @@ export class UsersService {
     });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
+    }
+    if (user.role === 'ADMIN') {
+      throw new BadRequestException(
+        'Conta administrativa não pode ser excluída por este fluxo.',
+      );
     }
 
     const urls: Array<string | null | undefined> = [user.avatarUrl];

@@ -46,9 +46,9 @@ export class AccountDeletionService {
 
     const user = await this.prisma.user.findUnique({
       where: { email: normalized },
-      select: { id: true },
+      select: { id: true, role: true },
     });
-    if (!user) {
+    if (!user || user.role === 'ADMIN') {
       hashDeletionToken(generateDeletionToken());
       return generic;
     }
@@ -89,7 +89,9 @@ export class AccountDeletionService {
           `Falha ao enviar instruções de exclusão para ${maskEmailForLog(normalized)} ${mailerErr}`,
         );
       } else {
-        this.logger.warn(`Falha ao enviar instruções de exclusão de conta ${mailerErr}`);
+        this.logger.warn(
+          `Falha ao enviar instruções de exclusão de conta ${mailerErr}`,
+        );
       }
       return generic;
     }
