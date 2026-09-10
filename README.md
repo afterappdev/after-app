@@ -11,7 +11,8 @@ AFTER/
     mobile/       # Flutter (Android, iOS, Web, Windows)
   docker-compose.yml
   Montserrat/     # Fontes da marca (fonte do app em apps/mobile/assets)
-  logo roxa.png
+  logo.png        # Wordmark After
+  icone.jpg       # Ícone (a + pin)
   app after.pdf   # Briefing / wireframes
   README.md
 ```
@@ -285,7 +286,7 @@ npm run prisma:studio      # UI do banco
 - Perfis, favoritos, edição do local (horários, contatos, mídia)
 - Upload de imagens, compra stub de créditos, publicação de banner
 - Combos Estado/Cidade no cadastro (IBGE)
-- Branding: logo roxa + Montserrat
+- Branding: logo After + ícone (a + pin) + Montserrat
 
 ## Fora do escopo atual / próximos passos
 
