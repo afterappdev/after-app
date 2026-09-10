@@ -127,7 +127,7 @@ class _AfterAppState extends State<AfterApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'After | O que temos pra hoje?',
+      title: 'After | O que tem pra hoje?',
       theme: AppTheme.light,
       debugShowCheckedModeBanner: false,
       locale: const Locale('pt', 'BR'),

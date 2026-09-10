@@ -206,7 +206,7 @@ class _AfterIntroScreenState extends State<AfterIntroScreen>
                                     child: Opacity(
                                       opacity: _tagOpacity.value,
                                       child: const Text(
-                                        'O que temos pra hoje?',
+                                        'O que tem pra hoje?',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontFamily: AppTheme.fontFamily,

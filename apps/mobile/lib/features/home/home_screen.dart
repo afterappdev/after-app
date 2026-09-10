@@ -549,7 +549,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 const AfterLogo(height: 70),
                                 const SizedBox(height: 2),
                                 const Text(
-                                  'O que temos pra hoje?',
+                                  'O que tem pra hoje?',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontFamily: AppTheme.fontFamily,
