@@ -42,9 +42,7 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
   @override
   void initState() {
     super.initState();
-    _poller = PixPurchasePoller(
-      fetchStatus: _fetchPurchaseStatus,
-    );
+    _poller = PixPurchasePoller(fetchStatus: _fetchPurchaseStatus);
     WidgetsBinding.instance.addPostFrameCallback((_) => _createCharge());
   }
 
@@ -151,9 +149,9 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
     if (code == null || code.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Código PIX copiado.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Código PIX copiado.')));
   }
 
   String _fmtExpires(DateTime d) {
@@ -189,276 +187,325 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
           ),
         ),
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      body: _paid
+          ? _buildPaidConfirmation()
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: Column(
                   children: [
-                    _PixSectionCard(
-                      title: 'Resumo da compra',
-                      child: Column(
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                         children: [
-                          Row(
-                            children: [
-                              const CircleAvatar(
-                                radius: 14,
-                                backgroundColor: kCreditsSoft,
-                                child: Icon(
-                                  Icons.star_rounded,
-                                  size: 16,
-                                  color: kCreditsAccent,
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  _credits == 1
-                                      ? '1 crédito'
-                                      : '$_credits créditos',
-                                  style: const TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                    color: kCreditsInk,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                formatBrl(_catalogPrice),
-                                style: const TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: kCreditsInk,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: kCreditsSoft,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Row(
+                          _PixSectionCard(
+                            title: 'Resumo da compra',
+                            child: Column(
                               children: [
-                                Icon(
-                                  Icons.lock_outline,
-                                  size: 16,
-                                  color: kCreditsAccent,
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'O pagamento é confirmado pelo servidor. O app não marca a compra como paga.',
-                                    style: TextStyle(
-                                      fontFamily: AppTheme.fontFamily,
-                                      fontSize: 11,
-                                      height: 1.35,
-                                      color: Color(0xFF5A4A86),
+                                Row(
+                                  children: [
+                                    const CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: kCreditsSoft,
+                                      child: Icon(
+                                        Icons.star_rounded,
+                                        size: 16,
+                                        color: kCreditsAccent,
+                                      ),
                                     ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        _credits == 1
+                                            ? '1 crédito'
+                                            : '$_credits créditos',
+                                        style: const TextStyle(
+                                          fontFamily: AppTheme.fontFamily,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                          color: kCreditsInk,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      formatBrl(_catalogPrice),
+                                      style: const TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                        color: kCreditsInk,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                const Divider(height: 1),
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: kCreditsSoft,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.lock_outline,
+                                        size: 16,
+                                        color: kCreditsAccent,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'O pagamento é confirmado pelo servidor. O app não marca a compra como paga.',
+                                          style: TextStyle(
+                                            fontFamily: AppTheme.fontFamily,
+                                            fontSize: 11,
+                                            height: 1.35,
+                                            color: Color(0xFF5A4A86),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          _PixSectionCard(
+                            title: 'Forma de pagamento',
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: kCreditsSoft,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.radio_button_checked,
+                                    color: kCreditsAccent,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Icon(
+                                    Icons.qr_code_2_rounded,
+                                    size: 20,
+                                    color: kCreditsAccent,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'PIX',
+                                    style: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: kCreditsInk,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          if (_creating)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 32),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: kCreditsAccent,
+                                ),
+                              ),
+                            )
+                          else if (_error != null && _charge == null)
+                            _PixSectionCard(
+                              title: 'PIX',
+                              child: Column(
+                                children: [
+                                  const Icon(
+                                    Icons.info_outline,
+                                    color: kCreditsAccent,
+                                    size: 36,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _error!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 14,
+                                      height: 1.4,
+                                      color: kCreditsInk,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else if (_charge != null)
+                            _PixSectionCard(
+                              title: 'Pagar com PIX',
+                              child: Column(
+                                children: [
+                                  if (_error != null) ...[
+                                    Text(
+                                      _error!,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontSize: 13,
+                                        height: 1.35,
+                                        color: kCreditsInk,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  _PixChargeBody(
+                                    charge: _charge!,
+                                    failed: _failedTerminal,
+                                    onCopy: _charge!.hasCopyPaste
+                                        ? _copyPix
+                                        : null,
+                                    formatExpires: _fmtExpires,
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    _PixSectionCard(
-                      title: 'Forma de pagamento',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: kCreditsSoft,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(
-                              Icons.radio_button_checked,
-                              color: kCreditsAccent,
-                              size: 20,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                      child: Column(
+                        children: [
+                          if (_error != null)
+                            CreditsPurpleButton(
+                              label: 'Tentar novamente',
+                              loading: _creating,
+                              onPressed: _createCharge,
+                            )
+                          else
+                            CreditsPurpleButton(
+                              label: _creating
+                                  ? 'Gerando PIX'
+                                  : 'Aguardando pagamento',
+                              loading: _creating,
+                              onPressed: null,
                             ),
-                            SizedBox(width: 10),
-                            Icon(
-                              Icons.qr_code_2_rounded,
-                              size: 20,
-                              color: kCreditsAccent,
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Pagamento seguro via PIX',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: AppTheme.fontFamily,
+                              fontSize: 11,
+                              color: kCreditsMuted,
                             ),
-                            SizedBox(width: 10),
-                            Text(
-                              'PIX',
-                              style: TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: kCreditsInk,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    if (_creating)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 32),
-                        child: Center(
-                          child: CircularProgressIndicator(color: kCreditsAccent),
-                        ),
-                      )
-                    else if (_paid)
-                      _PixSectionCard(
-                        title: 'Pagamento confirmado',
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: Color(0xFF22A45A),
-                              size: 48,
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Seus créditos já estão na carteira.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontSize: 13,
-                                height: 1.35,
-                                color: kCreditsInk,
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildPaidConfirmation() {
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 430),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _PixSectionCard(
+                          title: 'Pagamento confirmado',
+                          centered: true,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFF22A45A),
+                                size: 48,
                               ),
-                            ),
-                            if (_refreshingWallet) ...[
-                              const SizedBox(height: 12),
-                              const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.4,
-                                  color: kCreditsAccent,
-                                ),
-                              ),
-                            ] else if (_walletBalance != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                'Saldo atual: $_walletBalance',
-                                style: const TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16,
-                                  color: kCreditsAccent,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      )
-                    else if (_error != null && _charge == null)
-                      _PixSectionCard(
-                        title: 'PIX',
-                        child: Column(
-                          children: [
-                            const Icon(
-                              Icons.info_outline,
-                              color: kCreditsAccent,
-                              size: 36,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _error!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontSize: 14,
-                                height: 1.4,
-                                color: kCreditsInk,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else if (_charge != null)
-                      _PixSectionCard(
-                        title: 'Pagar com PIX',
-                        child: Column(
-                          children: [
-                            if (_error != null) ...[
-                              Text(
-                                _error!,
+                              const SizedBox(height: 10),
+                              const Text(
+                                'Seus créditos já estão na carteira.',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: AppTheme.fontFamily,
                                   fontSize: 13,
                                   height: 1.35,
                                   color: kCreditsInk,
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              if (_refreshingWallet) ...[
+                                const SizedBox(height: 12),
+                                const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                    color: kCreditsAccent,
+                                  ),
+                                ),
+                              ] else if (_walletBalance != null) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Saldo atual: $_walletBalance',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    color: kCreditsAccent,
+                                  ),
+                                ),
+                              ],
                             ],
-                            _PixChargeBody(
-                              charge: _charge!,
-                              failed: _failedTerminal,
-                              onCopy: _charge!.hasCopyPaste ? _copyPix : null,
-                              formatExpires: _fmtExpires,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Column(
-                  children: [
-                    if (_paid)
-                      CreditsPurpleButton(
-                        label: 'Voltar para créditos',
-                        onPressed: () => Navigator.of(context).pop(true),
-                      )
-                    else if (_error != null)
-                      CreditsPurpleButton(
-                        label: 'Tentar novamente',
-                        loading: _creating,
-                        onPressed: _createCharge,
-                      )
-                    else
-                      CreditsPurpleButton(
-                        label: _creating
-                            ? 'Gerando PIX'
-                            : 'Aguardando pagamento',
-                        loading: _creating,
-                        onPressed: null,
-                      ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Pagamento seguro via PIX',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 11,
-                        color: kCreditsMuted,
-                      ),
+                        const SizedBox(height: 16),
+                        CreditsPurpleButton(
+                          label: 'Voltar para créditos',
+                          onPressed: () => Navigator.of(context).pop(true),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Pagamento seguro via PIX',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 11,
+                            color: kCreditsMuted,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -534,10 +581,7 @@ class _PixChargeBody extends StatelessWidget {
                   ),
                 ),
                 if (onCopy != null)
-                  TextButton(
-                    onPressed: onCopy,
-                    child: const Text('Copiar'),
-                  ),
+                  TextButton(onPressed: onCopy, child: const Text('Copiar')),
               ],
             ),
           ),
@@ -556,7 +600,8 @@ class _PixChargeBody extends StatelessWidget {
         ],
         const SizedBox(height: 8),
         _PixMetaRow(label: 'Status', value: status),
-        if (!failed && (charge.status ?? 'PENDING').toUpperCase() == 'PENDING') ...[
+        if (!failed &&
+            (charge.status ?? 'PENDING').toUpperCase() == 'PENDING') ...[
           const SizedBox(height: 12),
           const Text(
             'Aguardando pagamento',
@@ -642,10 +687,15 @@ class _PixMetaRow extends StatelessWidget {
 }
 
 class _PixSectionCard extends StatelessWidget {
-  const _PixSectionCard({required this.title, required this.child});
+  const _PixSectionCard({
+    required this.title,
+    required this.child,
+    this.centered = false,
+  });
 
   final String title;
   final Widget child;
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
@@ -657,10 +707,14 @@ class _PixSectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: centered
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
           Text(
             title,
+            textAlign: centered ? TextAlign.center : TextAlign.start,
             style: const TextStyle(
               fontFamily: AppTheme.fontFamily,
               fontWeight: FontWeight.w800,
