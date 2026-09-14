@@ -7,6 +7,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
@@ -19,6 +20,8 @@ const UPLOAD_DIR = join(process.cwd(), 'uploads');
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
+  constructor(private readonly config: ConfigService) {}
+
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
@@ -52,9 +55,13 @@ export class UploadsController {
       throw new BadRequestException('Arquivo obrigatório (campo file)');
     }
 
-    const host = req.get('host') ?? 'localhost:3000';
-    const protocol = req.protocol || 'http';
-    const url = `${protocol}://${host}/uploads/${file.filename}`;
+    const publicApiUrl = this.config
+      .get<string>('PUBLIC_API_URL')
+      ?.trim()
+      .replace(/\/$/, '');
+    const url = publicApiUrl
+      ? `${publicApiUrl}/uploads/${file.filename}`
+      : `${req.protocol || 'http'}://${req.get('host') ?? 'localhost:3000'}/uploads/${file.filename}`;
 
     return {
       url,
