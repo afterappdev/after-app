@@ -88,6 +88,11 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       _showErrorSnackBar(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorSnackBar(
+        e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }

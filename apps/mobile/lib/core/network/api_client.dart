@@ -29,47 +29,63 @@ class ApiClient {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
+  Future<http.Response> _send(Future<http.Response> Function() request) async {
+    try {
+      return await request();
+    } on http.ClientException {
+      throw ApiException(
+        'Não foi possível conectar à API em ${ApiConfig.baseUrl}.',
+      );
+    }
+  }
+
   Future<dynamic> get(String path, {Map<String, String>? query}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path').replace(
       queryParameters: query,
     );
-    final res = await _client.get(uri, headers: _jsonHeaders);
+    final res = await _send(() => _client.get(uri, headers: _jsonHeaders));
     return _decode(res);
   }
 
   Future<dynamic> post(String path, {Object? body}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
-    final res = await _client.post(
-      uri,
-      headers: _jsonHeaders,
-      body: body == null ? null : jsonEncode(body),
+    final res = await _send(
+      () => _client.post(
+        uri,
+        headers: _jsonHeaders,
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
     return _decode(res);
   }
 
   Future<dynamic> patch(String path, {Object? body}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
-    final res = await _client.patch(
-      uri,
-      headers: _jsonHeaders,
-      body: body == null ? null : jsonEncode(body),
+    final res = await _send(
+      () => _client.patch(
+        uri,
+        headers: _jsonHeaders,
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
     return _decode(res);
   }
 
   Future<dynamic> put(String path, {Object? body}) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
-    final res = await _client.put(
-      uri,
-      headers: _jsonHeaders,
-      body: body == null ? null : jsonEncode(body),
+    final res = await _send(
+      () => _client.put(
+        uri,
+        headers: _jsonHeaders,
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
     return _decode(res);
   }
 
   Future<dynamic> delete(String path) async {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
-    final res = await _client.delete(uri, headers: _jsonHeaders);
+    final res = await _send(() => _client.delete(uri, headers: _jsonHeaders));
     return _decode(res);
   }
 
@@ -108,8 +124,9 @@ class ApiClient {
       ),
     );
 
-    final streamed = await _client.send(request);
-    final res = await http.Response.fromStream(streamed);
+    final res = await _send(
+      () async => http.Response.fromStream(await _client.send(request)),
+    );
     return _decode(res) as Map<String, dynamic>;
   }
 

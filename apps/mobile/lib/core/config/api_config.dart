@@ -2,20 +2,17 @@ import 'package:flutter/foundation.dart';
 
 /// Base URL for the NestJS API.
 /// Override at build time: `--dart-define=API_BASE_URL=http://192.168.x.x:3000`
-/// - Web / desktop / iOS simulator → localhost
+/// - Web / desktop / iOS simulator → 127.0.0.1 (Chrome often maps localhost to IPv6)
 /// - Android emulator → host machine via 10.0.2.2
 /// - Physical Android → pass API_BASE_URL (LAN IP of the PC)
 class ApiConfig {
   static String get baseUrl {
     const defined = String.fromEnvironment('API_BASE_URL');
     if (defined.isNotEmpty) return defined;
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    }
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform == TargetPlatform.android && !kIsWeb) {
       return 'http://10.0.2.2:3000';
     }
-    return 'http://localhost:3000';
+    return 'http://127.0.0.1:3000';
   }
 
   /// Rewrites localhost / emulator media URLs to the active API host.
