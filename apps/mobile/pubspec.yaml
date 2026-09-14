@@ -54,8 +54,6 @@ flutter:
 
   assets:
     - assets/images/logo_after.png
-    - assets/images/landing_final/
-    - assets/images/landing_mobile/
     - assets/images/landing_proto/
 
   fonts:
