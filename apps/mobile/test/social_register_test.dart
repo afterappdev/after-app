@@ -83,13 +83,13 @@ Future<void> _useTallSurface(WidgetTester tester) async {
 }
 
 Future<void> _selectLocation(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('register-state')));
+  await tester.enterText(find.byKey(const Key('register-city')), 'São Paulo');
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('SP — São Paulo').last);
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const Key('register-city')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('São Paulo').last);
+  final suggestion = find.text('São Paulo, SP');
+  await tester.ensureVisible(suggestion);
+  await tester.tap(suggestion);
   await tester.pumpAndSettle();
 }
 
@@ -113,10 +113,11 @@ void main() {
             headers: _jsonHeaders,
           );
         }
-        if (req.url.path.contains('/cities')) {
+        if (req.url.path.endsWith('/locations/cities') ||
+            req.url.path.contains('/cities')) {
           return http.Response(
             jsonEncode([
-              {'id': 1, 'name': 'São Paulo'},
+              {'id': 1, 'name': 'São Paulo', 'uf': 'SP'},
             ]),
             200,
             headers: _jsonHeaders,

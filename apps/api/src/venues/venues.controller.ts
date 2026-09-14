@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -121,6 +122,12 @@ class UpsertReviewDto {
   testimonial?: string;
 }
 
+class ReplyReviewDto {
+  @IsString()
+  @MaxLength(800)
+  reply!: string;
+}
+
 @Controller('venues')
 export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
@@ -140,6 +147,13 @@ export class VenuesController {
     @Query('hasCoverCharge') hasCoverCharge?: string,
     @Query('hasWheelchairAccess') hasWheelchairAccess?: string,
     @Query('isPetFriendly') isPetFriendly?: string,
+    @Query('hasLiveMusic') hasLiveMusic?: string,
+    @Query('hasBirthdayTreat') hasBirthdayTreat?: string,
+    @Query('hasDelivery') hasDelivery?: string,
+    @Query('hasGlutenFreeFood') hasGlutenFreeFood?: string,
+    @Query('hasLactoseFreeFood') hasLactoseFreeFood?: string,
+    @Query('hasAirConditioning') hasAirConditioning?: string,
+    @Query('hasBabyChangingRoom') hasBabyChangingRoom?: string,
   ) {
     const rating = Number(minRating);
     return this.venuesService.searchByName(q ?? '', {
@@ -150,6 +164,13 @@ export class VenuesController {
       hasCoverCharge: hasCoverCharge === 'true',
       hasWheelchairAccess: hasWheelchairAccess === 'true',
       isPetFriendly: isPetFriendly === 'true',
+      hasLiveMusic: hasLiveMusic === 'true',
+      hasBirthdayTreat: hasBirthdayTreat === 'true',
+      hasDelivery: hasDelivery === 'true',
+      hasGlutenFreeFood: hasGlutenFreeFood === 'true',
+      hasLactoseFreeFood: hasLactoseFreeFood === 'true',
+      hasAirConditioning: hasAirConditioning === 'true',
+      hasBabyChangingRoom: hasBabyChangingRoom === 'true',
     });
   }
 
@@ -172,6 +193,17 @@ export class VenuesController {
     @Body() dto: UpsertReviewDto,
   ) {
     return this.venuesService.upsertReview(user, id, dto);
+  }
+
+  @Patch(':id/reviews/:reviewId/reply')
+  @UseGuards(JwtAuthGuard)
+  replyToReview(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('reviewId') reviewId: string,
+    @Body() dto: ReplyReviewDto,
+  ) {
+    return this.venuesService.replyToReview(user, id, reviewId, dto.reply);
   }
 
   @Get(':id')

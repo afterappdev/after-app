@@ -99,10 +99,18 @@ export class LocationsService {
     return cities
       .map((city) => {
         const name = normalize(city.name);
+        const uf = normalize(city.uf);
+        const combined = `${name} ${uf}`;
+        const labeled = `${name}, ${uf}`;
         let score = 0;
-        if (name === term) score = 3;
-        else if (name.startsWith(term)) score = 2;
-        else if (name.includes(term)) score = 1;
+        if (name === term || labeled === term) score = 3;
+        else if (name.startsWith(term) || labeled.startsWith(term)) score = 2;
+        else if (
+          name.includes(term) ||
+          combined.includes(term) ||
+          labeled.includes(term)
+        )
+          score = 1;
         return { city, score };
       })
       .filter((item) => item.score > 0)

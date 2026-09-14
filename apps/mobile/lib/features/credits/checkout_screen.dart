@@ -4,8 +4,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../auth/auth_controller.dart';
 import 'billing_channel.dart';
 import 'credits_ui.dart';
+import 'fiscal_invoice_controller.dart';
+import 'fiscal_invoice_section.dart';
 import 'pix_checkout.dart';
 import 'store_billing.dart';
 
@@ -23,6 +26,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   StoreBilling? _store;
   String? _storePriceLabel;
   String? _storeError;
+  late final FiscalInvoiceController _fiscal;
 
   int get _credits => asInt(widget.pack['credits']);
   double get _price => asMoney(widget.pack['priceBrl']);
@@ -38,6 +42,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _fiscal = FiscalInvoiceController();
     if (!_useStore) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -55,6 +60,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (mounted) Navigator.of(context).pop(true);
       };
     _prepareStore();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    try {
+      _fiscal.applyAccountEmail(context.read<AuthController>().user?.email);
+    } catch (_) {}
   }
 
   @override
@@ -83,17 +96,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _confirmStorePurchase(StorePurchase purchase) async {
     final api = context.read<ApiClient>();
-    await api.post('/credits/store-confirm', body: {
-      'packageKey': widget.pack['key'],
-      'productId': purchase.productId,
-      'provider': purchase.provider,
-      'purchaseId': purchase.purchaseId,
-      'verificationData': purchase.verificationData,
-    });
+    await api.post(
+      '/credits/store-confirm',
+      body: storeConfirmBody(
+        packageKey: widget.pack['key']?.toString() ?? '',
+        productId: purchase.productId,
+        provider: purchase.provider,
+        purchaseId: purchase.purchaseId,
+        verificationData: purchase.verificationData,
+        fiscal: _fiscal.toApiPayload(),
+      ),
+    );
     await _store!.complete(purchase);
   }
 
   Future<void> _payWithStore() async {
+    final error = _fiscal.validate();
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
     setState(() => _paying = true);
     try {
       final purchase = await _store!.purchase(_storeProductId);
@@ -286,6 +308,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ],
                         ],
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    FiscalInvoiceSection(
+                      controller: _fiscal,
+                      onChanged: () => setState(() {}),
                     ),
                   ],
                 ),

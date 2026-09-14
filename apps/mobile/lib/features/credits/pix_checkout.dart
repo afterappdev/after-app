@@ -6,8 +6,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../auth/auth_controller.dart';
 import 'billing_channel.dart';
 import 'credits_ui.dart';
+import 'fiscal_invoice_controller.dart';
+import 'fiscal_invoice_section.dart';
 import 'pix_charge.dart';
 import 'pix_poller.dart';
 import 'purchase_labels.dart';
@@ -23,7 +26,8 @@ class PixCheckoutScreen extends StatefulWidget {
 
 class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
   late final PixPurchasePoller _poller;
-  bool _creating = true;
+  late final FiscalInvoiceController _fiscal;
+  bool _creating = false;
   bool _refreshingWallet = false;
   String? _error;
   PixCharge? _charge;
@@ -42,8 +46,16 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _fiscal = FiscalInvoiceController();
     _poller = PixPurchasePoller(fetchStatus: _fetchPurchaseStatus);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _createCharge());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    try {
+      _fiscal.applyAccountEmail(context.read<AuthController>().user?.email);
+    } catch (_) {}
   }
 
   @override
@@ -62,6 +74,13 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
   }
 
   Future<void> _createCharge() async {
+    final fiscalError = _fiscal.validate();
+    if (fiscalError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(fiscalError)),
+      );
+      return;
+    }
     _poller.stop();
     setState(() {
       _creating = true;
@@ -73,7 +92,7 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
       final api = context.read<ApiClient>();
       final result = await api.post(
         '/credits/pix/create',
-        body: pixCreateBody(_packageKey),
+        body: pixCreateBody(_packageKey, _fiscal.toApiPayload()),
       );
       if (!mounted) return;
       final map = result is Map<String, dynamic>
@@ -322,7 +341,7 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
                                 ),
                               ),
                             )
-                          else if (_error != null && _charge == null)
+                          else if (_error != null && _charge == null) ...[
                             _PixSectionCard(
                               title: 'PIX',
                               child: Column(
@@ -345,8 +364,16 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
                                   ),
                                 ],
                               ),
-                            )
-                          else if (_charge != null)
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          if (_charge == null)
+                            FiscalInvoiceSection(
+                              controller: _fiscal,
+                              onChanged: () => setState(() {}),
+                            ),
+                          if (_charge == null) const SizedBox(height: 16),
+                          if (!_creating && _charge != null)
                             _PixSectionCard(
                               title: 'Pagar com PIX',
                               child: Column(
@@ -382,11 +409,18 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                       child: Column(
                         children: [
-                          if (_error != null)
+                          if (_error != null && _charge == null)
                             CreditsPurpleButton(
                               label: 'Tentar novamente',
                               loading: _creating,
                               onPressed: _createCharge,
+                            )
+                          else if (_charge == null)
+                            CreditsPurpleButton(
+                              key: const Key('fiscal-generate-pix'),
+                              label: _creating ? 'Gerando PIX' : 'Gerar PIX',
+                              loading: _creating,
+                              onPressed: _creating ? null : _createCharge,
                             )
                           else
                             CreditsPurpleButton(

@@ -470,8 +470,7 @@ describe('CreditsService billing', () => {
     expect(createCharge).toHaveBeenCalled();
   });
 
-  it('pix/create só recebe packageKey — pagador não vem do frontend', async () => {
-    expect(service.createPixCharge.length).toBe(3);
+  it('pix/create não envia pagador nem documento fiscal ao Mercado Pago', async () => {
     const createCharge = jest.fn().mockResolvedValue({
       orderId: 'ORD01TESTPIX',
       paymentId: 'PAY01TESTPIX',
@@ -490,13 +489,20 @@ describe('CreditsService billing', () => {
     prisma.creditPurchase.update.mockResolvedValue(
       pixPurchase({ status: 'PENDING' }),
     );
-    await service.createPixCharge(USER_ID, 'unit_1');
+    await service.createPixCharge(USER_ID, 'unit_1', undefined, {
+      invoiceRequested: true,
+      fiscalPersonType: 'CPF',
+      fiscalName: 'João da Silva',
+      fiscalDocument: '123.456.789-09',
+      fiscalEmail: 'joao@exemplo.com',
+    });
     const payload = createCharge.mock.calls[0][0] as Record<string, unknown>;
     expect(Object.keys(payload).sort()).toEqual(
       ['amountBrl', 'idempotencyKey', 'packageKey', 'payerEmail', 'payerName', 'purchaseId'].sort(),
     );
     expect(payload.payerEmail).toBe('venue@test.com');
-    expect(payload.payerEmail).not.toContain('@testuser.com');
+    expect(payload).not.toHaveProperty('fiscalDocument');
+    expect(JSON.stringify(payload)).not.toContain('12345678909');
   });
 
   it('pix/create rejeita packageKey inválido', async () => {
@@ -753,6 +759,9 @@ describe('CreditsService billing', () => {
     expect(result.amountPaid).toBe(25);
     expect(result.currency).toBe('BRL');
     expect(result).not.toHaveProperty('providerTxId');
+    expect(result).not.toHaveProperty('fiscalDocument');
+    expect(result).not.toHaveProperty('fiscalName');
+    expect(result).not.toHaveProperty('fiscalEmail');
     expect(payments.pixProvider).not.toHaveBeenCalled();
   });
 
@@ -951,6 +960,109 @@ describe('CreditsService billing', () => {
     );
     expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
+  });
+
+  it('persiste snapshot fiscal no PIX e não altera o valor cobrado', async () => {
+    const createCharge = jest.fn().mockResolvedValue({
+      orderId: 'ORD01FISCAL',
+      paymentId: 'PAY01FISCAL',
+      qrCodeText: '00020126fiscal',
+      qrCodeImage: 'data:image/png;base64,aGVsbG8=',
+      expiresAt: null,
+    });
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+    prisma.creditPurchase.create.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+    prisma.creditPurchase.update.mockResolvedValue(
+      pixPurchase({ status: 'PENDING' }),
+    );
+
+    const result = await service.createPixCharge(USER_ID, 'unit_1', undefined, {
+      invoiceRequested: true,
+      fiscalPersonType: 'CPF',
+      fiscalName: '  João da Silva  ',
+      fiscalDocument: '123.456.789-09',
+      fiscalEmail: '  Email@Exemplo.COM  ',
+    });
+
+    expect(result.amount).toBe(UNIT.priceBrl);
+    expect(result.status).toBe('PENDING');
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          invoiceRequested: true,
+          fiscalPersonType: 'CPF',
+          fiscalName: 'João da Silva',
+          fiscalDocument: '12345678909',
+          fiscalEmail: 'email@exemplo.com',
+          amountPaid: 25,
+          status: 'PENDING',
+        }),
+      }),
+    );
+    expect(createCharge.mock.calls[0][0]).not.toHaveProperty('fiscalDocument');
+  });
+
+  it('recusa CPF inválido no PIX sem criar compra', async () => {
+    await expect(
+      service.createPixCharge(USER_ID, 'unit_1', undefined, {
+        invoiceRequested: true,
+        fiscalPersonType: 'CPF',
+        fiscalName: 'João',
+        fiscalDocument: '12345678900',
+        fiscalEmail: 'a@b.com',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('persiste snapshot fiscal no store-confirm sem mudar idempotência', async () => {
+    googleVerify.mockResolvedValue({
+      provider: 'google_play',
+      productId: UNIT.storeProductId,
+      externalId: 'order-fiscal',
+    });
+    prisma.creditPurchase.findUnique.mockResolvedValue(null);
+    prisma.creditPurchase.create.mockResolvedValue({
+      id: 'p-fiscal',
+      venueId: VENUE.id,
+      status: 'PAID',
+      providerTxId: 'google_play:order-fiscal',
+      credits: UNIT.credits,
+    });
+    prisma.creditWallet.upsert.mockResolvedValue({
+      venueId: VENUE.id,
+      balance: UNIT.credits,
+    });
+
+    await service.confirmStorePurchase(USER_ID, {
+      ...storeDto,
+      invoiceRequested: true,
+      fiscalPersonType: 'CNPJ',
+      fiscalName: 'Empresa LTDA',
+      fiscalDocument: '11.444.777/0001-61',
+      fiscalEmail: 'fiscal@empresa.com',
+    });
+
+    expect(googleVerify).toHaveBeenCalled();
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          invoiceRequested: true,
+          fiscalPersonType: 'CNPJ',
+          fiscalName: 'Empresa LTDA',
+          fiscalDocument: '11444777000161',
+          fiscalEmail: 'fiscal@empresa.com',
+          status: 'PAID',
+        }),
+      }),
+    );
+    expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
   });
 });
 

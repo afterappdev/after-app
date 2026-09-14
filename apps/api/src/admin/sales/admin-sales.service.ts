@@ -34,6 +34,7 @@ const SALE_SELECT = {
     },
   },
 } satisfies Prisma.CreditPurchaseSelect;
+// Fiscal document fields are intentionally omitted from admin list/detail.
 
 @Injectable()
 export class AdminSalesService {

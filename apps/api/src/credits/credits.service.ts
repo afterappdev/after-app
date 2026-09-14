@@ -28,6 +28,11 @@ import {
 } from './providers/pix.provider';
 import { asMoney, toPublicPurchase } from './purchase-public';
 import { AdminPushService } from '../admin/push/admin-push.service';
+import {
+  FiscalPurchaseInput,
+  FiscalSnapshot,
+  resolveFiscalSnapshot,
+} from './fiscal-document';
 
 @Injectable()
 export class CreditsService {
@@ -164,8 +169,9 @@ export class CreditsService {
       provider: StoreProviderInput | string;
       purchaseId: string;
       verificationData: string;
-    },
+    } & FiscalPurchaseInput,
   ) {
+    const fiscal = resolveFiscalSnapshot(dto);
     const provider = this.requireStoreProvider(dto.provider);
     const store = this.payments.storeProvider(provider);
 
@@ -200,6 +206,7 @@ export class CreditsService {
       provider,
       providerTxId,
       productId: pack.storeProductId,
+      fiscal,
     });
     this.enqueuePurchasePaid(purchase);
     return toPublicPurchase(purchase.record);
@@ -209,7 +216,9 @@ export class CreditsService {
     userId: string,
     packageKey: string,
     authenticatedEmail?: string,
+    fiscalInput?: FiscalPurchaseInput,
   ) {
+    const fiscal = resolveFiscalSnapshot(fiscalInput);
     const pack = CREDIT_PACKAGES.find((p) => p.key === packageKey);
     if (!pack) {
       throw new BadRequestException('Pacote inválido');
@@ -250,6 +259,7 @@ export class CreditsService {
         status: 'PENDING',
         provider: 'pix',
         providerTxId: buildProviderTxId('pix', `pending:${randomUUID()}`),
+        ...fiscal,
       },
     });
 
@@ -501,6 +511,7 @@ export class CreditsService {
     provider: CanonicalPaymentProvider;
     providerTxId: string;
     productId: string;
+    fiscal?: FiscalSnapshot;
   }): Promise<{ record: CreditPurchase; created: boolean }> {
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -526,6 +537,7 @@ export class CreditsService {
             provider: input.provider,
             providerTxId: input.providerTxId,
             confirmedAt: new Date(),
+            ...(input.fiscal ?? resolveFiscalSnapshot(null)),
           },
         });
 

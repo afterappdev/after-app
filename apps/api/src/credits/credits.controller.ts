@@ -6,7 +6,17 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 import {
   AuthUser,
   CurrentUser,
@@ -15,8 +25,36 @@ import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreditsService } from './credits.service';
 import { STORE_PROVIDER_INPUTS } from './providers/payment-provider';
+import { FiscalPurchaseInput } from './fiscal-document';
 
 const PACKAGE_KEYS = CREDIT_PACKAGES.map((p) => p.key);
+
+class FiscalFieldsDto implements FiscalPurchaseInput {
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  invoiceRequested?: boolean;
+
+  @ValidateIf((dto: FiscalFieldsDto) => dto.invoiceRequested === true)
+  @IsString()
+  @IsIn(['CPF', 'CNPJ'])
+  fiscalPersonType?: string;
+
+  @ValidateIf((dto: FiscalFieldsDto) => dto.invoiceRequested === true)
+  @IsString()
+  @MaxLength(150)
+  fiscalName?: string;
+
+  @ValidateIf((dto: FiscalFieldsDto) => dto.invoiceRequested === true)
+  @IsString()
+  @MaxLength(18)
+  fiscalDocument?: string;
+
+  @ValidateIf((dto: FiscalFieldsDto) => dto.invoiceRequested === true)
+  @IsEmail()
+  @MaxLength(120)
+  fiscalEmail?: string;
+}
 
 class CheckoutDto {
   @IsString()
@@ -24,7 +62,7 @@ class CheckoutDto {
   packageKey!: (typeof PACKAGE_KEYS)[number];
 }
 
-class StoreConfirmDto {
+class StoreConfirmDto extends FiscalFieldsDto {
   @IsString()
   @IsIn(PACKAGE_KEYS)
   packageKey!: (typeof PACKAGE_KEYS)[number];
@@ -44,7 +82,7 @@ class StoreConfirmDto {
   verificationData!: string;
 }
 
-class PixCreateDto {
+class PixCreateDto extends FiscalFieldsDto {
   @IsString()
   @IsIn(PACKAGE_KEYS)
   packageKey!: (typeof PACKAGE_KEYS)[number];
@@ -94,6 +132,7 @@ export class CreditsController {
       user.userId,
       dto.packageKey,
       user.email,
+      dto,
     );
   }
 

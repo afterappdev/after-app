@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
@@ -73,6 +74,13 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   bool _hasCoverCharge = false;
   bool _hasWheelchairAccess = false;
   bool _isPetFriendly = false;
+  bool _hasLiveMusic = false;
+  bool _hasBirthdayTreat = false;
+  bool _hasDelivery = false;
+  bool _hasGlutenFreeFood = false;
+  bool _hasLactoseFreeFood = false;
+  bool _hasAirConditioning = false;
+  bool _hasBabyChangingRoom = false;
   final _pin = VenuePin();
   final _mapController = MapController();
   bool _mapReady = false;
@@ -159,6 +167,13 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         _coverCharge.text = contacts['coverCharge']?.toString() ?? '';
         _hasWheelchairAccess = contacts['hasWheelchairAccess'] == true;
         _isPetFriendly = contacts['isPetFriendly'] == true;
+        _hasLiveMusic = contacts['hasLiveMusic'] == true;
+        _hasBirthdayTreat = contacts['hasBirthdayTreat'] == true;
+        _hasDelivery = contacts['hasDelivery'] == true;
+        _hasGlutenFreeFood = contacts['hasGlutenFreeFood'] == true;
+        _hasLactoseFreeFood = contacts['hasLactoseFreeFood'] == true;
+        _hasAirConditioning = contacts['hasAirConditioning'] == true;
+        _hasBabyChangingRoom = contacts['hasBabyChangingRoom'] == true;
       }
 
       final hours = data['hoursJson'];
@@ -167,9 +182,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           final day = hours[key];
           if (day is Map) {
             _closed[key] = day['closed'] == true;
-            if (day['open'] != null) _open[key]!.text = day['open'].toString();
+            if (day['open'] != null) {
+              _open[key]!.text = _normalizeTime(day['open'].toString());
+            }
             if (day['close'] != null) {
-              _close[key]!.text = day['close'].toString();
+              _close[key]!.text = _normalizeTime(day['close'].toString());
             }
           }
         }
@@ -196,8 +213,8 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         map[key] = {'closed': true};
       } else {
         map[key] = {
-          'open': _open[key]!.text.trim(),
-          'close': _close[key]!.text.trim(),
+          'open': _normalizeTime(_open[key]!.text),
+          'close': _normalizeTime(_close[key]!.text),
         };
       }
     }
@@ -447,6 +464,13 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           'coverCharge': _coverCharge.text.trim(),
           'hasWheelchairAccess': _hasWheelchairAccess,
           'isPetFriendly': _isPetFriendly,
+          'hasLiveMusic': _hasLiveMusic,
+          'hasBirthdayTreat': _hasBirthdayTreat,
+          'hasDelivery': _hasDelivery,
+          'hasGlutenFreeFood': _hasGlutenFreeFood,
+          'hasLactoseFreeFood': _hasLactoseFreeFood,
+          'hasAirConditioning': _hasAirConditioning,
+          'hasBabyChangingRoom': _hasBabyChangingRoom,
         },
         'hoursJson': _buildHours(),
       });
@@ -700,6 +724,48 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         value: _hasCoverCharge,
         onChanged: (value) => setState(() => _hasCoverCharge = value),
       ),
+      _AmenityTile(
+        icon: Icons.music_note_outlined,
+        label: 'Música ao vivo',
+        value: _hasLiveMusic,
+        onChanged: (value) => setState(() => _hasLiveMusic = value),
+      ),
+      _AmenityTile(
+        icon: Icons.cake_outlined,
+        label: 'Brinde aniversariante',
+        value: _hasBirthdayTreat,
+        onChanged: (value) => setState(() => _hasBirthdayTreat = value),
+      ),
+      _AmenityTile(
+        icon: Icons.delivery_dining_outlined,
+        label: 'Delivery',
+        value: _hasDelivery,
+        onChanged: (value) => setState(() => _hasDelivery = value),
+      ),
+      _AmenityTile(
+        icon: Icons.bakery_dining_outlined,
+        label: 'Comida sem glúten',
+        value: _hasGlutenFreeFood,
+        onChanged: (value) => setState(() => _hasGlutenFreeFood = value),
+      ),
+      _AmenityTile(
+        icon: Icons.local_drink_outlined,
+        label: 'Comida sem lactose',
+        value: _hasLactoseFreeFood,
+        onChanged: (value) => setState(() => _hasLactoseFreeFood = value),
+      ),
+      _AmenityTile(
+        icon: Icons.ac_unit_outlined,
+        label: 'Ambiente climatizado',
+        value: _hasAirConditioning,
+        onChanged: (value) => setState(() => _hasAirConditioning = value),
+      ),
+      _AmenityTile(
+        icon: Icons.baby_changing_station,
+        label: 'Fraldário',
+        value: _hasBabyChangingRoom,
+        onChanged: (value) => setState(() => _hasBabyChangingRoom = value),
+      ),
     ];
     return Column(
       children: [
@@ -917,11 +983,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           ),
           const SizedBox(height: 8),
           for (var i = 0; i < _days.length; i++) ...[
-            if (i > 0)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Divider(height: 1, color: Color(0xFFF0F0F3)),
-              ),
+            if (i > 0) const SizedBox(height: 6),
             _HoursRow(
               label: _days[i].$2,
               closed: _closed[_days[i].$1] == true,
@@ -930,7 +992,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
               onClosedChanged: (value) => setState(
                 () => _closed[_days[i].$1] = value,
               ),
-              decoration: _fieldDecoration(hint: '00:00', dense: true),
             ),
           ],
         ],
@@ -1347,6 +1408,37 @@ class _PhotoManager extends StatelessWidget {
   }
 }
 
+(String, String) _splitTime(String raw) {
+  final parts = raw.trim().split(RegExp(r'[:hH]'));
+  if (parts.length >= 2) {
+    return (_clampPad(parts[0], 23), _clampPad(parts[1], 59));
+  }
+  final digits = raw.replaceAll(RegExp(r'\D'), '');
+  if (digits.length >= 4) {
+    return (
+      _clampPad(digits.substring(0, 2), 23),
+      _clampPad(digits.substring(2, 4), 59),
+    );
+  }
+  if (digits.length >= 2) {
+    return (_clampPad(digits, 23), '00');
+  }
+  return ('00', '00');
+}
+
+String _clampPad(String raw, int max) {
+  final digits = raw.replaceAll(RegExp(r'\D'), '');
+  if (digits.isEmpty) return '00';
+  var value = int.tryParse(digits) ?? 0;
+  if (value > max) value = max;
+  return value.toString().padLeft(2, '0');
+}
+
+String _normalizeTime(String raw) {
+  final parts = _splitTime(raw);
+  return '${parts.$1}:${parts.$2}';
+}
+
 class _HoursRow extends StatelessWidget {
   const _HoursRow({
     required this.label,
@@ -1354,7 +1446,6 @@ class _HoursRow extends StatelessWidget {
     required this.openController,
     required this.closeController,
     required this.onClosedChanged,
-    required this.decoration,
   });
 
   final String label;
@@ -1362,82 +1453,273 @@ class _HoursRow extends StatelessWidget {
   final TextEditingController openController;
   final TextEditingController closeController;
   final ValueChanged<bool> onClosedChanged;
-  final InputDecoration decoration;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  fontFamily: AppTheme.fontFamily,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: Color(0xFF282829),
-                ),
-              ),
-            ),
-            Text(
-              'Fechado',
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 12,
-                color: closed ? const Color(0xFFF58634) : const Color(0xFF8B8B96),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Switch(
+        SizedBox(
+          height: 32,
+          child: FittedBox(
+            child: Switch(
               value: closed,
               onChanged: onClosedChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               activeThumbColor: Colors.white,
               activeTrackColor: const Color(0xFFF58634),
             ),
-          ],
-        ),
-        if (!closed)
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: openController,
-                  style: const TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 13,
-                    color: Color(0xFF282829),
-                  ),
-                  decoration: decoration.copyWith(hintText: 'Abre'),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text(
-                  '–',
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    color: Color(0xFF8B8B96),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: closeController,
-                  style: const TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 13,
-                    color: Color(0xFF282829),
-                  ),
-                  decoration: decoration.copyWith(hintText: 'Fecha'),
-                ),
-              ),
-            ],
           ),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 58,
+          child: Text(
+            closed ? 'Fechado' : 'Aberto',
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 11,
+              color: closed ? const Color(0xFFF58634) : const Color(0xFF2F9E6A),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: Color(0xFF282829),
+            ),
+          ),
+        ),
+        if (!closed) ...[
+          _HmTimeInput(controller: openController),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              '–',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                color: Color(0xFF8B8B96),
+              ),
+            ),
+          ),
+          _HmTimeInput(controller: closeController),
+        ],
       ],
+    );
+  }
+}
+
+class _HmTimeInput extends StatefulWidget {
+  const _HmTimeInput({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  State<_HmTimeInput> createState() => _HmTimeInputState();
+}
+
+class _HmTimeInputState extends State<_HmTimeInput> {
+  late final TextEditingController _hour;
+  late final TextEditingController _minute;
+  late final FocusNode _hourFocus;
+  late final FocusNode _minuteFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    final parts = _splitTime(widget.controller.text);
+    _hour = TextEditingController(text: parts.$1);
+    _minute = TextEditingController(text: parts.$2);
+    _hourFocus = FocusNode()..addListener(_onHourFocus);
+    _minuteFocus = FocusNode()..addListener(_onMinuteFocus);
+    widget.controller.addListener(_onParentChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HmTimeInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onParentChanged);
+      widget.controller.addListener(_onParentChanged);
+      _onParentChanged();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onParentChanged);
+    _hourFocus.dispose();
+    _minuteFocus.dispose();
+    _hour.dispose();
+    _minute.dispose();
+    super.dispose();
+  }
+
+  void _onParentChanged() {
+    if (_hourFocus.hasFocus || _minuteFocus.hasFocus) return;
+    final parts = _splitTime(widget.controller.text);
+    if (_hour.text != parts.$1) _hour.text = parts.$1;
+    if (_minute.text != parts.$2) _minute.text = parts.$2;
+  }
+
+  void _writeParent() {
+    widget.controller.value = TextEditingValue(
+      text: '${_clampPad(_hour.text, 23)}:${_clampPad(_minute.text, 59)}',
+    );
+  }
+
+  void _selectAll(TextEditingController controller) {
+    controller.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: controller.text.length,
+    );
+  }
+
+  void _onHourFocus() {
+    if (_hourFocus.hasFocus) {
+      _selectAll(_hour);
+      return;
+    }
+    final padded = _clampPad(_hour.text, 23);
+    if (_hour.text != padded) _hour.text = padded;
+    _writeParent();
+  }
+
+  void _onMinuteFocus() {
+    if (_minuteFocus.hasFocus) {
+      _selectAll(_minute);
+      return;
+    }
+    final padded = _clampPad(_minute.text, 59);
+    if (_minute.text != padded) _minute.text = padded;
+    _writeParent();
+  }
+
+  void _onHourChanged(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 2) digits = digits.substring(0, 2);
+    if (digits.length == 1) {
+      final n = int.tryParse(digits) ?? 0;
+      if (n > 2) {
+        final padded = _clampPad(digits, 23);
+        _hour.value = TextEditingValue(
+          text: padded,
+          selection: const TextSelection.collapsed(offset: 2),
+        );
+        _minuteFocus.requestFocus();
+      }
+    } else if (digits.length == 2) {
+      final padded = _clampPad(digits, 23);
+      if (_hour.text != padded) {
+        _hour.value = TextEditingValue(
+          text: padded,
+          selection: const TextSelection.collapsed(offset: 2),
+        );
+      }
+      _minuteFocus.requestFocus();
+    }
+    _writeParent();
+  }
+
+  void _onMinuteChanged(String value) {
+    var digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length > 2) digits = digits.substring(0, 2);
+    if (digits.length == 2) {
+      final padded = _clampPad(digits, 59);
+      if (_minute.text != padded) {
+        _minute.value = TextEditingValue(
+          text: padded,
+          selection: const TextSelection.collapsed(offset: 2),
+        );
+      }
+      _minuteFocus.unfocus();
+    }
+    _writeParent();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _digitBox(
+          controller: _hour,
+          focusNode: _hourFocus,
+          onChanged: _onHourChanged,
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2),
+          child: Text(
+            ':',
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: Color(0xFF282829),
+            ),
+          ),
+        ),
+        _digitBox(
+          controller: _minute,
+          focusNode: _minuteFocus,
+          onChanged: _onMinuteChanged,
+        ),
+      ],
+    );
+  }
+
+  Widget _digitBox({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required ValueChanged<String> onChanged,
+  }) {
+    return SizedBox(
+      width: 32,
+      height: 34,
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        maxLength: 2,
+        style: const TextStyle(
+          fontFamily: AppTheme.fontFamily,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Color(0xFF282829),
+          height: 1.1,
+        ),
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+          LengthLimitingTextInputFormatter(2),
+        ],
+        decoration: InputDecoration(
+          counterText: '',
+          isDense: true,
+          filled: true,
+          fillColor: const Color(0xFFF7F7F8),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFF58634), width: 1.4),
+          ),
+        ),
+        onChanged: onChanged,
+      ),
     );
   }
 }

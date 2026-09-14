@@ -60,8 +60,10 @@ function createPrisma() {
     review: {
       aggregate: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       groupBy: jest.fn(),
       upsert: jest.fn(),
+      update: jest.fn(),
     },
   };
 }

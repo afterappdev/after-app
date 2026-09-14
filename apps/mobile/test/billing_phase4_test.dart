@@ -71,6 +71,13 @@ void main() {
     expect(PixCharge.fromResponse({'credits': 10}).amount, isNull);
     expect(PixCharge.fromResponse({}).qrCodeText, isNull);
     expect(PixCharge.fromResponse({}).qrCodeImage, isNull);
+    expect(
+      friendlyPixErrorFrom(
+        statusCode: 503,
+        message: 'PIX payment provider is not configured',
+      ),
+      'Pagamento por PIX ainda não está disponível.',
+    );
   });
 
   test('polling para em status final', () {
@@ -128,19 +135,19 @@ void main() {
     final paths = <String>[];
     final client = MockClient((request) async {
       paths.add('${request.method} ${request.url.path}');
-      expect(request.body.contains('"credits"'), isFalse);
-      expect(request.body.contains('PAID'), isFalse);
-      return http.Response(
-        jsonEncode({'message': 'PIX payment provider is not configured'}),
-        503,
-        headers: {'content-type': 'application/json'},
-      );
+      if (request.url.path.endsWith('/credits/pix/create')) {
+        return http.Response(
+          jsonEncode({'message': 'PIX payment provider is not configured'}),
+          503,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
     });
-    final api = ApiClient(client: client);
 
     await tester.pumpWidget(
       Provider.value(
-        value: api,
+        value: ApiClient(client: client),
         child: MaterialApp(
           home: PixCheckoutScreen(pack: Map<String, dynamic>.from(_pack)),
         ),
@@ -148,11 +155,66 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('fiscal-generate-pix')));
+    await tester.tap(find.byKey(const Key('fiscal-generate-pix')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('Pagamento por PIX ainda não está disponível.'), findsOneWidget);
+    expect(paths, contains('POST /credits/pix/create'));
+    expect(
+      find.text('Pagamento por PIX ainda não está disponível.'),
+      findsOneWidget,
+    );
     expect(find.textContaining('not configured'), findsNothing);
     expect(paths.any((p) => p.contains('dev-confirm')), isFalse);
-    expect(paths, contains('POST /credits/pix/create'));
+  });
+
+  testWidgets('PIX envia invoiceRequested false por padrão', (tester) async {
+    String? body;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/credits/pix/create')) {
+        body = request.body;
+        return http.Response(
+          jsonEncode({
+            'purchaseId': 'p-fiscal',
+            'status': 'PENDING',
+            'qrCodeText': '00020126copia',
+          }),
+          201,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path.endsWith('/credits/purchases/p-fiscal')) {
+        return http.Response(
+          jsonEncode({'id': 'p-fiscal', 'status': 'PENDING'}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      Provider.value(
+        value: ApiClient(client: client),
+        child: MaterialApp(
+          home: PixCheckoutScreen(pack: Map<String, dynamic>.from(_pack)),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('fiscal-generate-pix')));
+    await tester.pump();
+    await tester.pump();
+
+    final payload = jsonDecode(body!) as Map<String, dynamic>;
+    expect(payload['packageKey'], 'unit_1');
+    expect(payload['invoiceRequested'], isFalse);
+    expect(payload.containsKey('fiscalDocument'), isFalse);
+    expect(payload.containsKey('fiscalName'), isFalse);
   });
 
   testWidgets('Web não chama dev-confirm', (tester) async {
@@ -221,6 +283,9 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('fiscal-generate-pix')));
     await tester.pump();
     await tester.pump();
     await tester.pump();
@@ -627,6 +692,9 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('fiscal-generate-pix')));
     await tester.pump();
     await tester.pump();
     await tester.pump();

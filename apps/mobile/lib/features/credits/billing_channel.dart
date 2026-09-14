@@ -12,8 +12,30 @@ bool billingUsesStore({bool? isWeb, TargetPlatform? platform}) {
 bool billingUsesPix({bool? isWeb, TargetPlatform? platform}) =>
     !billingUsesStore(isWeb: isWeb, platform: platform);
 
-Map<String, String> pixCreateBody(String packageKey) => {
+Map<String, dynamic> pixCreateBody(
+  String packageKey, [
+  Map<String, dynamic>? fiscal,
+]) =>
+    {
       'packageKey': packageKey,
+      ...?fiscal,
+    };
+
+Map<String, dynamic> storeConfirmBody({
+  required String packageKey,
+  required String productId,
+  required String provider,
+  required String purchaseId,
+  required String verificationData,
+  Map<String, dynamic>? fiscal,
+}) =>
+    {
+      'packageKey': packageKey,
+      'productId': productId,
+      'provider': provider,
+      'purchaseId': purchaseId,
+      'verificationData': verificationData,
+      ...?fiscal,
     };
 
 int walletBalanceFromResponse(Map<String, dynamic> json) {

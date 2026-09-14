@@ -463,6 +463,13 @@ class _HomeScreenState extends State<HomeScreen> {
           if (_venueFilters.hasCoverCharge) 'hasCoverCharge': 'true',
           if (_venueFilters.hasWheelchairAccess) 'hasWheelchairAccess': 'true',
           if (_venueFilters.isPetFriendly) 'isPetFriendly': 'true',
+          if (_venueFilters.hasLiveMusic) 'hasLiveMusic': 'true',
+          if (_venueFilters.hasBirthdayTreat) 'hasBirthdayTreat': 'true',
+          if (_venueFilters.hasDelivery) 'hasDelivery': 'true',
+          if (_venueFilters.hasGlutenFreeFood) 'hasGlutenFreeFood': 'true',
+          if (_venueFilters.hasLactoseFreeFood) 'hasLactoseFreeFood': 'true',
+          if (_venueFilters.hasAirConditioning) 'hasAirConditioning': 'true',
+          if (_venueFilters.hasBabyChangingRoom) 'hasBabyChangingRoom': 'true',
         },
       );
       if (!mounted) return;
@@ -633,6 +640,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _venueFilters.hasCoverCharge = next.hasCoverCharge;
       _venueFilters.hasWheelchairAccess = next.hasWheelchairAccess;
       _venueFilters.isPetFriendly = next.isPetFriendly;
+      _venueFilters.hasLiveMusic = next.hasLiveMusic;
+      _venueFilters.hasBirthdayTreat = next.hasBirthdayTreat;
+      _venueFilters.hasDelivery = next.hasDelivery;
+      _venueFilters.hasGlutenFreeFood = next.hasGlutenFreeFood;
+      _venueFilters.hasLactoseFreeFood = next.hasLactoseFreeFood;
+      _venueFilters.hasAirConditioning = next.hasAirConditioning;
+      _venueFilters.hasBabyChangingRoom = next.hasBabyChangingRoom;
     });
     _searchVenues(_venueQuery.text);
   }
@@ -1767,6 +1781,13 @@ class _VenueSearchFilters {
   bool hasCoverCharge = false;
   bool hasWheelchairAccess = false;
   bool isPetFriendly = false;
+  bool hasLiveMusic = false;
+  bool hasBirthdayTreat = false;
+  bool hasDelivery = false;
+  bool hasGlutenFreeFood = false;
+  bool hasLactoseFreeFood = false;
+  bool hasAirConditioning = false;
+  bool hasBabyChangingRoom = false;
 
   bool get isActive => count > 0;
 
@@ -1777,7 +1798,14 @@ class _VenueSearchFilters {
       (hasKidsSpace ? 1 : 0) +
       (hasCoverCharge ? 1 : 0) +
       (hasWheelchairAccess ? 1 : 0) +
-      (isPetFriendly ? 1 : 0);
+      (isPetFriendly ? 1 : 0) +
+      (hasLiveMusic ? 1 : 0) +
+      (hasBirthdayTreat ? 1 : 0) +
+      (hasDelivery ? 1 : 0) +
+      (hasGlutenFreeFood ? 1 : 0) +
+      (hasLactoseFreeFood ? 1 : 0) +
+      (hasAirConditioning ? 1 : 0) +
+      (hasBabyChangingRoom ? 1 : 0);
 
   void reset() {
     category = null;
@@ -1787,6 +1815,13 @@ class _VenueSearchFilters {
     hasCoverCharge = false;
     hasWheelchairAccess = false;
     isPetFriendly = false;
+    hasLiveMusic = false;
+    hasBirthdayTreat = false;
+    hasDelivery = false;
+    hasGlutenFreeFood = false;
+    hasLactoseFreeFood = false;
+    hasAirConditioning = false;
+    hasBabyChangingRoom = false;
   }
 
   _VenueSearchFilters copy() {
@@ -1797,7 +1832,14 @@ class _VenueSearchFilters {
       ..hasKidsSpace = hasKidsSpace
       ..hasCoverCharge = hasCoverCharge
       ..hasWheelchairAccess = hasWheelchairAccess
-      ..isPetFriendly = isPetFriendly;
+      ..isPetFriendly = isPetFriendly
+      ..hasLiveMusic = hasLiveMusic
+      ..hasBirthdayTreat = hasBirthdayTreat
+      ..hasDelivery = hasDelivery
+      ..hasGlutenFreeFood = hasGlutenFreeFood
+      ..hasLactoseFreeFood = hasLactoseFreeFood
+      ..hasAirConditioning = hasAirConditioning
+      ..hasBabyChangingRoom = hasBabyChangingRoom;
   }
 }
 
@@ -1849,6 +1891,41 @@ class _VenueActiveFilters extends StatelessWidget {
         _filterChip(
           'Pet friendly',
           () => onClear(() => filters.isPetFriendly = false),
+        ),
+      if (filters.hasLiveMusic)
+        _filterChip(
+          'Música ao vivo',
+          () => onClear(() => filters.hasLiveMusic = false),
+        ),
+      if (filters.hasBirthdayTreat)
+        _filterChip(
+          'Brinde aniversariante',
+          () => onClear(() => filters.hasBirthdayTreat = false),
+        ),
+      if (filters.hasDelivery)
+        _filterChip(
+          'Delivery',
+          () => onClear(() => filters.hasDelivery = false),
+        ),
+      if (filters.hasGlutenFreeFood)
+        _filterChip(
+          'Sem glúten',
+          () => onClear(() => filters.hasGlutenFreeFood = false),
+        ),
+      if (filters.hasLactoseFreeFood)
+        _filterChip(
+          'Sem lactose',
+          () => onClear(() => filters.hasLactoseFreeFood = false),
+        ),
+      if (filters.hasAirConditioning)
+        _filterChip(
+          'Climatizado',
+          () => onClear(() => filters.hasAirConditioning = false),
+        ),
+      if (filters.hasBabyChangingRoom)
+        _filterChip(
+          'Fraldário',
+          () => onClear(() => filters.hasBabyChangingRoom = false),
         ),
     ];
     return Wrap(
@@ -2079,6 +2156,41 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
               'Pet friendly',
               _draft.isPetFriendly,
               (v) => setState(() => _draft.isPetFriendly = v),
+            ),
+            _filterCheck(
+              'Música ao vivo',
+              _draft.hasLiveMusic,
+              (v) => setState(() => _draft.hasLiveMusic = v),
+            ),
+            _filterCheck(
+              'Brinde aniversariante',
+              _draft.hasBirthdayTreat,
+              (v) => setState(() => _draft.hasBirthdayTreat = v),
+            ),
+            _filterCheck(
+              'Delivery',
+              _draft.hasDelivery,
+              (v) => setState(() => _draft.hasDelivery = v),
+            ),
+            _filterCheck(
+              'Comida sem glúten',
+              _draft.hasGlutenFreeFood,
+              (v) => setState(() => _draft.hasGlutenFreeFood = v),
+            ),
+            _filterCheck(
+              'Comida sem lactose',
+              _draft.hasLactoseFreeFood,
+              (v) => setState(() => _draft.hasLactoseFreeFood = v),
+            ),
+            _filterCheck(
+              'Ambiente climatizado',
+              _draft.hasAirConditioning,
+              (v) => setState(() => _draft.hasAirConditioning = v),
+            ),
+            _filterCheck(
+              'Fraldário',
+              _draft.hasBabyChangingRoom,
+              (v) => setState(() => _draft.hasBabyChangingRoom = v),
             ),
             const SizedBox(height: 16),
             Row(

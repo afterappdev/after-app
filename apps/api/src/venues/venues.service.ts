@@ -18,21 +18,37 @@ import { inferMediaType } from '../common/utils/media-type';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 
+const AMENITY_BOOL_KEYS = [
+  'acceptsMealVoucher',
+  'hasKidsSpace',
+  'hasCoverCharge',
+  'hasWheelchairAccess',
+  'isPetFriendly',
+  'hasLiveMusic',
+  'hasBirthdayTreat',
+  'hasDelivery',
+  'hasGlutenFreeFood',
+  'hasLactoseFreeFood',
+  'hasAirConditioning',
+  'hasBabyChangingRoom',
+] as const;
+
+type AmenityBoolKey = (typeof AMENITY_BOOL_KEYS)[number];
+
 function amenityFlags(contacts: unknown) {
   const c =
     contacts && typeof contacts === 'object' && !Array.isArray(contacts)
       ? (contacts as Record<string, unknown>)
       : {};
+  const flags = Object.fromEntries(
+    AMENITY_BOOL_KEYS.map((key) => [key, c[key] === true]),
+  ) as Record<AmenityBoolKey, boolean>;
   return {
-    acceptsMealVoucher: c.acceptsMealVoucher === true,
-    hasKidsSpace: c.hasKidsSpace === true,
-    hasCoverCharge: c.hasCoverCharge === true,
+    ...flags,
     coverCharge:
       c.coverCharge == null || c.coverCharge === ''
         ? ''
         : String(c.coverCharge),
-    hasWheelchairAccess: c.hasWheelchairAccess === true,
-    isPetFriendly: c.isPetFriendly === true,
   };
 }
 
@@ -98,12 +114,7 @@ export class VenuesService {
     filters: {
       category?: string;
       minRating?: number;
-      acceptsMealVoucher?: boolean;
-      hasKidsSpace?: boolean;
-      hasCoverCharge?: boolean;
-      hasWheelchairAccess?: boolean;
-      isPetFriendly?: boolean;
-    } = {},
+    } & Partial<Record<AmenityBoolKey, boolean>> = {},
   ) {
     const venues = await this.prisma.venue.findMany({
       select: {
@@ -145,30 +156,10 @@ export class VenuesService {
     if (category) {
       ranked = ranked.filter((venue) => venue.category === category);
     }
-    if (filters.acceptsMealVoucher) {
-      ranked = ranked.filter(
-        (venue) => amenityFlags(venue.contacts).acceptsMealVoucher,
-      );
-    }
-    if (filters.hasKidsSpace) {
-      ranked = ranked.filter(
-        (venue) => amenityFlags(venue.contacts).hasKidsSpace,
-      );
-    }
-    if (filters.hasCoverCharge) {
-      ranked = ranked.filter(
-        (venue) => amenityFlags(venue.contacts).hasCoverCharge,
-      );
-    }
-    if (filters.hasWheelchairAccess) {
-      ranked = ranked.filter(
-        (venue) => amenityFlags(venue.contacts).hasWheelchairAccess,
-      );
-    }
-    if (filters.isPetFriendly) {
-      ranked = ranked.filter(
-        (venue) => amenityFlags(venue.contacts).isPetFriendly,
-      );
+    for (const key of AMENITY_BOOL_KEYS) {
+      if (filters[key]) {
+        ranked = ranked.filter((venue) => amenityFlags(venue.contacts)[key]);
+      }
     }
 
     const stats = await this.reviewStatsBatch(ranked.map((venue) => venue.id));
@@ -281,6 +272,51 @@ export class VenuesService {
     return this.reviewStats(venueId);
   }
 
+  async replyToReview(
+    user: { userId: string; role: 'USER' | 'VENUE' | 'ADMIN' },
+    venueId: string,
+    reviewId: string,
+    reply: string,
+  ) {
+    if (user.role !== 'VENUE') {
+      throw new ForbiddenException(
+        'Apenas o estabelecimento pode responder avaliações',
+      );
+    }
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true, ownerUserId: true },
+    });
+    if (!venue) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    if (venue.ownerUserId !== user.userId) {
+      throw new ForbiddenException(
+        'Sem permissão para responder estas avaliações',
+      );
+    }
+
+    const review = await this.prisma.review.findFirst({
+      where: { id: reviewId, venueId },
+      select: { id: true },
+    });
+    if (!review) {
+      throw new NotFoundException('Avaliação não encontrada');
+    }
+
+    const text = reply.trim() || null;
+    await this.prisma.review.update({
+      where: { id: reviewId },
+      data: {
+        venueReply: text,
+        venueReplyAt: text ? new Date() : null,
+      },
+    });
+
+    return this.reviewStats(venueId);
+  }
+
   private async reviewStats(venueId: string) {
     const [agg, reviews] = await Promise.all([
       this.prisma.review.aggregate({
@@ -306,6 +342,8 @@ export class VenuesService {
         userId: review.userId,
         rating: review.rating,
         testimonial: review.testimonial,
+        venueReply: review.venueReply,
+        venueReplyAt: review.venueReplyAt,
         createdAt: review.createdAt,
         user: review.user,
       })),

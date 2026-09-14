@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -36,6 +38,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
+  final _cityQuery = TextEditingController();
 
   /// Exactly one role: USER or VENUE. Never both. Empty until chosen on social.
   String _role = 'USER';
@@ -45,13 +48,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   SocialOnboarding? _social;
   bool _appliedSocial = false;
 
-  List<Map<String, dynamic>> _states = [];
-  List<Map<String, dynamic>> _cities = [];
+  List<Map<String, dynamic>> _cityResults = [];
   String? _selectedUf;
   String? _selectedCity;
-  bool _loadingStates = true;
-  bool _loadingCities = false;
+  bool _searchingCities = false;
+  bool _cityLookupDone = false;
   String? _locationsError;
+  Timer? _cityDebounce;
+  int _citySearchGen = 0;
 
   @override
   void initState() {
@@ -60,7 +64,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _email.addListener(_onFormChanged);
     _password.addListener(_onFormChanged);
     _confirmPassword.addListener(_onFormChanged);
-    _loadStates();
   }
 
   @override
@@ -94,6 +97,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _confirmPassword
       ..removeListener(_onFormChanged)
       ..dispose();
+    _cityDebounce?.cancel();
+    _cityQuery.dispose();
     super.dispose();
   }
 
@@ -140,52 +145,91 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Future<void> _loadStates() async {
+  String get _selectedCityLabel {
+    if (_selectedCity == null || _selectedCity!.isEmpty) return '';
+    final uf = _selectedUf?.trim() ?? '';
+    return uf.isEmpty ? _selectedCity! : '$_selectedCity, $uf';
+  }
+
+  Future<void> _searchCities(String query) async {
+    final gen = ++_citySearchGen;
     setState(() {
-      _loadingStates = true;
+      _searchingCities = true;
+      _cityLookupDone = false;
       _locationsError = null;
     });
     try {
       final api = context.read<ApiClient>();
-      final data = await api.get('/locations/states') as List<dynamic>;
-      final states = data.cast<Map<String, dynamic>>();
-      if (!mounted) return;
+      final data = await api.get(
+        '/locations/cities',
+        query: {'q': query.trim()},
+      );
+      if (!mounted || gen != _citySearchGen) return;
+      final list = (data as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       setState(() {
-        _states = states;
-        _loadingStates = false;
+        _cityResults = list;
+        _searchingCities = false;
+        _cityLookupDone = true;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _citySearchGen) return;
       setState(() {
-        _loadingStates = false;
+        _cityResults = [];
+        _searchingCities = false;
+        _cityLookupDone = true;
         _locationsError = e.message;
       });
     }
   }
 
-  Future<void> _loadCities(String uf) async {
-    setState(() {
-      _loadingCities = true;
-      _selectedCity = null;
-      _cities = [];
-    });
-    try {
-      final api = context.read<ApiClient>();
-      final data =
-          await api.get('/locations/states/$uf/cities') as List<dynamic>;
-      final cities = data.cast<Map<String, dynamic>>();
-      if (!mounted) return;
-      setState(() {
-        _cities = cities;
-        _loadingCities = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadingCities = false;
-        _locationsError = e.message;
-      });
+  void _onCityQueryChanged(String value) {
+    _cityDebounce?.cancel();
+    if (_selectedCity != null && value.trim() == _selectedCityLabel) {
+      return;
     }
+    setState(() {
+      _selectedCity = null;
+      _selectedUf = null;
+      _cityLookupDone = false;
+    });
+    if (value.trim().isEmpty) {
+      _citySearchGen++;
+      setState(() {
+        _cityResults = [];
+        _searchingCities = false;
+        _cityLookupDone = false;
+        _locationsError = null;
+      });
+      return;
+    }
+    _cityDebounce = Timer(const Duration(milliseconds: 280), () {
+      _searchCities(value);
+    });
+  }
+
+  void _selectCity(Map<String, dynamic> city) {
+    final name = city['name']?.toString().trim() ?? '';
+    final uf = city['uf']?.toString().trim() ?? '';
+    if (name.isEmpty) return;
+    _cityDebounce?.cancel();
+    _citySearchGen++;
+    setState(() {
+      _selectedCity = name;
+      _selectedUf = uf.isEmpty ? null : uf;
+      _cityResults = [];
+      _searchingCities = false;
+      _cityLookupDone = false;
+      _locationsError = null;
+      _cityQuery.value = TextEditingValue(
+        text: uf.isEmpty ? name : '$name, $uf',
+        selection: TextSelection.collapsed(
+          offset: uf.isEmpty ? name.length : '$name, $uf'.length,
+        ),
+      );
+    });
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _submit() async {
@@ -217,7 +261,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
     if (_selectedUf == null || _selectedCity == null) {
-      _showErrorSnackBar('Selecione o estado e a cidade.');
+      _showErrorSnackBar('Selecione uma cidade da lista de sugestões.');
       return;
     }
 
@@ -454,97 +498,103 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       color: Theme.of(context).colorScheme.error,
                     ),
                   ),
-                  TextButton(
-                    onPressed: _loadStates,
-                    child: const Text('Tentar novamente'),
-                  ),
                   const SizedBox(height: 8),
                 ],
-                DropdownButtonFormField<String>(
-                  key: const Key('register-state'),
-                  // ignore: deprecated_member_use
-                  value: _selectedUf,
-                  isExpanded: true,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _hint),
-                  dropdownColor: Colors.white,
-                  style: const TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    color: Color(0xFF282829),
-                    fontSize: 13,
-                  ),
-                  decoration: _fieldDecoration(
-                    hint: _loadingStates
-                        ? 'Carregando estados...'
-                        : 'Selecione seu estado',
-                    icon: Icons.location_on_outlined,
-                  ),
-                  hint: Text(
-                    _loadingStates
-                        ? 'Carregando estados...'
-                        : 'Selecione seu estado',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      color: _hint,
-                      fontSize: 13,
-                    ),
-                  ),
-                  items: _states
-                      .map(
-                        (s) => DropdownMenuItem<String>(
-                          value: s['uf'] as String,
-                          child: Text('${s['uf']} — ${s['name']}'),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: _loadingStates
-                      ? null
-                      : (uf) async {
-                          if (uf == null) return;
-                          setState(() => _selectedUf = uf);
-                          await _loadCities(uf);
-                        },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                TextField(
                   key: const Key('register-city'),
-                  // ignore: deprecated_member_use
-                  value: _selectedCity,
-                  isExpanded: true,
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _hint),
-                  dropdownColor: Colors.white,
-                  style: const TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    color: Color(0xFF282829),
-                    fontSize: 13,
-                  ),
+                  controller: _cityQuery,
+                  style: _inputTextStyle,
+                  textInputAction: TextInputAction.next,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: _onCityQueryChanged,
                   decoration: _fieldDecoration(
-                    hint: _loadingCities
-                        ? 'Carregando cidades...'
-                        : 'Selecione sua cidade',
-                    icon: Icons.apartment_outlined,
+                    hint: 'Digite sua cidade',
+                    icon: Icons.location_on_outlined,
+                    suffix: _searchingCities
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: _accent,
+                              ),
+                            ),
+                          )
+                        : _selectedCity != null
+                            ? const Icon(
+                                Icons.check_circle_outline_rounded,
+                                color: Color(0xFF2F9E6A),
+                                size: 22,
+                              )
+                            : null,
                   ),
-                  hint: Text(
-                    _loadingCities
-                        ? 'Carregando cidades...'
-                        : 'Selecione sua cidade',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      color: _hint,
-                      fontSize: 13,
+                ),
+                if (_cityResults.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shadowColor: Colors.black12,
+                    borderRadius: BorderRadius.circular(14),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: ListView.separated(
+                        key: const Key('register-city-suggestions'),
+                        primary: false,
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _cityResults.length,
+                        separatorBuilder: (_, _) => const Divider(
+                          height: 1,
+                          color: Color(0xFFE8E8EE),
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = _cityResults[index];
+                          final name = item['name']?.toString() ?? '';
+                          final uf = item['uf']?.toString() ?? '';
+                          final label = uf.isEmpty ? name : '$name, $uf';
+                          return ListTile(
+                            dense: true,
+                            leading: const Icon(
+                              Icons.location_on_outlined,
+                              color: _accent,
+                              size: 20,
+                            ),
+                            title: Text(
+                              label,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF282829),
+                              ),
+                            ),
+                            onTap: () => _selectCity(item),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                  items: _cities
-                      .map(
-                        (c) => DropdownMenuItem<String>(
-                          value: c['name'] as String,
-                          child: Text(c['name'] as String),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (_selectedUf == null || _loadingCities)
-                      ? null
-                      : (city) => setState(() => _selectedCity = city),
-                ),
+                ] else if (_cityLookupDone &&
+                    !_searchingCities &&
+                    _cityQuery.text.trim().isNotEmpty &&
+                    _selectedCity == null &&
+                    _cityResults.isEmpty &&
+                    _locationsError == null) ...[
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Nenhuma cidade encontrada.',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 12,
+                        color: _hint,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 if (!_isSocial) ...[
                   TextField(

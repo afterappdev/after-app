@@ -39,6 +39,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
   bool _descExpanded = false;
   bool _showAllPromos = false;
   bool _submittingReview = false;
+  String? _submittingReplyId;
   int _tab = 0;
   int _draftRating = 0;
   String? _distanceLabel;
@@ -190,6 +191,45 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     }
   }
 
+  Future<void> _submitReply(String reviewId, String reply) async {
+    final auth = context.read<AuthController>();
+    if (auth.user?.isVenue != true || auth.user?.venueId != widget.venueId) {
+      return;
+    }
+    final text = reply.trim();
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escreva a resposta do estabelecimento.')),
+      );
+      return;
+    }
+    setState(() => _submittingReplyId = reviewId);
+    try {
+      final api = context.read<ApiClient>();
+      final data = await api.patch(
+        '/venues/${widget.venueId}/reviews/$reviewId/reply',
+        body: {'reply': text},
+      ) as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() {
+        _venue = {
+          ...?_venue,
+          'avgRating': data['avgRating'],
+          'reviewCount': data['reviewCount'],
+          'reviews': data['reviews'],
+        };
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Resposta publicada.')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _submittingReplyId = null);
+    }
+  }
+
   @override
   void dispose() {
     _reviewCtrl.dispose();
@@ -201,6 +241,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     final isUser = context.watch<AuthController>().user?.isVenue != true;
     final session = context.watch<AuthController>().user;
     final canReview = session != null && session.isVenue != true;
+    final canReply =
+        session != null && session.isVenue && session.venueId == widget.venueId;
     final cover = ApiConfig.resolveMediaUrl(_venue?['coverUrl']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
     final name = _venue?['name']?.toString() ?? 'Local';
@@ -336,6 +378,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                               reviews: reviews,
                                                               canReview:
                                                                   canReview,
+                                                              canReply:
+                                                                  canReply,
                                                               showLoginHint:
                                                                   session ==
                                                                       null,
@@ -345,6 +389,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                                   _reviewCtrl,
                                                               submitting:
                                                                   _submittingReview,
+                                                              submittingReplyId:
+                                                                  _submittingReplyId,
                                                               alreadyReviewed:
                                                                   reviews.any(
                                                                 (item) =>
@@ -360,6 +406,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                               ),
                                                               onSubmit:
                                                                   _submitReview,
+                                                              onReply:
+                                                                  _submitReply,
                                                             )
                                                           : _ContactTab(
                                                               contacts:
@@ -774,6 +822,13 @@ class _AboutTab extends StatelessWidget {
     final coverCharge = contactMap['coverCharge']?.toString().trim() ?? '';
     final hasWheelchairAccess = contactMap['hasWheelchairAccess'] == true;
     final isPetFriendly = contactMap['isPetFriendly'] == true;
+    final hasLiveMusic = contactMap['hasLiveMusic'] == true;
+    final hasBirthdayTreat = contactMap['hasBirthdayTreat'] == true;
+    final hasDelivery = contactMap['hasDelivery'] == true;
+    final hasGlutenFreeFood = contactMap['hasGlutenFreeFood'] == true;
+    final hasLactoseFreeFood = contactMap['hasLactoseFreeFood'] == true;
+    final hasAirConditioning = contactMap['hasAirConditioning'] == true;
+    final hasBabyChangingRoom = contactMap['hasBabyChangingRoom'] == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -850,6 +905,48 @@ class _AboutTab extends StatelessWidget {
                       ? coverCharge
                       : 'R\$ $coverCharge')
                   : null,
+            ),
+            (
+              Icons.music_note_outlined,
+              'Música ao vivo',
+              hasLiveMusic,
+              null,
+            ),
+            (
+              Icons.cake_outlined,
+              'Brinde aniversariante',
+              hasBirthdayTreat,
+              null,
+            ),
+            (
+              Icons.delivery_dining_outlined,
+              'Delivery',
+              hasDelivery,
+              null,
+            ),
+            (
+              Icons.bakery_dining_outlined,
+              'Comida sem glúten',
+              hasGlutenFreeFood,
+              null,
+            ),
+            (
+              Icons.local_drink_outlined,
+              'Comida sem lactose',
+              hasLactoseFreeFood,
+              null,
+            ),
+            (
+              Icons.ac_unit_outlined,
+              'Ambiente climatizado',
+              hasAirConditioning,
+              null,
+            ),
+            (
+              Icons.baby_changing_station,
+              'Fraldário',
+              hasBabyChangingRoom,
+              null,
             ),
           ],
         ),
@@ -1305,24 +1402,30 @@ class _ReviewsTab extends StatelessWidget {
   const _ReviewsTab({
     required this.reviews,
     required this.canReview,
+    required this.canReply,
     required this.showLoginHint,
     required this.rating,
     required this.commentCtrl,
     required this.submitting,
+    required this.submittingReplyId,
     required this.alreadyReviewed,
     required this.onRating,
     required this.onSubmit,
+    required this.onReply,
   });
 
   final List<dynamic> reviews;
   final bool canReview;
+  final bool canReply;
   final bool showLoginHint;
   final int rating;
   final TextEditingController commentCtrl;
   final bool submitting;
+  final String? submittingReplyId;
   final bool alreadyReviewed;
   final ValueChanged<int> onRating;
   final VoidCallback onSubmit;
+  final Future<void> Function(String reviewId, String reply) onReply;
 
   @override
   Widget build(BuildContext context) {
@@ -1462,7 +1565,17 @@ class _ReviewsTab extends StatelessWidget {
           )
         else
           for (var i = 0; i < reviews.length; i++) ...[
-            _ReviewCard(review: Map<String, dynamic>.from(reviews[i] as Map)),
+            _ReviewCard(
+              key: ValueKey(
+                (reviews[i] as Map)['id']?.toString() ?? 'review-$i',
+              ),
+              review: Map<String, dynamic>.from(reviews[i] as Map),
+              canReply: canReply,
+              replying:
+                  submittingReplyId ==
+                  (reviews[i] as Map)['id']?.toString(),
+              onReply: onReply,
+            ),
             if (i != reviews.length - 1) const SizedBox(height: 10),
           ],
       ],
@@ -1470,26 +1583,81 @@ class _ReviewsTab extends StatelessWidget {
   }
 }
 
-class _ReviewCard extends StatelessWidget {
-  const _ReviewCard({required this.review});
+class _ReviewCard extends StatefulWidget {
+  const _ReviewCard({
+    super.key,
+    required this.review,
+    required this.canReply,
+    required this.replying,
+    required this.onReply,
+  });
 
   final Map<String, dynamic> review;
+  final bool canReply;
+  final bool replying;
+  final Future<void> Function(String reviewId, String reply) onReply;
+
+  @override
+  State<_ReviewCard> createState() => _ReviewCardState();
+}
+
+class _ReviewCardState extends State<_ReviewCard> {
+  late final TextEditingController _replyCtrl;
+  late bool _editing;
+
+  String get _reviewId => widget.review['id']?.toString() ?? '';
+
+  String get _venueReply =>
+      widget.review['venueReply']?.toString().trim() ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _replyCtrl = TextEditingController(text: _venueReply);
+    _editing = widget.canReply && _venueReply.isEmpty;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReviewCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextReply = widget.review['venueReply']?.toString().trim() ?? '';
+    final prevReply = oldWidget.review['venueReply']?.toString().trim() ?? '';
+    if (nextReply != prevReply) {
+      _replyCtrl.text = nextReply;
+      _editing = widget.canReply && nextReply.isEmpty;
+    }
+  }
+
+  @override
+  void dispose() {
+    _replyCtrl.dispose();
+    super.dispose();
+  }
+
+  String _formatDate(String? raw) {
+    final parsed = DateTime.tryParse(raw ?? '');
+    if (parsed == null) return '';
+    final local = parsed.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final user = review['user'] is Map
-        ? Map<String, dynamic>.from(review['user'] as Map)
+    final user = widget.review['user'] is Map
+        ? Map<String, dynamic>.from(widget.review['user'] as Map)
         : <String, dynamic>{};
     final name = user['name']?.toString() ?? 'Cliente';
     final avatar = ApiConfig.resolveMediaUrl(user['avatarUrl']?.toString());
-    final rating = (review['rating'] as num?)?.toDouble() ?? 0;
-    final testimonial = review['testimonial']?.toString().trim() ?? '';
-    final createdAt = DateTime.tryParse(review['createdAt']?.toString() ?? '');
-    final dateLabel = createdAt == null
-        ? ''
-        : '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')}/${createdAt.year}';
+    final rating = (widget.review['rating'] as num?)?.toDouble() ?? 0;
+    final testimonial = widget.review['testimonial']?.toString().trim() ?? '';
+    final dateLabel = _formatDate(widget.review['createdAt']?.toString());
+    final replyDateLabel = _formatDate(
+      widget.review['venueReplyAt']?.toString(),
+    );
     final initial =
         name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'C';
+    final showPublishedReply = _venueReply.isNotEmpty && !_editing;
+    final showReplyField = widget.canReply && (_editing || _venueReply.isEmpty);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1559,6 +1727,170 @@ class _ReviewCard extends StatelessWidget {
                 height: 1.4,
                 color: Color(0xFF6B6B75),
               ),
+            ),
+          ],
+          if (showPublishedReply) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE8F0ED)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.storefront_outlined,
+                        size: 16,
+                        color: Color(0xFFF58634),
+                      ),
+                      const SizedBox(width: 6),
+                      const Expanded(
+                        child: Text(
+                          'Resposta do estabelecimento',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: Color(0xFF282829),
+                          ),
+                        ),
+                      ),
+                      if (replyDateLabel.isNotEmpty)
+                        Text(
+                          replyDateLabel,
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 11,
+                            color: Color(0xFF8B8B96),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _venueReply,
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 13,
+                      height: 1.4,
+                      color: Color(0xFF6B6B75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.canReply)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: widget.replying
+                      ? null
+                      : () => setState(() => _editing = true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFF58634),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: const Text(
+                    'Editar resposta',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+          if (showReplyField) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _replyCtrl,
+              enabled: !widget.replying,
+              maxLines: 3,
+              maxLength: 800,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Resposta do estabelecimento',
+                counterText: '',
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.all(12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFC5D4CF)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFC5D4CF)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFF58634)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (_venueReply.isNotEmpty)
+                  TextButton(
+                    onPressed: widget.replying
+                        ? null
+                        : () {
+                            _replyCtrl.text = _venueReply;
+                            setState(() => _editing = false);
+                          },
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF6B6B75),
+                    ),
+                    child: const Text(
+                      'Cancelar',
+                      style: TextStyle(fontFamily: AppTheme.fontFamily),
+                    ),
+                  ),
+                const Spacer(),
+                SizedBox(
+                  height: 40,
+                  child: FilledButton(
+                    onPressed: widget.replying
+                        ? null
+                        : () => widget.onReply(_reviewId, _replyCtrl.text),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFF58634),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: widget.replying
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            _venueReply.isEmpty
+                                ? 'Publicar resposta'
+                                : 'Atualizar resposta',
+                            style: const TextStyle(
+                              fontFamily: AppTheme.fontFamily,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
