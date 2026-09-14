@@ -1,5 +1,8 @@
+import { BUSINESS_TIME_ZONE } from '../common/constants/timezone';
+
+export { BUSINESS_TIME_ZONE };
+
 /** Business calendar for After Admin metrics. */
-export const BUSINESS_TIME_ZONE = 'America/Sao_Paulo';
 
 export type YearMonth = {
   year: number;
