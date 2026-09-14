@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/network/api_client.dart';
 import '../../core/theme/admin_theme.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_account.dart';
@@ -20,6 +21,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   AdminAccountDetail? data;
   String? error;
   bool loading = true;
+  bool deleting = false;
 
   @override
   void initState() {
@@ -45,6 +47,53 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
         error = e.toString();
         loading = false;
       });
+    }
+  }
+
+  Future<void> _confirmDelete(AdminAccountDetail account) async {
+    final venueWarning = account.role == 'VENUE' || account.venue != null
+        ? '\n\nEstabelecimento, saldo, compras e dados relacionados também poderão ser removidos.'
+        : '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir conta?'),
+        content: Text(
+          'Esta ação é permanente e não poderá ser desfeita.$venueWarning',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('admin-delete-cancel'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            key: const Key('admin-delete-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Excluir definitivamente'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => deleting = true);
+    try {
+      await context.read<AdminApi>().deleteAccount(account.id);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => deleting = false);
+      final message = e is ApiException
+          ? e.message
+          : 'Não foi possível excluir a conta.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
     }
   }
 
@@ -97,6 +146,21 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
                   _row('Descrição', venue.description!),
               ],
             ),
+          ),
+        ],
+        if (account.role != 'ADMIN') ...[
+          const SizedBox(height: 24),
+          FilledButton(
+            key: const Key('admin-delete-account'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFB3261E),
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: const Color(0xFFB3261E).withValues(
+                alpha: 0.5,
+              ),
+            ),
+            onPressed: deleting ? null : () => _confirmDelete(account),
+            child: Text(deleting ? 'Excluindo...' : 'Excluir conta'),
           ),
         ],
       ],

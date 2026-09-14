@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UsersService } from '../../users/users.service';
 import { paginate, paginationMeta } from '../pagination';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
 
@@ -8,7 +13,10 @@ const CONSUMER_ROLES: Role[] = [Role.USER, Role.VENUE];
 
 @Injectable()
 export class AdminAccountsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly users: UsersService,
+  ) {}
 
   async list(query: AdminAccountsQueryDto) {
     const { page, limit, skip } = paginate(query.page, query.limit);
@@ -109,6 +117,24 @@ export class AdminAccountsService {
           }
         : null,
     };
+  }
+
+  async remove(id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Conta não encontrada');
+    }
+    if (user.role === Role.ADMIN) {
+      throw new BadRequestException(
+        'Conta administrativa não pode ser excluída.',
+      );
+    }
+
+    await this.users.deleteAccount(id);
+    return { success: true };
   }
 
   private buildWhere(query: AdminAccountsQueryDto): Prisma.UserWhereInput {

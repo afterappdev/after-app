@@ -1,3 +1,4 @@
+import 'package:after_admin/core/network/api_client.dart';
 import 'package:after_admin/core/storage/secure_token_store.dart';
 import 'package:after_admin/data/admin_account.dart';
 import 'package:after_admin/data/admin_api.dart';
@@ -26,6 +27,7 @@ class FakeAdminApi implements AdminApi {
     this.dashboardData,
     this.accountsPage,
     this.salesPage,
+    this.accountDetail,
   });
 
   Future<AdminLoginResult> Function(String email, String password)?
@@ -34,6 +36,9 @@ class FakeAdminApi implements AdminApi {
   AdminDashboard? dashboardData;
   Paginated<AdminAccount>? accountsPage;
   Paginated<AdminSale>? salesPage;
+  AdminAccountDetail? accountDetail;
+  String? deleteAccountError;
+  final List<String> deletedAccountIds = [];
   final List<({String token, String platform})> registeredTokens = [];
   final List<String> unregisteredTokens = [];
   bool failUnregister = false;
@@ -66,8 +71,28 @@ class FakeAdminApi implements AdminApi {
   }
 
   @override
-  Future<AdminAccountDetail> account(String id) {
+  Future<AdminAccountDetail> account(String id) async {
+    if (accountDetail != null) return accountDetail!;
     throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteAccount(String id) async {
+    if (deleteAccountError != null) {
+      throw ApiException(deleteAccountError!);
+    }
+    deletedAccountIds.add(id);
+    final page = accountsPage;
+    if (page != null) {
+      final remaining = page.items.where((item) => item.id != id).toList();
+      accountsPage = Paginated(
+        items: remaining,
+        page: page.page,
+        limit: page.limit,
+        total: remaining.length,
+        totalPages: page.totalPages,
+      );
+    }
   }
 
   @override

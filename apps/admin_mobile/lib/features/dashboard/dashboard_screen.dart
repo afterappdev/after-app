@@ -385,11 +385,23 @@ class _RecentAccounts extends StatelessWidget {
                       '${accounts[i].email}\n${roleLabel(accounts[i].role)} · ${formatDate(accounts[i].createdAt)}',
                     ),
                     isThreeLine: true,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AccountDetailScreen(id: accounts[i].id),
-                      ),
-                    ),
+                    onTap: () async {
+                      final deleted = await Navigator.of(context).push<bool>(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              AccountDetailScreen(id: accounts[i].id),
+                        ),
+                      );
+                      if (!context.mounted) return;
+                      if (deleted == true) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Conta excluída com sucesso'),
+                          ),
+                        );
+                        context.read<DashboardController>().load(silent: true);
+                      }
+                    },
                   ),
                   if (i != accounts.length - 1) const Divider(height: 1),
                 ],

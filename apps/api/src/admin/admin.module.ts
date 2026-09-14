@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { UsersModule } from '../users/users.module';
 import { AdminAccountsController } from './accounts/admin-accounts.controller';
 import { AdminAccountsService } from './accounts/admin-accounts.service';
 import { AdminAuthController } from './auth/admin-auth.controller';
@@ -14,7 +15,7 @@ import { AdminSalesController } from './sales/admin-sales.controller';
 import { AdminSalesService } from './sales/admin-sales.service';
 
 @Module({
-  imports: [AuthModule, AdminPushModule],
+  imports: [AuthModule, UsersModule, AdminPushModule],
   controllers: [
     AdminAuthController,
     AdminMeController,

@@ -124,11 +124,23 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   '${account.email}\n${roleLabel(account.role)} · ${formatDate(account.createdAt)}',
                 ),
                 isThreeLine: true,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => AccountDetailScreen(id: account.id),
-                  ),
-                ),
+                onTap: () async {
+                  final deleted = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => AccountDetailScreen(id: account.id),
+                    ),
+                  );
+                  if (!context.mounted) return;
+                  if (deleted == true) {
+                    await controller.accountDeleted(account.id);
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Conta excluída com sucesso'),
+                      ),
+                    );
+                  }
+                },
               ),
             );
           },

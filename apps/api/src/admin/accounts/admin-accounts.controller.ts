@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Delete, Get, HttpCode, Param, Query } from '@nestjs/common';
 import { AdminOnly } from '../guards/admin-only.decorator';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
 import { AdminAccountsService } from './admin-accounts.service';
@@ -16,5 +16,11 @@ export class AdminAccountsController {
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.accounts.getById(id);
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  remove(@Param('id') id: string) {
+    return this.accounts.remove(id);
   }
 }

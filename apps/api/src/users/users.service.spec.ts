@@ -126,5 +126,20 @@ describe('UsersService media cleanup', () => {
       ]);
       expect(order).toEqual(['db', 'cleanup']);
     });
+
+    it('deleteUserRecord recusa ADMIN sem apagar', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: USER_ID,
+        role: 'ADMIN',
+        avatarUrl: null,
+        venue: null,
+      });
+
+      await expect(service.deleteAccount(USER_ID)).rejects.toThrow(
+        'Conta administrativa não pode ser excluída por este fluxo.',
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+    });
   });
 });

@@ -59,6 +59,12 @@ class AccountsController extends ChangeNotifier {
     }
   }
 
+  Future<void> accountDeleted(String id) async {
+    items.removeWhere((account) => account.id == id);
+    notifyListeners();
+    await load();
+  }
+
   void setRole(String? value) {
     role = value;
     load();

@@ -24,6 +24,8 @@ abstract class AdminApi {
 
   Future<AdminAccountDetail> account(String id);
 
+  Future<void> deleteAccount(String id);
+
   Future<Paginated<AdminSale>> sales({
     int page = 1,
     int limit = 20,
@@ -98,6 +100,11 @@ class HttpAdminApi implements AdminApi {
   Future<AdminAccountDetail> account(String id) async {
     final data = await client.get('/admin/accounts/$id');
     return AdminAccountDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<void> deleteAccount(String id) async {
+    await client.delete('/admin/accounts/$id');
   }
 
   @override
