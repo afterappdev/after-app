@@ -1,68 +1,70 @@
 import { BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { Request } from 'express';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { UploadsController } from './uploads.controller';
+import { R2StorageService } from './r2-storage.service';
 
-function config(map: Record<string, string | undefined>): ConfigService {
+function uploadedFile(
+  overrides: Partial<Express.Multer.File> = {},
+): Express.Multer.File {
   return {
-    get: (key: string) => map[key],
-  } as unknown as ConfigService;
-}
-
-function request(overrides: Partial<Request> = {}): Request {
-  return {
-    protocol: 'http',
-    get: (name: string) => (name.toLowerCase() === 'host' ? 'localhost:3000' : undefined),
-    ...overrides,
-  } as Request;
-}
-
-function uploadedFile(filename = 'photo.jpg'): Express.Multer.File {
-  return {
-    filename,
+    buffer: Buffer.from('image-bytes'),
+    originalname: 'photo.jpg',
     mimetype: 'image/jpeg',
     size: 128,
+    ...overrides,
   } as Express.Multer.File;
 }
 
-describe('UploadsController PUBLIC_API_URL', () => {
-  it('usa PUBLIC_API_URL sem barra final', () => {
-    const controller = new UploadsController(
-      config({ PUBLIC_API_URL: 'https://api.app-after.com.br/' }),
-    );
-    const result = controller.upload(uploadedFile('abc.jpg'), request());
-    expect(result.url).toBe('https://api.app-after.com.br/uploads/abc.jpg');
-    expect(result.path).toBe('/uploads/abc.jpg');
-    expect(result.filename).toBe('abc.jpg');
-  });
+function storage(
+  overrides: Partial<Awaited<ReturnType<R2StorageService['upload']>>> = {},
+): jest.Mocked<Pick<R2StorageService, 'upload'>> {
+  return {
+    upload: jest.fn().mockResolvedValue({
+      key: 'uploads/abc.jpg',
+      filename: 'abc.jpg',
+      path: '/uploads/abc.jpg',
+      url: 'https://media.app-after.com.br/uploads/abc.jpg',
+      ...overrides,
+    }),
+  };
+}
 
-  it('usa PUBLIC_API_URL de desenvolvimento local', () => {
-    const controller = new UploadsController(
-      config({ PUBLIC_API_URL: 'http://localhost:3000' }),
-    );
-    const result = controller.upload(uploadedFile('local.png'), request());
-    expect(result.url).toBe('http://localhost:3000/uploads/local.png');
-    expect(result.path).toBe('/uploads/local.png');
-  });
+describe('UploadsController R2', () => {
+  it('faz upload e devolve URL pública do R2 no formato atual', async () => {
+    const r2 = storage();
+    const controller = new UploadsController(r2 as unknown as R2StorageService);
+    const file = uploadedFile();
 
-  it('cai no fallback protocol/host quando PUBLIC_API_URL está ausente', () => {
-    const controller = new UploadsController(config({}));
-    const req = request({
-      protocol: 'https',
-      get: (name: string) =>
-        name.toLowerCase() === 'host' ? 'proxy.example:443' : undefined,
+    const result = await controller.upload(file);
+
+    expect(r2.upload).toHaveBeenCalledTimes(1);
+    expect(r2.upload).toHaveBeenCalledWith({
+      buffer: file.buffer,
+      mimetype: 'image/jpeg',
+      originalname: 'photo.jpg',
     });
-    const result = controller.upload(uploadedFile('fb.webp'), req);
-    expect(result.url).toBe('https://proxy.example:443/uploads/fb.webp');
-    expect(result.path).toBe('/uploads/fb.webp');
+    expect(result).toEqual({
+      url: 'https://media.app-after.com.br/uploads/abc.jpg',
+      path: '/uploads/abc.jpg',
+      filename: 'abc.jpg',
+      mimeType: 'image/jpeg',
+      size: 128,
+    });
   });
 
-  it('rejeita upload sem arquivo', () => {
-    const controller = new UploadsController(
-      config({ PUBLIC_API_URL: 'https://api.app-after.com.br' }),
+  it('rejeita upload sem arquivo', async () => {
+    const r2 = storage();
+    const controller = new UploadsController(r2 as unknown as R2StorageService);
+    await expect(controller.upload(undefined as never)).rejects.toBeInstanceOf(
+      BadRequestException,
     );
-    expect(() =>
-      controller.upload(undefined as never, request()),
-    ).toThrow(BadRequestException);
+    expect(r2.upload).not.toHaveBeenCalled();
+  });
+
+  it('não usa diskStorage', () => {
+    const src = readFileSync(join(__dirname, 'uploads.controller.ts'), 'utf8');
+    expect(src).not.toContain('diskStorage');
+    expect(src).toContain('memoryStorage');
   });
 });

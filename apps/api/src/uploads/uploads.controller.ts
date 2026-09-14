@@ -2,36 +2,24 @@ import {
   BadRequestException,
   Controller,
   Post,
-  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { randomUUID } from 'crypto';
-import type { Request } from 'express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-
-const UPLOAD_DIR = join(process.cwd(), 'uploads');
+import { R2StorageService } from './r2-storage.service';
 
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
 export class UploadsController {
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly storage: R2StorageService) {}
 
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: UPLOAD_DIR,
-        filename: (_req, file, cb) => {
-          const ext = extname(file.originalname).toLowerCase() || '.jpg';
-          cb(null, `${randomUUID()}${ext}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 80 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         const ok =
@@ -50,23 +38,21 @@ export class UploadsController {
       },
     }),
   )
-  upload(@UploadedFile() file: Express.Multer.File, @Req() req: Request) {
+  async upload(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Arquivo obrigatório (campo file)');
     }
 
-    const publicApiUrl = this.config
-      .get<string>('PUBLIC_API_URL')
-      ?.trim()
-      .replace(/\/$/, '');
-    const url = publicApiUrl
-      ? `${publicApiUrl}/uploads/${file.filename}`
-      : `${req.protocol || 'http'}://${req.get('host') ?? 'localhost:3000'}/uploads/${file.filename}`;
+    const stored = await this.storage.upload({
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      originalname: file.originalname,
+    });
 
     return {
-      url,
-      path: `/uploads/${file.filename}`,
-      filename: file.filename,
+      url: stored.url,
+      path: stored.path,
+      filename: stored.filename,
       mimeType: file.mimetype,
       size: file.size,
     };
