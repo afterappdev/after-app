@@ -945,17 +945,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          VenueLocationMap(
-            key: const Key('venue-location-map'),
-            controller: _mapController,
-            point: _pin.hasValid ? LatLng(_pin.lat!, _pin.lng!) : null,
-            onSelect: _onMapSelect,
-            onMapReady: () {
-              _mapReady = true;
-              _moveToPin();
-            },
-          ),
-          const SizedBox(height: 8),
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -967,6 +956,17 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
                 color: Color(0xFF8A9391),
               ),
             ),
+          ),
+          const SizedBox(height: 8),
+          VenueLocationMap(
+            key: const Key('venue-location-map'),
+            controller: _mapController,
+            point: _pin.hasValid ? LatLng(_pin.lat!, _pin.lng!) : null,
+            onSelect: _onMapSelect,
+            onMapReady: () {
+              _mapReady = true;
+              _moveToPin();
+            },
           ),
           const SizedBox(height: 18),
           const Align(

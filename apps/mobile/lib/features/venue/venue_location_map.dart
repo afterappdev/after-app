@@ -62,8 +62,23 @@ class VenueLocationMap extends StatelessWidget {
                   ),
                 ],
               ),
-            const SimpleAttributionWidget(
-              source: Text('OpenStreetMap contributors'),
+            const Align(
+              alignment: Alignment.bottomRight,
+              child: ColoredBox(
+                color: Color(0xE6FFFFFF),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  child: Text(
+                    '© OpenStreetMap contributors',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF5C5C5C),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
