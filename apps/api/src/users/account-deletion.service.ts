@@ -8,9 +8,9 @@ import {
 import { Prisma } from '@prisma/client';
 import { isProduction } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
-import { deleteLocalUploads } from '../common/utils/local-uploads';
 import { UsersService } from './users.service';
 import { AccountDeletionMailer } from './account-deletion.mailer';
+import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { sanitizeMailerError } from './resend-account-deletion.mailer';
 import {
   ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
@@ -32,6 +32,7 @@ export class AccountDeletionService {
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
     private readonly mailer: AccountDeletionMailer,
+    private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
   async requestDeletion(email: string) {
@@ -146,7 +147,7 @@ export class AccountDeletionService {
       throw err;
     }
 
-    await deleteLocalUploads(urls);
+    await this.mediaCleanup.deleteStoredUploads(urls);
     return { ok: true, message: 'Sua conta foi excluída.' };
   }
 }

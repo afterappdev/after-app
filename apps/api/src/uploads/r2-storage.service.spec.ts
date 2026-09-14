@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import {
   objectExtension,
@@ -92,6 +92,96 @@ describe('R2StorageService', () => {
         endpoint: 'https://acct-test.r2.cloudflarestorage.com',
       }),
     );
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('R2StorageService delete', () => {
+  let service: R2StorageService;
+
+  beforeEach(() => {
+    send.mockReset();
+    send.mockResolvedValue({});
+    (S3Client as unknown as jest.Mock).mockImplementation(() => ({ send }));
+    service = new R2StorageService(config(ENV));
+  });
+
+  it('deleteByKey válido envia DeleteObject com bucket e key', async () => {
+    await service.deleteByKey('uploads/11111111-2222-4333-8333-555555555555.jpg');
+
+    expect(send).toHaveBeenCalledTimes(1);
+    const command = send.mock.calls[0][0] as DeleteObjectCommand;
+    expect(command).toBeInstanceOf(DeleteObjectCommand);
+    expect(command.input.Bucket).toBe('after-uploads');
+    expect(command.input.Key).toBe(
+      'uploads/11111111-2222-4333-8333-555555555555.jpg',
+    );
+  });
+
+  it('rejeita key fora de uploads/', async () => {
+    await expect(service.deleteByKey('other/a.jpg')).rejects.toThrow(
+      'Invalid R2 object key',
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('rejeita traversal na key', async () => {
+    await expect(service.deleteByKey('uploads/../secret.jpg')).rejects.toThrow(
+      'Invalid R2 object key',
+    );
+    await expect(service.deleteByKey('uploads/foo/bar.jpg')).rejects.toThrow(
+      'Invalid R2 object key',
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('deleteByUrl com URL R2 válida executa DeleteObjectCommand', async () => {
+    const ok = await service.deleteByUrl(
+      'https://media.app-after.com.br/uploads/abc.jpg?download=1#x',
+    );
+    expect(ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
+    const command = send.mock.calls[0][0] as DeleteObjectCommand;
+    expect(command).toBeInstanceOf(DeleteObjectCommand);
+    expect(command.input.Bucket).toBe('after-uploads');
+    expect(command.input.Key).toBe('uploads/abc.jpg');
+  });
+
+  it('URL externa retorna false e não executa DeleteObjectCommand', async () => {
+    await expect(
+      service.deleteByUrl('https://lh3.googleusercontent.com/a/photo.jpg'),
+    ).resolves.toBe(false);
+    await expect(
+      service.deleteByUrl(
+        'https://images.unsplash.com/photo-1553621042.jpg',
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      service.deleteByUrl(
+        'https://media.app-after.com.br.evil.com/uploads/abc.jpg',
+      ),
+    ).resolves.toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('URL inválida não executa DeleteObjectCommand', async () => {
+    await expect(
+      service.deleteByUrl('https://media.app-after.com.br/uploads/../x.jpg'),
+    ).resolves.toBe(false);
+    await expect(
+      service.deleteByUrl('https://media.app-after.com.br/other/abc.jpg'),
+    ).resolves.toBe(false);
+    await expect(
+      service.deleteByUrl('https://media.app-after.com.br/uploads/a/b.jpg'),
+    ).resolves.toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('se DeleteObject falhar, deleteByUrl propaga o erro', async () => {
+    send.mockRejectedValue(new Error('R2 down'));
+    await expect(
+      service.deleteByUrl('https://media.app-after.com.br/uploads/abc.jpg'),
+    ).rejects.toThrow('R2 down');
     expect(send).toHaveBeenCalledTimes(1);
   });
 });

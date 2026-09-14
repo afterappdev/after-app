@@ -3,10 +3,12 @@ import { AccountDeletionController } from './account-deletion.controller';
 import { AccountDeletionMailer } from './account-deletion.mailer';
 import { AccountDeletionService } from './account-deletion.service';
 import { ResendAccountDeletionMailer } from './resend-account-deletion.mailer';
+import { UploadsModule } from '../uploads/uploads.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
+  imports: [UploadsModule],
   controllers: [UsersController, AccountDeletionController],
   providers: [
     UsersService,

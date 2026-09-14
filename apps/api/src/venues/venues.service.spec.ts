@@ -1,4 +1,5 @@
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
+import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
 
 jest.mock('../common/utils/geo', () => {
@@ -51,6 +52,10 @@ function createPrisma() {
       findMany: jest.fn(),
       update: jest.fn(),
     },
+    venuePhoto: {
+      findFirst: jest.fn(),
+      delete: jest.fn(),
+    },
     review: {
       aggregate: jest.fn(),
       findMany: jest.fn(),
@@ -60,13 +65,25 @@ function createPrisma() {
   };
 }
 
+function cleanupMock() {
+  return {
+    deleteStoredUpload: jest.fn().mockResolvedValue(undefined),
+    deleteStoredUploads: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe('VenuesService geolocation', () => {
   let prisma: ReturnType<typeof createPrisma>;
+  let mediaCleanup: ReturnType<typeof cleanupMock>;
   let service: VenuesService;
 
   beforeEach(() => {
     prisma = createPrisma();
-    service = new VenuesService(prisma as never);
+    mediaCleanup = cleanupMock();
+    service = new VenuesService(
+      prisma as never,
+      mediaCleanup as unknown as MediaCleanupService,
+    );
     geocodeCityMock.mockReset();
     geocodeVenueProfileMock.mockReset();
     geocodeCityMock.mockResolvedValue({ lat: -23.5505, lng: -46.6333 });
@@ -180,5 +197,116 @@ describe('VenuesService geolocation', () => {
       expect(payload.lat).toBeUndefined();
       expect(payload.lng).toBeUndefined();
     });
+  });
+});
+
+describe('VenuesService media cleanup', () => {
+  let prisma: ReturnType<typeof createPrisma>;
+  let mediaCleanup: ReturnType<typeof cleanupMock>;
+  let service: VenuesService;
+
+  beforeEach(() => {
+    prisma = createPrisma();
+    mediaCleanup = cleanupMock();
+    service = new VenuesService(
+      prisma as never,
+      mediaCleanup as unknown as MediaCleanupService,
+    );
+    prisma.venue.update.mockImplementation(async ({ data }: { data: object }) => ({
+      ...venueRecord(),
+      ...data,
+    }));
+  });
+
+  it('removePhoto apaga o banco antes do cleanup', async () => {
+    const order: string[] = [];
+    const photoUrl = 'https://media.app-after.com.br/uploads/old.jpg';
+    prisma.venue.findUnique.mockResolvedValue(venueRecord());
+    prisma.venuePhoto.findFirst.mockResolvedValue({
+      id: 'photo-1',
+      venueId: VENUE_ID,
+      url: photoUrl,
+    });
+    prisma.venuePhoto.delete.mockImplementation(async () => {
+      order.push('db');
+      return { id: 'photo-1' };
+    });
+    mediaCleanup.deleteStoredUpload.mockImplementation(async () => {
+      order.push('cleanup');
+    });
+
+    await service.removePhoto(OWNER_ID, VENUE_ID, 'photo-1');
+
+    expect(prisma.venuePhoto.delete).toHaveBeenCalledWith({
+      where: { id: 'photo-1' },
+    });
+    expect(mediaCleanup.deleteStoredUpload).toHaveBeenCalledWith(photoUrl);
+    expect(order).toEqual(['db', 'cleanup']);
+  });
+
+  it('troca logo apaga apenas a logo antiga', async () => {
+    const oldLogo = 'https://media.app-after.com.br/uploads/logo-old.jpg';
+    const oldCover = 'https://media.app-after.com.br/uploads/cover-old.jpg';
+    prisma.venue.findUnique.mockResolvedValue(
+      venueRecord({ logoUrl: oldLogo, coverUrl: oldCover }),
+    );
+
+    await service.updateOwned(OWNER_ID, VENUE_ID, {
+      logoUrl: 'https://media.app-after.com.br/uploads/logo-new.jpg',
+    });
+
+    expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([oldLogo]);
+  });
+
+  it('troca capa apaga apenas a capa antiga', async () => {
+    const oldLogo = 'https://media.app-after.com.br/uploads/logo-old.jpg';
+    const oldCover = 'https://media.app-after.com.br/uploads/cover-old.jpg';
+    prisma.venue.findUnique.mockResolvedValue(
+      venueRecord({ logoUrl: oldLogo, coverUrl: oldCover }),
+    );
+
+    await service.updateOwned(OWNER_ID, VENUE_ID, {
+      coverUrl: 'https://media.app-after.com.br/uploads/cover-new.jpg',
+    });
+
+    expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([oldCover]);
+  });
+
+  it('valor igual não apaga', async () => {
+    const logo = 'https://media.app-after.com.br/uploads/logo.jpg';
+    prisma.venue.findUnique.mockResolvedValue(venueRecord({ logoUrl: logo }));
+
+    await service.updateOwned(OWNER_ID, VENUE_ID, { logoUrl: logo });
+
+    expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+  });
+
+  it('não apaga logo antiga se ela continuar na capa', async () => {
+    const shared = 'https://media.app-after.com.br/uploads/shared.jpg';
+    prisma.venue.findUnique.mockResolvedValue(
+      venueRecord({ logoUrl: shared, coverUrl: shared }),
+    );
+
+    await service.updateOwned(OWNER_ID, VENUE_ID, {
+      logoUrl: 'https://media.app-after.com.br/uploads/logo-new.jpg',
+    });
+
+    expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+  });
+
+  it('falha de update não executa cleanup', async () => {
+    prisma.venue.findUnique.mockResolvedValue(
+      venueRecord({
+        logoUrl: 'https://media.app-after.com.br/uploads/logo-old.jpg',
+      }),
+    );
+    prisma.venue.update.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      service.updateOwned(OWNER_ID, VENUE_ID, {
+        logoUrl: 'https://media.app-after.com.br/uploads/logo-new.jpg',
+      }),
+    ).rejects.toThrow('db down');
+    expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
   });
 });

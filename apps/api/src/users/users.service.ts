@@ -5,12 +5,15 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { deleteLocalUploads } from '../common/utils/local-uploads';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaCleanupService } from '../uploads/media-cleanup.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mediaCleanup: MediaCleanupService,
+  ) {}
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -44,7 +47,15 @@ export class UsersService {
       avatarUrl?: string | null;
     },
   ) {
-    return this.prisma.user.update({
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, avatarUrl: true },
+    });
+    if (!current) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         name: data.name,
@@ -63,6 +74,15 @@ export class UsersService {
         avatarUrl: true,
       },
     });
+
+    if (data.avatarUrl !== undefined) {
+      const nextAvatar = data.avatarUrl || null;
+      if (current.avatarUrl && current.avatarUrl !== nextAvatar) {
+        await this.mediaCleanup.deleteStoredUpload(current.avatarUrl);
+      }
+    }
+
+    return updated;
   }
 
   async changePassword(
@@ -93,7 +113,7 @@ export class UsersService {
 
   async deleteAccount(userId: string) {
     const urls = await this.deleteUserRecord(this.prisma, userId);
-    await deleteLocalUploads(urls);
+    await this.mediaCleanup.deleteStoredUploads(urls);
     return { ok: true };
   }
 

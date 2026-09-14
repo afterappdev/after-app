@@ -15,6 +15,7 @@ import {
 } from '../common/utils/geo';
 import { inferMediaType } from '../common/utils/media-type';
 import { PrismaService } from '../prisma/prisma.service';
+import { MediaCleanupService } from '../uploads/media-cleanup.service';
 
 function amenityFlags(contacts: unknown) {
   const c =
@@ -44,7 +45,10 @@ function normalize(value: string) {
 
 @Injectable()
 export class VenuesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mediaCleanup: MediaCleanupService,
+  ) {}
 
   async listByCity(city: string) {
     return this.prisma.venue.findMany({
@@ -332,6 +336,8 @@ export class VenuesService {
       throw new ForbiddenException('Sem permissão para editar este local');
     }
 
+    const previousLogo = venue.logoUrl;
+    const previousCover = venue.coverUrl;
     const { lat: requestedLat, lng: requestedLng, ...rest } = data;
     const nextCity = data.city ?? venue.city;
     const nextState = data.state ?? venue.state;
@@ -361,7 +367,7 @@ export class VenuesService {
       }
     }
 
-    return this.prisma.venue.update({
+    const updated = await this.prisma.venue.update({
       where: { id: venueId },
       data: {
         ...updateData,
@@ -375,6 +381,33 @@ export class VenuesService {
             : (updateData.hoursJson as Prisma.InputJsonValue),
       },
     });
+
+    const nextLogo =
+      data.logoUrl === undefined ? previousLogo : data.logoUrl || null;
+    const nextCover =
+      data.coverUrl === undefined ? previousCover : data.coverUrl || null;
+    const stale: string[] = [];
+    if (
+      data.logoUrl !== undefined &&
+      previousLogo &&
+      previousLogo !== nextLogo &&
+      previousLogo !== nextCover
+    ) {
+      stale.push(previousLogo);
+    }
+    if (
+      data.coverUrl !== undefined &&
+      previousCover &&
+      previousCover !== nextCover &&
+      previousCover !== nextLogo
+    ) {
+      stale.push(previousCover);
+    }
+    if (stale.length > 0) {
+      await this.mediaCleanup.deleteStoredUploads(stale);
+    }
+
+    return updated;
   }
 
   async addPhoto(
@@ -417,6 +450,13 @@ export class VenuesService {
       throw new NotFoundException('Foto não encontrada');
     }
     await this.prisma.venuePhoto.delete({ where: { id: photoId } });
+    if (
+      photo.url &&
+      photo.url !== venue.logoUrl &&
+      photo.url !== venue.coverUrl
+    ) {
+      await this.mediaCleanup.deleteStoredUpload(photo.url);
+    }
     return { ok: true };
   }
 }

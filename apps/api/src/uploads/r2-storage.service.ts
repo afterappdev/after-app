@@ -1,8 +1,12 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
-import { extname } from 'path';
+import { basename, extname } from 'path';
 
 const ALLOWED_EXT = new Set([
   '.jpg',
@@ -102,6 +106,73 @@ export class R2StorageService {
       path: `/${key}`,
       url: `${this.publicUrl}/${key}`,
     };
+  }
+
+  async deleteByKey(key: string): Promise<void> {
+    const safeKey = parseR2ObjectKey(key);
+    if (!safeKey) {
+      throw new Error('Invalid R2 object key');
+    }
+    await this.client.send(
+      new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: safeKey,
+      }),
+    );
+  }
+
+  async deleteByUrl(url: string): Promise<boolean> {
+    const key = r2ObjectKeyFromPublicUrl(url, this.publicUrl);
+    if (!key) {
+      return false;
+    }
+    await this.deleteByKey(key);
+    return true;
+  }
+}
+
+const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;
+
+export function parseR2ObjectKey(key: string): string | null {
+  const trimmed = key.trim();
+  if (!trimmed || trimmed.includes('\\') || trimmed.includes('..')) {
+    return null;
+  }
+  if (trimmed.includes('//') || trimmed.startsWith('/') || trimmed.endsWith('/')) {
+    return null;
+  }
+  if (!trimmed.startsWith('uploads/')) {
+    return null;
+  }
+  const filename = trimmed.slice('uploads/'.length);
+  if (!filename || filename.includes('/') || filename === '.' || filename === '..') {
+    return null;
+  }
+  if (filename !== basename(filename) || !SAFE_FILENAME.test(filename)) {
+    return null;
+  }
+  return `uploads/${filename}`;
+}
+
+export function r2ObjectKeyFromPublicUrl(
+  url: string,
+  publicBaseUrl: string,
+): string | null {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  const raw = url.trim();
+  if (!base || !raw) return null;
+  try {
+    const parsed = new URL(raw);
+    const expected = new URL(base);
+    if (parsed.origin !== expected.origin) {
+      return null;
+    }
+    if (!parsed.pathname.startsWith('/')) {
+      return null;
+    }
+    return parseR2ObjectKey(parsed.pathname.slice(1));
+  } catch {
+    return null;
   }
 }
 

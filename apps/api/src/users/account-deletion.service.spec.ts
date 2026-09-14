@@ -76,6 +76,7 @@ describe('AccountDeletionService', () => {
   let prisma: ReturnType<typeof createPrisma>;
   let mailer: CapturingMailer;
   let users: { deleteUserRecord: jest.Mock };
+  let mediaCleanup: { deleteStoredUploads: jest.Mock };
   let service: AccountDeletionService;
   const logs: string[] = [];
 
@@ -88,11 +89,15 @@ describe('AccountDeletionService', () => {
     users = {
       deleteUserRecord: jest.fn().mockResolvedValue(['/uploads/a.jpg']),
     };
+    mediaCleanup = {
+      deleteStoredUploads: jest.fn().mockResolvedValue(undefined),
+    };
     logs.length = 0;
     service = new AccountDeletionService(
       prisma as never,
       users as unknown as UsersService,
       mailer,
+      mediaCleanup as never,
     );
     jest.spyOn(service['logger'], 'log').mockImplementation((m) => {
       logs.push(String(m));
@@ -168,6 +173,9 @@ describe('AccountDeletionService', () => {
       data: { usedAt: expect.any(Date) },
     });
     expect(users.deleteUserRecord).toHaveBeenCalledWith(prisma, 'user-1');
+    expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([
+      '/uploads/a.jpg',
+    ]);
   });
 
   it('token expirado ou inexistente é rejeitado', async () => {
@@ -176,6 +184,7 @@ describe('AccountDeletionService', () => {
       service.confirmDeletion(generateDeletionToken()),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(users.deleteUserRecord).not.toHaveBeenCalled();
+    expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
   });
 
   it('token usado é rejeitado e não exclui de novo', async () => {
