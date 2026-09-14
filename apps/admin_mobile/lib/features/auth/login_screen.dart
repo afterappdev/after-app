@@ -33,86 +33,108 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
     return Scaffold(
+      backgroundColor: AdminTheme.background,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Image.asset(
-                    'assets/images/logo_after.png',
-                    height: 42,
-                    fit: BoxFit.contain,
-                    alignment: Alignment.centerLeft,
-                  ),
-                  const SizedBox(height: 28),
-                  const Text(
-                    'AFTER ADMIN',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: AdminTheme.ink,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final logoHeight = (constraints.maxHeight * 0.14).clamp(
+              72.0,
+              118.0,
+            );
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight - 16,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Painel privado do After',
-                    style: TextStyle(color: AdminTheme.muted, fontSize: 15),
-                  ),
-                  const SizedBox(height: 32),
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: 'E-mail'),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: _password,
-                    obscureText: _obscure,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _submit(),
-                    decoration: InputDecoration(
-                      labelText: 'Senha',
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: constraints.maxHeight * 0.10),
+                        Image.asset(
+                          'assets/images/logo_after.png',
+                          height: logoHeight,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.center,
                         ),
-                      ),
+                        const SizedBox(height: 18),
+                        const Text(
+                          'ADMIN',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            color: AdminTheme.textPrimary,
+                            letterSpacing: 1.2,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 48),
+                        TextField(
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            hintText: 'E-mail',
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _password,
+                          obscureText: _obscure,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _submit(),
+                          decoration: InputDecoration(
+                            hintText: 'Senha',
+                            suffixIcon: IconButton(
+                              onPressed: () =>
+                                  setState(() => _obscure = !_obscure),
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: AdminTheme.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (auth.error != null) ...[
+                          const SizedBox(height: 14),
+                          Text(
+                            auth.error!,
+                            style: const TextStyle(
+                              color: Color(0xFFB42318),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 22),
+                        FilledButton(
+                          onPressed: auth.submitting ? null : _submit,
+                          child: auth.submitting
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text('ENTRAR'),
+                        ),
+                      ],
                     ),
                   ),
-                  if (auth.error != null) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      auth.error!,
-                      style: const TextStyle(
-                        color: Color(0xFFB42318),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: auth.submitting ? null : _submit,
-                    child: auth.submitting
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('ENTRAR'),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

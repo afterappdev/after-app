@@ -48,15 +48,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 720;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
             children: [
               const Text(
                 'Contas',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  color: AdminTheme.textPrimary,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               _MetricGrid(data: data, wide: wide),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               _RevenueCard(month: data.month),
               const SizedBox(height: 16),
               _ProvidersCard(revenue: data.month.revenueByProvider),
@@ -87,45 +91,127 @@ class _MetricGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      ('Total', formatCount(data.totals.accounts)),
-      ('Usuários', formatCount(data.totals.users)),
-      ('Locais', formatCount(data.totals.venues)),
-      ('Novas no mês', formatCount(data.month.newAccounts)),
+      (
+        'Total',
+        formatCount(data.totals.accounts),
+        Icons.people_alt_rounded,
+        AdminTheme.orange,
+      ),
+      (
+        'Usuários',
+        formatCount(data.totals.users),
+        Icons.person_rounded,
+        AdminTheme.pink,
+      ),
+      (
+        'Locais',
+        formatCount(data.totals.venues),
+        Icons.storefront_rounded,
+        AdminTheme.orange,
+      ),
+      (
+        'Novas no mês',
+        formatCount(data.month.newAccounts),
+        Icons.trending_up_rounded,
+        AdminTheme.green,
+      ),
     ];
-    return GridView.count(
-      crossAxisCount: wide ? 4 : 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: wide ? 1.5 : 1.55,
+    final fourAcross = wide || MediaQuery.sizeOf(context).width >= 340;
+    final cards = [
+      for (final item in items)
+        _MetricCard(
+          label: item.$1,
+          value: item.$2,
+          icon: item.$3,
+          color: item.$4,
+        ),
+    ];
+
+    if (fourAcross) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(child: cards[i]),
+          ],
+        ],
+      );
+    }
+
+    return Column(
       children: [
-        for (final item in items)
-          AdminCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.$1,
-                  style: const TextStyle(
-                    color: AdminTheme.muted,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  item.$2,
-                  style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AdminTheme.ink,
-                  ),
-                ),
-              ],
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: cards[0]),
+            const SizedBox(width: 8),
+            Expanded(child: cards[1]),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: cards[2]),
+            const SizedBox(width: 8),
+            Expanded(child: cards[3]),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      padding: const EdgeInsets.fromLTRB(6, 16, 6, 14),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            maxLines: 2,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AdminTheme.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.15,
             ),
           ),
-      ],
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: AdminTheme.textPrimary,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -137,47 +223,89 @@ class _RevenueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF58634), Color(0xFFE46A1C)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
+        child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 148),
+        decoration: const BoxDecoration(color: AdminTheme.orange),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: CustomPaint(painter: _SparklinePainter())),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Faturamento bruto',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    formatBrl(month.grossRevenueBrl),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '${formatCount(month.paidPurchases)} compras  •  ${formatCount(month.creditsSold)} créditos vendidos',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Faturamento bruto',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            formatBrl(month.grossRevenueBrl),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${formatCount(month.paidPurchases)} compras  ·  ${formatCount(month.creditsSold)} créditos vendidos',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.92)),
-          ),
-        ],
       ),
     );
   }
+}
+
+class _SparklinePainter extends CustomPainter {
+  const _SparklinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.28)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    final path = Path()
+      ..moveTo(size.width * 0.38, size.height * 0.78)
+      ..cubicTo(
+        size.width * 0.52,
+        size.height * 0.86,
+        size.width * 0.58,
+        size.height * 0.46,
+        size.width * 0.70,
+        size.height * 0.50,
+      )
+      ..cubicTo(
+        size.width * 0.82,
+        size.height * 0.54,
+        size.width * 0.88,
+        size.height * 0.22,
+        size.width * 1.02,
+        size.height * 0.18,
+      );
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _ProvidersCard extends StatelessWidget {
@@ -193,31 +321,47 @@ class _ProvidersCard extends StatelessWidget {
         children: [
           const Text(
             'Por origem',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: AdminTheme.textPrimary,
+            ),
           ),
-          const SizedBox(height: 12),
-          _row('Google Play', revenue.googlePlay),
-          _row('Apple', revenue.appStore),
-          _row('PIX', revenue.pix),
+          const SizedBox(height: 8),
+          _row('Google Play', revenue.googlePlay, AdminTheme.purple),
+          _row('Apple', revenue.appStore, AdminTheme.pink),
+          _row('PIX', revenue.pix, AdminTheme.green),
         ],
       ),
     );
   }
 
-  Widget _row(String label, double value) {
+  Widget _row(String label, double value, Color dot) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: AdminTheme.textPrimary,
+              ),
             ),
           ),
           Text(
             formatBrl(value),
-            style: const TextStyle(fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: AdminTheme.textPrimary,
+            ),
           ),
         ],
       ),

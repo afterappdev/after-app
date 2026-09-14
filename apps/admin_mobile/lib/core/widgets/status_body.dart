@@ -98,16 +98,10 @@ class AdminCard extends StatelessWidget {
       width: double.infinity,
       padding: padding ?? const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AdminTheme.sageBorder.withValues(alpha: 0.6)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: AdminTheme.background,
+        borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
+        border: Border.all(color: AdminTheme.border),
+        boxShadow: AdminTheme.cardShadow,
       ),
       child: child,
     );
