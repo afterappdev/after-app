@@ -76,6 +76,7 @@ export class AdminPushService {
         credits: purchase.credits,
         amountPaid: purchase.amountPaid,
         provider: purchase.provider,
+        venueName: await this.lookupVenueName(purchase.venueId),
       });
       await this.dispatch({
         type: AdminPushEventType.PURCHASE_PAID,
@@ -175,6 +176,20 @@ export class AdminPushService {
         error: failed.length > 0 ? 'FCM_PARTIAL_FAILURE' : null,
       },
     });
+  }
+
+  private async lookupVenueName(venueId: string): Promise<string | null> {
+    try {
+      const venue = await this.prisma.venue.findUnique({
+        where: { id: venueId },
+        select: { name: true },
+      });
+      const name = venue?.name?.trim();
+      return name || null;
+    } catch (error) {
+      safePushErrorMessage(error, this.logger);
+      return null;
+    }
   }
 
   private async markError(eventId: string, error: string) {

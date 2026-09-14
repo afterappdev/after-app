@@ -79,14 +79,17 @@ export function purchasePaidCopy(input: {
   credits: number;
   amountPaid: unknown;
   provider: string | null | undefined;
+  venueName?: string | null;
 }) {
   const creditsLabel =
     input.credits === 1
       ? '1 crédito vendido'
       : `${input.credits} créditos vendidos`;
+  const sale = `${creditsLabel} por ${formatBrl(input.amountPaid)} via ${providerLabel(input.provider)}.`;
+  const venueName = input.venueName?.trim();
   return {
     title: 'Nova venda no After',
-    body: `${creditsLabel} por ${formatBrl(input.amountPaid)} via ${providerLabel(input.provider)}.`,
+    body: venueName ? `${venueName} — ${sale}` : sale,
   };
 }
 

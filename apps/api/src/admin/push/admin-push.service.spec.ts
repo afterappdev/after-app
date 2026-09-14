@@ -88,6 +88,11 @@ function createPrisma() {
       findMany: jest.fn(() => Promise.resolve(tokens)),
       deleteMany: jest.fn(() => Promise.resolve({ count: 1 })),
     },
+    venue: {
+      findUnique: jest.fn(() =>
+        Promise.resolve({ name: 'Refúgio do Chef' }),
+      ),
+    },
   };
   return { prisma, events, tokens };
 }
@@ -116,6 +121,62 @@ describe('Admin push copy', () => {
       purchasePaidCopy({ credits: 10, amountPaid: 200, provider: 'app_store' })
         .body,
     ).toMatch(/10 créditos vendidos por R\$\s*200,00 via Apple\./);
+  });
+
+  it('inclui o nome do local nas vendas Google Play, Apple e PIX', () => {
+    expect(
+      purchasePaidCopy({
+        credits: 10,
+        amountPaid: 200,
+        provider: 'google_play',
+        venueName: 'Refúgio do Chef',
+      }),
+    ).toEqual({
+      title: 'Nova venda no After',
+      body: expect.stringMatching(
+        /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via Google Play\.$/,
+      ),
+    });
+    expect(
+      purchasePaidCopy({
+        credits: 10,
+        amountPaid: 200,
+        provider: 'app_store',
+        venueName: 'Refúgio do Chef',
+      }).body,
+    ).toMatch(
+      /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via Apple\.$/,
+    );
+    expect(
+      purchasePaidCopy({
+        credits: 10,
+        amountPaid: 200,
+        provider: 'pix',
+        venueName: 'Refúgio do Chef',
+      }).body,
+    ).toMatch(
+      /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via PIX\.$/,
+    );
+  });
+
+  it('fallback sem nome do local usa o texto antigo', () => {
+    const fallback = purchasePaidCopy({
+      credits: 10,
+      amountPaid: 200,
+      provider: 'google_play',
+    });
+    expect(fallback.title).toBe('Nova venda no After');
+    expect(fallback.body).toMatch(
+      /^10 créditos vendidos por R\$\s*200,00 via Google Play\.$/,
+    );
+    expect(
+      purchasePaidCopy({
+        credits: 10,
+        amountPaid: 200,
+        provider: 'pix',
+        venueName: '   ',
+      }).body,
+    ).toMatch(/^10 créditos vendidos por R\$\s*200,00 via PIX\.$/);
   });
 
   it('welcome/stub/PENDING não são venda real', () => {
@@ -233,6 +294,78 @@ describe('AdminPushService', () => {
     expect(messaging.calls[0].data.entityId).toBe('sale-1');
     expect(messaging.calls[0].body).toContain('PIX');
     expect(messaging.calls[0].body).not.toContain('google_play');
+  });
+
+  it('PURCHASE_PAID inclui o nome do local e envia aos mesmos admins', async () => {
+    await service.notifyPurchasePaid(
+      purchase({
+        credits: 10,
+        amountPaid: new Prisma.Decimal('200.00'),
+        provider: 'google_play',
+      }),
+    );
+    expect(prisma.venue.findUnique).toHaveBeenCalledWith({
+      where: { id: 'venue-1' },
+      select: { name: true },
+    });
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0].title).toBe('Nova venda no After');
+    expect(messaging.calls[0].body).toMatch(
+      /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via Google Play\.$/,
+    );
+    expect(messaging.calls[0].tokens).toEqual([
+      'fcm-android-token-1',
+      'fcm-ios-token-2xxxx',
+    ]);
+    expect(messaging.calls[0].data).toEqual({
+      type: 'PURCHASE_PAID',
+      entityId: 'sale-1',
+    });
+  });
+
+  it('PURCHASE_PAID Apple e PIX também prefixam o nome do local', async () => {
+    await service.notifyPurchasePaid(
+      purchase({
+        id: 'sale-apple',
+        credits: 10,
+        amountPaid: new Prisma.Decimal('200.00'),
+        provider: 'app_store',
+      }),
+    );
+    await service.notifyPurchasePaid(
+      purchase({
+        id: 'sale-pix',
+        credits: 10,
+        amountPaid: new Prisma.Decimal('200.00'),
+        provider: 'pix',
+      }),
+    );
+    expect(messaging.calls[0].body).toMatch(
+      /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via Apple\.$/,
+    );
+    expect(messaging.calls[1].body).toMatch(
+      /^Refúgio do Chef — 10 créditos vendidos por R\$\s*200,00 via PIX\.$/,
+    );
+    expect(messaging.calls.map((item) => item.tokens)).toEqual([
+      ['fcm-android-token-1', 'fcm-ios-token-2xxxx'],
+      ['fcm-android-token-1', 'fcm-ios-token-2xxxx'],
+    ]);
+  });
+
+  it('PURCHASE_PAID sem nome do local usa o texto antigo', async () => {
+    prisma.venue.findUnique.mockResolvedValue(null);
+    await service.notifyPurchasePaid(
+      purchase({
+        credits: 10,
+        amountPaid: new Prisma.Decimal('200.00'),
+        provider: 'google_play',
+      }),
+    );
+    expect(messaging.calls[0].title).toBe('Nova venda no After');
+    expect(messaging.calls[0].body).toMatch(
+      /^10 créditos vendidos por R\$\s*200,00 via Google Play\.$/,
+    );
+    expect(messaging.calls[0].tokens).toHaveLength(2);
   });
 
   it('welcome não envia push de venda', async () => {
