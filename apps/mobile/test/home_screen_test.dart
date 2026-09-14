@@ -651,6 +651,84 @@ void main() {
     expect(lastKnown.isCompleted, isFalse);
     expect(gps.isCompleted, isFalse);
   });
+
+  testWidgets('Home sem promoções mostra locais próximos', (tester) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) return _json([]);
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([_venue(name: 'Pub da Esquina')]);
+        }
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+
+    expect(find.text('Locais próximos'), findsOneWidget);
+    expect(find.text('Pub da Esquina'), findsOneWidget);
+    expect(find.text('Promoções/ Eventos do dia'), findsNothing);
+    expect(find.text('Não há Promoções/ Eventos no dia'), findsNothing);
+  });
+
+  testWidgets('Home com promoções também mostra locais abaixo', (tester) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([_promo(title: 'Happy Hour After')]);
+        }
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([_venue(name: 'Pub da Esquina')]);
+        }
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+
+    expect(find.text('Promoções/ Eventos do dia'), findsOneWidget);
+    expect(find.text('Happy Hour After'), findsOneWidget);
+    expect(find.text('Locais próximos'), findsOneWidget);
+    expect(find.text('Pub da Esquina'), findsOneWidget);
+    expect(find.text('Ver todos'), findsNothing);
+
+    final promoY = tester.getTopLeft(find.text('Happy Hour After')).dy;
+    final nearbyY = tester.getTopLeft(find.text('Locais próximos')).dy;
+    final venueY = tester.getTopLeft(find.text('Pub da Esquina')).dy;
+    expect(promoY, lessThan(nearbyY));
+    expect(nearbyY, lessThan(venueY));
+  });
+
+  testWidgets('Home sem localização mostra promoções e locais', (tester) async {
+    await _useTallSurface(tester);
+    final locator = FakeDeviceLocator(
+      serviceEnabled: true,
+      permission: LocationPermission.denied,
+      requestResult: LocationPermission.denied,
+    );
+    final api = ApiClient(
+      client: MockClient((req) async {
+        expect(req.url.queryParameters['lat'], isNull);
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([_promo(title: 'Happy Hour After')]);
+        }
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([_venue(name: 'Pub da Esquina')]);
+        }
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: locator);
+    await tester.pump();
+    expect(find.text('Happy Hour After'), findsOneWidget);
+    expect(find.text('Locais próximos'), findsOneWidget);
+    expect(find.text('Pub da Esquina'), findsOneWidget);
+  });
 }
 
 class _ExpiredOriginCache extends OriginCache {

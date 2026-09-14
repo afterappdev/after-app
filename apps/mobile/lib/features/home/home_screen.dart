@@ -45,7 +45,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _cityDebounce;
   Timer? _venueDebounce;
   int _navIndex = 0;
-  bool _showVenues = false;
   bool _pickingCity = false;
   bool _searchingCities = false;
   bool _searchingVenues = false;
@@ -588,7 +587,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isSameDay(next, _selectedDay)) return;
     setState(() {
       _selectedDay = next;
-      _showVenues = false;
     });
     _load(silent: true);
   }
@@ -673,9 +671,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final openingSearch = index == 1 && _navIndex != 1;
     setState(() {
       _navIndex = index;
-      if (index == 0) {
-        _showVenues = false;
-      }
       if (index == 1) {
         _pickingCity = false;
       }
@@ -765,131 +760,109 @@ class _HomeScreenState extends State<HomeScreen> {
                                       onClear: _clearVenueFilter,
                                     ),
                                   ],
-                                ] else ...[
+                                ] else if (_promotions.isNotEmpty ||
+                                    !_isSameDay(_selectedDay, _today)) ...[
                                   const SizedBox(height: 22),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        _showVenues
-                                            ? 'Locais em destaque'
-                                            : 'Promoções/ Eventos do dia',
-                                        style: const TextStyle(
-                                          fontFamily: AppTheme.fontFamily,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 15,
-                                          color: Color(0xFF282829),
-                                        ),
+                                  const Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      'Promoções/ Eventos do dia',
+                                      style: TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                        color: Color(0xFF282829),
                                       ),
-                                      const Spacer(),
-                                      if (_promotions.isNotEmpty)
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  SizedBox(
+                                    height: 36,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: ListView.separated(
+                                            scrollDirection: Axis.horizontal,
+                                            itemCount: _promoFilterDays.length,
+                                            separatorBuilder: (_, _) =>
+                                                const SizedBox(width: 8),
+                                            itemBuilder: (context, index) {
+                                              final day =
+                                                  _promoFilterDays[index];
+                                              final selected = _isSameDay(
+                                                day,
+                                                _selectedDay,
+                                              );
+                                              return GestureDetector(
+                                                onTap: () =>
+                                                    _selectPromoDay(day),
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(
+                                                    milliseconds: 180,
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: selected
+                                                        ? _accent
+                                                        : Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      18,
+                                                    ),
+                                                    border: Border.all(
+                                                      color: selected
+                                                          ? _accent
+                                                          : AppTheme.sageBorder,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    _dayChipLabel(day),
+                                                    style: TextStyle(
+                                                      fontFamily:
+                                                          AppTheme.fontFamily,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontSize: 12,
+                                                      color: selected
+                                                          ? Colors.white
+                                                          : const Color(
+                                                              0xFF282829,
+                                                            ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
                                         GestureDetector(
-                                          onTap: () {
-                                            setState(() {
-                                              _showVenues = !_showVenues;
-                                            });
-                                          },
-                                          child: const Text(
-                                            'Ver todos',
-                                            style: TextStyle(
-                                              fontFamily: AppTheme.fontFamily,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 13,
+                                          onTap: _pickPromoDay,
+                                          child: Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(18),
+                                              border: Border.all(
+                                                color: AppTheme.sageBorder,
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.calendar_today_outlined,
+                                              size: 16,
                                               color: _accent,
                                             ),
                                           ),
                                         ),
-                                    ],
-                                  ),
-                                  if (!_showVenues) ...[
-                                    const SizedBox(height: 10),
-                                    SizedBox(
-                                      height: 36,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: ListView.separated(
-                                              scrollDirection: Axis.horizontal,
-                                              itemCount: _promoFilterDays.length,
-                                              separatorBuilder: (_, _) =>
-                                                  const SizedBox(width: 8),
-                                              itemBuilder: (context, index) {
-                                                final day =
-                                                    _promoFilterDays[index];
-                                                final selected = _isSameDay(
-                                                  day,
-                                                  _selectedDay,
-                                                );
-                                                return GestureDetector(
-                                                  onTap: () =>
-                                                      _selectPromoDay(day),
-                                                  child: AnimatedContainer(
-                                                    duration: const Duration(
-                                                      milliseconds: 180,
-                                                    ),
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 8,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: selected
-                                                          ? _accent
-                                                          : Colors.white,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                        18,
-                                                      ),
-                                                      border: Border.all(
-                                                        color: selected
-                                                            ? _accent
-                                                            : AppTheme.sageBorder,
-                                                      ),
-                                                    ),
-                                                    child: Text(
-                                                      _dayChipLabel(day),
-                                                      style: TextStyle(
-                                                        fontFamily:
-                                                            AppTheme.fontFamily,
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                        fontSize: 12,
-                                                        color: selected
-                                                            ? Colors.white
-                                                            : const Color(
-                                                                0xFF282829,
-                                                              ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          GestureDetector(
-                                            onTap: _pickPromoDay,
-                                            child: Container(
-                                              width: 36,
-                                              height: 36,
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(18),
-                                                border: Border.all(
-                                                  color: AppTheme.sageBorder,
-                                                ),
-                                              ),
-                                              child: const Icon(
-                                                Icons.calendar_today_outlined,
-                                                size: 16,
-                                                color: _accent,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ],
                                 const SizedBox(height: 12),
                               ],
@@ -921,43 +894,31 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           )
-                        else if (_showVenues)
-                          _VenueCards(
-                            items: _venues,
-                            onOpenVenue: _openVenueById,
-                          )
-                        else if (_promotions.isEmpty) ...[
+                        else ...[
+                          if (_promotions.isNotEmpty)
+                            _PromotionCards(
+                              items: _promotions,
+                              onOpenVenue: _openVenueById,
+                            ),
                           SliverToBoxAdapter(
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
-                              child: Column(
-                                children: [
-                                  Text(
-                                    _isSameDay(_selectedDay, _today)
-                                        ? 'Não há Promoções/ Eventos no dia'
-                                        : 'Não há Promoções/ Eventos em ${_dayChipLabel(_selectedDay)}',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      fontFamily: AppTheme.fontFamily,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: Color(0xFF8B8B96),
-                                    ),
+                              padding: EdgeInsets.fromLTRB(
+                                20,
+                                _promotions.isNotEmpty ? 8 : 10,
+                                20,
+                                12,
+                              ),
+                              child: const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Locais próximos',
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                    color: Color(0xFF282829),
                                   ),
-                                  const SizedBox(height: 22),
-                                  const Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      'Locais da cidade',
-                                      style: TextStyle(
-                                        fontFamily: AppTheme.fontFamily,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
-                                        color: Color(0xFF282829),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ),
                           ),
@@ -965,11 +926,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             items: _venues,
                             onOpenVenue: _openVenueById,
                           ),
-                        ] else
-                          _PromotionCards(
-                            items: _promotions,
-                            onOpenVenue: _openVenueById,
-                          ),
+                        ],
                       ],
                     ),
                   ),
