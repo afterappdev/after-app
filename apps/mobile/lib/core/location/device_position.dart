@@ -1,40 +1,42 @@
 import 'package:geolocator/geolocator.dart';
 
-Future<({double lat, double lng})?> getDevicePosition() async {
+import 'device_locator.dart';
+import 'geo_origin.dart';
+
+Future<({double lat, double lng})?> getDevicePosition({
+  DeviceLocator? locator,
+}) async {
+  final device = locator ?? const GeolocatorDeviceLocator();
   try {
-    final enabled = await Geolocator.isLocationServiceEnabled();
+    final enabled = await device.isServiceEnabled();
     if (!enabled) return null;
 
-    var permission = await Geolocator.checkPermission();
+    var permission = await device.checkPermission();
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.unableToDetermine) {
-      permission = await Geolocator.requestPermission();
+      permission = await device.requestPermission();
     }
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       return null;
     }
 
-    try {
-      final last = await Geolocator.getLastKnownPosition();
-      if (last != null) {
-        final age = DateTime.now().difference(last.timestamp);
-        if (!age.isNegative && age <= const Duration(minutes: 5)) {
-          return (lat: last.latitude, lng: last.longitude);
-        }
-      }
-    } catch (_) {
-      // Web and some desktops do not support last-known position.
+    final last = await device.lastKnown();
+    if (last != null && _isFreshLastKnown(last)) {
+      return (lat: last.lat, lng: last.lng);
     }
 
-    final pos = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.low,
-        timeLimit: Duration(seconds: 8),
-      ),
-    );
-    return (lat: pos.latitude, lng: pos.longitude);
+    final pos = await device.currentPosition();
+    if (pos == null) return null;
+    return (lat: pos.lat, lng: pos.lng);
   } catch (_) {
     return null;
   }
+}
+
+bool _isFreshLastKnown(GeoOrigin last) {
+  final at = last.at;
+  if (at == null) return false;
+  final age = DateTime.now().difference(at);
+  return !age.isNegative && age <= const Duration(minutes: 5);
 }

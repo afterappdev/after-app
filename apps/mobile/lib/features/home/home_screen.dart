@@ -1,12 +1,16 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/constants/venue_categories.dart';
-import '../../core/location/device_position.dart';
+import '../../core/location/device_locator.dart';
+import '../../core/location/geo_math.dart';
+import '../../core/location/geo_origin.dart';
+import '../../core/location/home_origin_policy.dart';
+import '../../core/location/origin_cache.dart';
 import '../../core/location/recent_cities_storage.dart';
 import '../../core/network/api_client.dart';
 import '../../core/router/app_router.dart';
@@ -17,7 +21,14 @@ import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.locator,
+    this.originCache,
+  });
+
+  final DeviceLocator? locator;
+  final OriginCache? originCache;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -49,10 +60,15 @@ class _HomeScreenState extends State<HomeScreen> {
   int _citySearchGen = 0;
   List<Map<String, dynamic>> _venueResults = [];
   final _venueFilters = _VenueSearchFilters();
-  double? _originLat;
-  double? _originLng;
+  GeoOrigin? _origin;
+  int _feedGen = 0;
   bool _askedLocation = false;
+  bool _backgroundGpsStarted = false;
+  bool _gpsInFlight = false;
+  bool _originReloadPending = false;
   late DateTime _selectedDay;
+  late final DeviceLocator _locator;
+  late final OriginCache _originCache;
 
   static const _weekdayShort = [
     'Seg',
@@ -67,6 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _locator = widget.locator ?? const GeolocatorDeviceLocator();
+    _originCache = widget.originCache ?? OriginCache();
     final user = context.read<AuthController>().user;
     _selectedCity = user?.city ?? '';
     _selectedUf = user?.state ?? '';
@@ -87,16 +105,122 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _ensureOrigin() async {
-    if (_askedLocation) return;
-    _askedLocation = true;
-    final pos = await getDevicePosition();
-    if (!mounted || pos == null) return;
-    _originLat = pos.lat;
-    _originLng = pos.lng;
+  Future<void> _hydrateOriginFromCache() async {
+    if (_origin != null) return;
+    final cached = await _originCache.read();
+    if (!mounted || cached == null || _origin != null) return;
+    _origin = cached;
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Map<String, String> _originQuery(String city) {
+    final origin = _origin;
+    return {
+      'city': city,
+      if (origin != null) 'lat': origin.lat.toString(),
+      if (origin != null) 'lng': origin.lng.toString(),
+    };
+  }
+
+  Future<({dynamic data, ApiException? error})> _captureGet(
+    Future<dynamic> future,
+  ) async {
+    try {
+      return (data: await future, error: null);
+    } on ApiException catch (e) {
+      return (data: null, error: e);
+    }
+  }
+
+  List<dynamic> _asList(dynamic value) {
+    if (value is List<dynamic>) return value;
+    if (value is List) return List<dynamic>.from(value);
+    return [];
+  }
+
+  List<dynamic> _prepareFeedItems(
+    List<dynamic> items, {
+    bool nestedVenue = false,
+  }) {
+    final prepared = _sortOpenThenDistance(items);
+    _stampGpsDistances(prepared, nestedVenue: nestedVenue);
+    return _sortOpenThenDistance(prepared);
+  }
+
+  void _startBackgroundGps() {
+    if (_backgroundGpsStarted) return;
+    _backgroundGpsStarted = true;
+    unawaited(_runBackgroundGps());
+  }
+
+  Future<void> _runBackgroundGps() async {
+    if (_gpsInFlight) return;
+    _gpsInFlight = true;
+    try {
+      final enabled = await _locator.isServiceEnabled();
+      if (!mounted || !enabled) return;
+
+      var permission = await _locator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        if (_askedLocation) return;
+        _askedLocation = true;
+        permission = await _locator.requestPermission();
+      } else {
+        _askedLocation = true;
+      }
+      if (!mounted) return;
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final lastKnown = await _locator.lastKnown();
+      if (!mounted) return;
+      if (lastKnown != null) {
+        await _applyGpsOrigin(lastKnown);
+      }
+
+      final current = await _locator.currentPosition();
+      if (!mounted) return;
+      if (current != null) {
+        await _applyGpsOrigin(current);
+      }
+    } catch (_) {
+      // Home content does not depend on GPS.
+    } finally {
+      _gpsInFlight = false;
+    }
+  }
+
+  Future<void> _applyGpsOrigin(GeoOrigin next) async {
+    if (!mounted || !next.isValid) return;
+    final previous = _origin;
+    _origin = next;
+    await _originCache.write(next);
+    if (!mounted) return;
+
+    if (!HomeOriginPolicy.shouldReloadFeed(previous: previous, next: next)) {
+      if (!_loading) {
+        setState(() {
+          _promotions = _prepareFeedItems(_promotions, nestedVenue: true);
+          _venues = _prepareFeedItems(_venues);
+        });
+      }
+      return;
+    }
+
+    if (_loading) {
+      _originReloadPending = true;
+      return;
+    }
+    unawaited(_load(silent: true, fromOriginUpdate: true));
+  }
+
+  Future<void> _load({
+    bool silent = false,
+    bool fromOriginUpdate = false,
+  }) async {
+    final gen = ++_feedGen;
     if (!silent) {
       setState(() {
         _loading = true;
@@ -104,38 +228,75 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
     try {
-      await _ensureOrigin();
-      if (!mounted) return;
+      await _hydrateOriginFromCache();
+      if (!mounted || gen != _feedGen) return;
+
+      final requestOrigin = _origin;
       final api = context.read<ApiClient>();
       final city = _selectedCity.trim();
-      final originQuery = <String, String>{
-        'city': city,
-        if (_originLat != null) 'lat': _originLat!.toString(),
-        if (_originLng != null) 'lng': _originLng!.toString(),
-      };
-      final promotions = await api.get(
+      final originQuery = _originQuery(city);
+      final promotionsFuture = api.get(
         '/home/promotions',
         query: {
           ...originQuery,
           'date': _dateQuery(_selectedDay),
         },
       );
-      final venues = await api.get(
+      final venuesFuture = api.get(
         '/home/venues',
         query: originQuery,
       );
-      if (!mounted) return;
-      final promoList = _sortOpenThenDistance(promotions as List<dynamic>? ?? []);
-      final venueList = _sortOpenThenDistance(venues as List<dynamic>? ?? []);
-      _stampGpsDistances(promoList, nestedVenue: true);
-      _stampGpsDistances(venueList);
+      if (!fromOriginUpdate) {
+        _startBackgroundGps();
+      }
+
+      final promoResult = await _captureGet(promotionsFuture);
+      final venueResult = await _captureGet(venuesFuture);
+      if (!mounted || gen != _feedGen) return;
+
+      final promoError = promoResult.error;
+      final venueError = venueResult.error;
+      if (promoError != null && venueError != null) {
+        if (silent) return;
+        setState(() {
+          _error = promoError.message;
+          _loading = false;
+        });
+        return;
+      }
+
       setState(() {
-        _promotions = promoList;
-        _venues = venueList;
+        if (promoResult.data != null) {
+          _promotions = _prepareFeedItems(
+            _asList(promoResult.data),
+            nestedVenue: true,
+          );
+        } else if (!silent) {
+          _promotions = [];
+        }
+        if (venueResult.data != null) {
+          _venues = _prepareFeedItems(_asList(venueResult.data));
+        } else if (!silent) {
+          _venues = [];
+        }
+        _error = null;
         _loading = false;
       });
+
+      if (_originReloadPending) {
+        final nextOrigin = _origin;
+        _originReloadPending = false;
+        if (nextOrigin != null &&
+            HomeOriginPolicy.shouldReloadFeed(
+              previous: requestOrigin,
+              next: nextOrigin,
+            )) {
+          unawaited(_load(silent: true, fromOriginUpdate: true));
+        }
+      }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _feedGen) return;
+      if (silent) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -147,9 +308,8 @@ class _HomeScreenState extends State<HomeScreen> {
     List<dynamic> items, {
     bool nestedVenue = false,
   }) {
-    final fromLat = _originLat;
-    final fromLng = _originLng;
-    if (fromLat == null || fromLng == null) return;
+    final from = _origin;
+    if (from == null) return;
     for (final item in items) {
       if (item is! Map) continue;
       final source = nestedVenue
@@ -161,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final lat = _distanceValue(source['lat']);
       final lng = _distanceValue(source['lng']);
       if (lat == null || lng == null) continue;
-      item['distanceKm'] = _haversineKm(fromLat, fromLng, lat, lng);
+      item['distanceKm'] = haversineKm(from.lat, from.lng, lat, lng);
     }
   }
 
@@ -1578,20 +1738,6 @@ double? _distanceValue(dynamic value) {
   if (value is num) return value.toDouble();
   return double.tryParse(value.toString());
 }
-
-double _haversineKm(double lat1, double lng1, double lat2, double lng2) {
-  const earthKm = 6371.0;
-  final dLat = _toRad(lat2 - lat1);
-  final dLng = _toRad(lng2 - lng1);
-  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-      math.cos(_toRad(lat1)) *
-          math.cos(_toRad(lat2)) *
-          math.sin(dLng / 2) *
-          math.sin(dLng / 2);
-  return earthKm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-}
-
-double _toRad(double deg) => deg * math.pi / 180;
 
 String? _formatDistanceKm(dynamic value) {
   if (value == null) return null;
