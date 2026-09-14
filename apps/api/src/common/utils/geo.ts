@@ -8,6 +8,10 @@ export function parseCoord(value?: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export function isFiniteCoord(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 export function haversineKm(
   from: GeoPoint,
   to: { lat?: number | null; lng?: number | null },

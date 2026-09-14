@@ -5,7 +5,14 @@ import {
 } from '@nestjs/common';
 import { MediaType, PhotoKind, Prisma } from '@prisma/client';
 import { computeIsOpen } from '../common/utils/hours';
-import { geocodeCity, geocodeVenueProfile, contactsStreetAddress, haversineKm, parseCoord } from '../common/utils/geo';
+import {
+  contactsStreetAddress,
+  geocodeCity,
+  geocodeVenueProfile,
+  haversineKm,
+  isFiniteCoord,
+  parseCoord,
+} from '../common/utils/geo';
 import { inferMediaType } from '../common/utils/media-type';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -175,38 +182,21 @@ export class VenuesService {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
 
-    const point = await geocodeVenueProfile({
-      address: contactsStreetAddress(venue.contacts),
-      city: venue.city,
-      state: venue.state,
-    });
-    const located =
-      point &&
-      (venue.lat == null ||
-        venue.lng == null ||
-        Math.abs(venue.lat - point.lat) >= 1e-5 ||
-        Math.abs(venue.lng - point.lng) >= 1e-5)
-        ? await this.prisma.venue.update({
-            where: { id: venue.id },
-            data: { lat: point.lat, lng: point.lng },
-          })
-        : venue;
-
     const userLat = parseCoord(lat);
     const userLng = parseCoord(lng);
     const origin =
       userLat != null && userLng != null
         ? { lat: userLat, lng: userLng }
-        : await geocodeCity((city ?? located.city).trim());
+        : await geocodeCity((city ?? venue.city).trim());
 
     const reviewStats = await this.reviewStats(id);
 
     return {
-      ...located,
+      ...venue,
       photos: venue.photos,
       banners: venue.banners,
-      isOpen: computeIsOpen(located.hoursJson),
-      distanceKm: origin ? haversineKm(origin, located) : null,
+      isOpen: computeIsOpen(venue.hoursJson),
+      distanceKm: origin ? haversineKm(origin, venue) : null,
       ...reviewStats,
     };
   }
@@ -342,31 +332,47 @@ export class VenuesService {
       throw new ForbiddenException('Sem permissão para editar este local');
     }
 
+    const { lat: requestedLat, lng: requestedLng, ...rest } = data;
     const nextCity = data.city ?? venue.city;
     const nextState = data.state ?? venue.state;
     const nextContacts = data.contacts ?? venue.contacts;
-    const point = await geocodeVenueProfile({
-      address: contactsStreetAddress(nextContacts),
-      city: nextCity,
-      state: nextState,
-    });
-    if (point) {
-      data.lat = point.lat;
-      data.lng = point.lng;
+    const updateData: typeof rest & { lat?: number; lng?: number } = { ...rest };
+
+    if (isFiniteCoord(requestedLat) && isFiniteCoord(requestedLng)) {
+      updateData.lat = requestedLat;
+      updateData.lng = requestedLng;
+    } else {
+      const locationChanged =
+        contactsStreetAddress(nextContacts) !==
+          contactsStreetAddress(venue.contacts) ||
+        (data.city !== undefined && data.city.trim() !== venue.city.trim()) ||
+        (data.state !== undefined && data.state.trim() !== venue.state.trim());
+
+      if (locationChanged) {
+        const point = await geocodeVenueProfile({
+          address: contactsStreetAddress(nextContacts),
+          city: nextCity,
+          state: nextState,
+        });
+        if (point) {
+          updateData.lat = point.lat;
+          updateData.lng = point.lng;
+        }
+      }
     }
 
     return this.prisma.venue.update({
       where: { id: venueId },
       data: {
-        ...data,
+        ...updateData,
         contacts:
-          data.contacts === undefined
+          updateData.contacts === undefined
             ? undefined
-            : (data.contacts as Prisma.InputJsonValue),
+            : (updateData.contacts as Prisma.InputJsonValue),
         hoursJson:
-          data.hoursJson === undefined
+          updateData.hoursJson === undefined
             ? undefined
-            : (data.hoursJson as Prisma.InputJsonValue),
+            : (updateData.hoursJson as Prisma.InputJsonValue),
       },
     });
   }
