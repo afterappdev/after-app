@@ -1,6 +1,7 @@
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 jest.mock('../common/utils/geo', () => {
   const actual = jest.requireActual('../common/utils/geo');
@@ -187,6 +188,25 @@ describe('VenuesService geolocation', () => {
       expect(payload.lng).toBe(manualLng);
     });
 
+    it('persists exact lat/lng when address changes and coords are sent', async () => {
+      const lat = -20.811234567;
+      const lng = -49.375678901;
+
+      await service.updateOwned(OWNER_ID, VENUE_ID, {
+        city: 'São José do Rio Preto',
+        state: 'SP',
+        contacts: { address: 'Rua Nova, 10' },
+        lat,
+        lng,
+      });
+
+      expect(geocodeVenueProfileMock).not.toHaveBeenCalled();
+      const payload = prisma.venue.update.mock.calls[0][0].data;
+      expect(payload.lat).toBe(lat);
+      expect(payload.lng).toBe(lng);
+      expect(payload.city).toBe('São José do Rio Preto');
+    });
+
     it('does not overwrite a saved pair when only one coordinate is sent', async () => {
       await service.updateOwned(OWNER_ID, VENUE_ID, {
         lat: -23.5,
@@ -196,6 +216,56 @@ describe('VenuesService geolocation', () => {
       const payload = prisma.venue.update.mock.calls[0][0].data;
       expect(payload.lat).toBeUndefined();
       expect(payload.lng).toBeUndefined();
+    });
+  });
+
+  describe('geocodeLookup', () => {
+    it('returns lat/lng without writing to the database', async () => {
+      geocodeVenueProfileMock.mockResolvedValue({
+        lat: -20.811234,
+        lng: -49.375678,
+      });
+
+      const result = await service.geocodeLookup({
+        address: 'Rua das Flores, 100',
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      });
+
+      expect(result).toEqual({ lat: -20.811234, lng: -49.375678 });
+      expect(geocodeVenueProfileMock).toHaveBeenCalledWith({
+        address: 'Rua das Flores, 100',
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      });
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+      expect(prisma.venue.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws when Nominatim finds nothing', async () => {
+      geocodeVenueProfileMock.mockResolvedValue(null);
+      await expect(
+        service.geocodeLookup({
+          address: 'Endereço inexistente 99999',
+          city: 'São Paulo',
+          state: 'SP',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects empty address', async () => {
+      await expect(
+        service.geocodeLookup({ address: '   ' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(geocodeVenueProfileMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid coordinates from geocoding', async () => {
+      geocodeVenueProfileMock.mockResolvedValue({ lat: 999, lng: -46.63 });
+      await expect(
+        service.geocodeLookup({ address: 'Rua X', city: 'São Paulo' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

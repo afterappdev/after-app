@@ -14,6 +14,7 @@ import { PhotoKind, MediaType } from '@prisma/client';
 import {
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -60,10 +61,14 @@ class UpdateVenueDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(-90)
+  @Max(90)
   lat?: number;
 
   @IsOptional()
   @IsNumber()
+  @Min(-180)
+  @Max(180)
   lng?: number;
 
   @IsOptional()
@@ -71,6 +76,23 @@ class UpdateVenueDto {
 
   @IsOptional()
   hoursJson?: object;
+}
+
+class GeocodeVenueQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  address!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  state?: string;
 }
 
 class AddPhotoDto {
@@ -129,6 +151,12 @@ export class VenuesController {
       hasWheelchairAccess: hasWheelchairAccess === 'true',
       isPetFriendly: isPetFriendly === 'true',
     });
+  }
+
+  @Get('geocode')
+  @UseGuards(JwtAuthGuard)
+  geocode(@Query() query: GeocodeVenueQueryDto) {
+    return this.venuesService.geocodeLookup(query);
   }
 
   @Get(':id/reviews')

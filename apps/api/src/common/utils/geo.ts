@@ -12,6 +12,20 @@ export function isFiniteCoord(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+export function isValidLatLng(point: {
+  lat?: unknown;
+  lng?: unknown;
+}): point is GeoPoint {
+  return (
+    isFiniteCoord(point.lat) &&
+    isFiniteCoord(point.lng) &&
+    point.lat >= -90 &&
+    point.lat <= 90 &&
+    point.lng >= -180 &&
+    point.lng <= 180
+  );
+}
+
 export function haversineKm(
   from: GeoPoint,
   to: { lat?: number | null; lng?: number | null },
@@ -43,22 +57,22 @@ async function nominatimSearch(cacheKey: string, query: string): Promise<GeoPoin
 
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'AfterApp/1.0 (local dev)' },
+      headers: {
+        'User-Agent': 'AfterApp/1.0 (https://app-after.com.br)',
+      },
+      signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
-      geoCache.set(key, null);
       return null;
     }
     const data = (await res.json()) as Array<{ lat?: string; lon?: string }>;
     const first = data[0];
     const lat = first?.lat != null ? Number(first.lat) : NaN;
     const lng = first?.lon != null ? Number(first.lon) : NaN;
-    const point =
-      Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    const point = isValidLatLng({ lat, lng }) ? { lat, lng } : null;
     geoCache.set(key, point);
     return point;
   } catch {
-    geoCache.set(key, null);
     return null;
   }
 }

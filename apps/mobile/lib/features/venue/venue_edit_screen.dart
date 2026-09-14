@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/venue_categories.dart';
@@ -9,6 +11,8 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/user_session.dart';
+import 'venue_location_map.dart';
+import 'venue_pin.dart';
 
 class VenueEditScreen extends StatefulWidget {
   const VenueEditScreen({super.key});
@@ -63,11 +67,16 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   int _tab = 0;
   String _loadedCity = '';
   String _loadedState = '';
+  String _loadedAddress = '';
   bool _acceptsMealVoucher = false;
   bool _hasKidsSpace = false;
   bool _hasCoverCharge = false;
   bool _hasWheelchairAccess = false;
   bool _isPetFriendly = false;
+  final _pin = VenuePin();
+  final _mapController = MapController();
+  bool _mapReady = false;
+  bool _geocoding = false;
 
   final _picker = ImagePicker();
 
@@ -90,7 +99,21 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     final user = context.read<AuthController>().user;
     _venueId = user?.venueId;
     _applyAccountFields(user);
+    _address.addListener(_onAddressFieldsChanged);
+    _city.addListener(_onAddressFieldsChanged);
+    _state.addListener(_onAddressFieldsChanged);
     _load();
+  }
+
+  void _onAddressFieldsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _showRelocateHint {
+    if (!_pin.hasValid) return false;
+    return _address.text.trim() != _loadedAddress.trim() ||
+        _city.text.trim() != _loadedCity.trim() ||
+        _state.text.trim() != _loadedState.trim();
   }
 
   String _nonEmpty(dynamic value, [String fallback = '']) {
@@ -129,6 +152,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         _instagram.text = contacts['instagram']?.toString() ?? '';
         _whatsapp.text = contacts['whatsapp']?.toString() ?? '';
         _address.text = contacts['address']?.toString() ?? '';
+        _loadedAddress = _address.text;
         _acceptsMealVoucher = contacts['acceptsMealVoucher'] == true;
         _hasKidsSpace = contacts['hasKidsSpace'] == true;
         _hasCoverCharge = contacts['hasCoverCharge'] == true;
@@ -150,7 +174,14 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           }
         }
       }
-      if (mounted) setState(() {});
+      _pin.applySaved(
+        (data['lat'] as num?)?.toDouble(),
+        (data['lng'] as num?)?.toDouble(),
+      );
+      if (mounted) {
+        setState(() {});
+        _moveToPin();
+      }
     } on ApiException {
       if (mounted) setState(() {});
     } catch (_) {
@@ -171,6 +202,60 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       }
     }
     return map;
+  }
+
+  void _moveToPin({double zoom = 16}) {
+    if (!_mapReady || !_pin.hasValid) return;
+    _mapController.move(LatLng(_pin.lat!, _pin.lng!), zoom);
+  }
+
+  void _onMapSelect(LatLng point) {
+    if (!_pin.applyManual(point.latitude, point.longitude)) {
+      _toast('Não foi possível usar esse ponto no mapa.');
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _findOnMap() async {
+    final address = _address.text.trim();
+    if (address.isEmpty) {
+      _toast('Informe o endereço para encontrar no mapa.');
+      return;
+    }
+    setState(() => _geocoding = true);
+    try {
+      final data = await context.read<ApiClient>().get(
+        '/venues/geocode',
+        query: {
+          'address': address,
+          'city': _city.text.trim(),
+          'state': _state.text.trim(),
+        },
+      );
+      if (!mounted) return;
+      final lat = (data is Map ? data['lat'] : null);
+      final lng = (data is Map ? data['lng'] : null);
+      final applied = _pin.applyGeocode(
+        (lat as num?)?.toDouble(),
+        (lng as num?)?.toDouble(),
+      );
+      if (!applied) {
+        _toast('Não encontramos esse endereço no mapa.');
+        return;
+      }
+      setState(() {});
+      _moveToPin();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      _toast(
+        e.statusCode == 404
+            ? 'Não encontramos esse endereço no mapa.'
+            : e.message,
+      );
+    } finally {
+      if (mounted) setState(() => _geocoding = false);
+    }
   }
 
   Future<String?> _pickAndUpload({bool video = false}) async {
@@ -350,6 +435,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         'state': state,
         if (_logoUrl != null) 'logoUrl': _logoUrl,
         if (_coverUrl != null) 'coverUrl': _coverUrl,
+        ...?_pin.payload(),
         'contacts': {
           'phone': _phone.text.trim(),
           'instagram': _instagram.text.trim(),
@@ -367,6 +453,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       final locationChanged =
           city != _loadedCity.trim() || state != _loadedState.trim();
       if (locationChanged) {
+        if (!mounted) return;
         await context.read<AuthController>().updateLocation(
           city: city,
           state: state,
@@ -374,6 +461,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       }
       _loadedCity = city;
       _loadedState = state;
+      _loadedAddress = _address.text.trim();
       if (!mounted) return;
       _toast('Local atualizado');
     } on ApiException catch (e) {
@@ -446,6 +534,10 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     _instagram.dispose();
     _whatsapp.dispose();
     _coverCharge.dispose();
+    _address.removeListener(_onAddressFieldsChanged);
+    _city.removeListener(_onAddressFieldsChanged);
+    _state.removeListener(_onAddressFieldsChanged);
+    _mapController.dispose();
     for (final c in _open.values) {
       c.dispose();
     }
@@ -723,6 +815,92 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: _loading || _geocoding ? null : _findOnMap,
+              icon: _geocoding
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _accent,
+                      ),
+                    )
+                  : const Icon(Icons.map_outlined, size: 18),
+              label: const Text(
+                'Encontrar no mapa',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _accent,
+                disabledForegroundColor: _hint,
+                side: const BorderSide(color: AppTheme.sageBorder),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          if (_showRelocateHint) ...[
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'O endereço foi alterado. Use "Encontrar no mapa" se quiser reposicionar o pin.',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF8A9391),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Localização exata',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                color: Color(0xFF282829),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          VenueLocationMap(
+            key: const Key('venue-location-map'),
+            controller: _mapController,
+            point: _pin.hasValid ? LatLng(_pin.lat!, _pin.lng!) : null,
+            onSelect: _onMapSelect,
+            onMapReady: () {
+              _mapReady = true;
+              _moveToPin();
+            },
+          ),
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Ajuste o pin na entrada do estabelecimento',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF8A9391),
+              ),
+            ),
           ),
           const SizedBox(height: 18),
           const Align(

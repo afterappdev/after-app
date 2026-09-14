@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,7 +11,7 @@ import {
   geocodeCity,
   geocodeVenueProfile,
   haversineKm,
-  isFiniteCoord,
+  isValidLatLng,
   parseCoord,
 } from '../common/utils/geo';
 import { inferMediaType } from '../common/utils/media-type';
@@ -68,6 +69,28 @@ export class VenuesService {
       },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async geocodeLookup(input: {
+    address?: string;
+    city?: string;
+    state?: string;
+  }) {
+    const address = input.address?.trim() ?? '';
+    if (!address) {
+      throw new BadRequestException(
+        'Informe o endereço para encontrar no mapa.',
+      );
+    }
+    const point = await geocodeVenueProfile({
+      address,
+      city: input.city,
+      state: input.state,
+    });
+    if (!point || !isValidLatLng(point)) {
+      throw new NotFoundException('Não encontramos esse endereço no mapa.');
+    }
+    return { lat: point.lat, lng: point.lng };
   }
 
   async searchByName(
@@ -344,7 +367,7 @@ export class VenuesService {
     const nextContacts = data.contacts ?? venue.contacts;
     const updateData: typeof rest & { lat?: number; lng?: number } = { ...rest };
 
-    if (isFiniteCoord(requestedLat) && isFiniteCoord(requestedLng)) {
+    if (isValidLatLng({ lat: requestedLat, lng: requestedLng })) {
       updateData.lat = requestedLat;
       updateData.lng = requestedLng;
     } else {
