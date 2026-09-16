@@ -12,16 +12,39 @@ import 'package:after_app/features/credits/billing_channel.dart';
 import 'package:after_app/features/credits/pix_charge.dart';
 import 'package:after_app/features/credits/pix_checkout.dart';
 import 'package:after_app/features/credits/buy_credits_screen.dart';
+import 'package:after_app/features/credits/credits_ui.dart';
 import 'package:after_app/features/credits/pix_pending_reconcile.dart';
 import 'package:after_app/features/credits/pix_poller.dart';
 import 'package:after_app/features/credits/purchase_labels.dart';
+import 'package:after_app/features/credits/store_billing_types.dart';
 
 const _pack = {
   'key': 'unit_1',
   'credits': 1,
-  'priceBrl': 25,
+  'priceBrl': 34.9,
   'storeProductId': 'after.credits.1',
 };
+
+const _officialPackages = [
+  {
+    'key': 'unit_1',
+    'credits': 1,
+    'priceBrl': 34.9,
+    'storeProductId': 'after.credits.1',
+  },
+  {
+    'key': 'combo_5',
+    'credits': 5,
+    'priceBrl': 149.9,
+    'storeProductId': 'after.credits.5',
+  },
+  {
+    'key': 'combo_10',
+    'credits': 10,
+    'priceBrl': 199.9,
+    'storeProductId': 'after.credits.10',
+  },
+];
 
 void main() {
   test('Web não usa in_app_purchase', () {
@@ -67,6 +90,7 @@ void main() {
     expect(body.containsKey('credits'), isFalse);
     expect(body.containsKey('status'), isFalse);
     expect(body.containsKey('amount'), isFalse);
+    expect(body.containsKey('priceBrl'), isFalse);
     expect(walletBalanceFromResponse({'balance': 3, 'credits': 99}), 3);
     expect(PixCharge.fromResponse({'credits': 10}).amount, isNull);
     expect(PixCharge.fromResponse({}).qrCodeText, isNull);
@@ -78,6 +102,49 @@ void main() {
       ),
       'Pagamento por PIX ainda não está disponível.',
     );
+  });
+
+  test('Product IDs nativos e chaves de pacote permanecem os mesmos', () {
+    expect(storeProductIdFor('unit_1'), 'after.credits.1');
+    expect(storeProductIdFor('combo_5'), 'after.credits.5');
+    expect(storeProductIdFor('combo_10'), 'after.credits.10');
+    expect(_officialPackages.map((p) => p['key']), [
+      'unit_1',
+      'combo_5',
+      'combo_10',
+    ]);
+    expect(_officialPackages.map((p) => p['credits']), [1, 5, 10]);
+    expect(_officialPackages.map((p) => p['storeProductId']), [
+      'after.credits.1',
+      'after.credits.5',
+      'after.credits.10',
+    ]);
+  });
+
+  test('preço por crédito e economia usam a tabela oficial', () {
+    final unit = _officialPackages[0];
+    final combo5 = _officialPackages[1];
+    final combo10 = _officialPackages[2];
+
+    expect(formatBrl(asMoney(unit['priceBrl'])), 'R\$ 34,90');
+    expect(formatBrl(asMoney(combo5['priceBrl'])), 'R\$ 149,90');
+    expect(formatBrl(asMoney(combo10['priceBrl'])), 'R\$ 199,90');
+    expect(
+      formatBrl(asMoney(combo5['priceBrl']) / asInt(combo5['credits'])),
+      'R\$ 29,98',
+    );
+    expect(
+      formatBrl(asMoney(combo10['priceBrl']) / asInt(combo10['credits'])),
+      'R\$ 19,99',
+    );
+    expect(packageSavings(unit, _officialPackages), isNull);
+    expect(packageSavings(combo5, _officialPackages), closeTo(24.6, 0.001));
+    expect(packageSavings(combo10, _officialPackages), closeTo(149.1, 0.001));
+    expect(formatBrl(packageSavings(combo5, _officialPackages)!), 'R\$ 24,60');
+    expect(formatBrl(packageSavings(combo10, _officialPackages)!), 'R\$ 149,10');
+    expect(formatBrl(25), isNot('R\$ 34,90'));
+    expect(formatBrl(115), isNot('R\$ 149,90'));
+    expect(formatBrl(200), isNot('R\$ 199,90'));
   });
 
   test('polling para em status final', () {
@@ -477,6 +544,78 @@ void main() {
     expect(sanitized.contains('[redacted]'), isTrue);
   });
 
+  testWidgets('tela Comprar créditos mostra tabela oficial e total do pacote',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/credits/wallet')) {
+        return http.Response(
+          jsonEncode({'venueId': 'v1', 'balance': 0}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path.endsWith('/credits/packages')) {
+        return http.Response(
+          jsonEncode(_officialPackages),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path == '/credits/purchases') {
+        return http.Response(
+          jsonEncode(<dynamic>[]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      Provider.value(
+        value: ApiClient(client: client),
+        child: const MaterialApp(
+          home: BuyCreditsScreen(
+            reconcilePendingPix: false,
+            usePixCheckout: true,
+          ),
+        ),
+      ),
+    );
+    await _pumpCredits(tester);
+
+    expect(find.text('1 crédito'), findsOneWidget);
+    expect(find.text('5 créditos'), findsOneWidget);
+    expect(find.text('10 créditos'), findsOneWidget);
+    expect(find.text('R\$ 34,90'), findsWidgets);
+    expect(find.text('R\$ 149,90'), findsOneWidget);
+    expect(find.text('R\$ 199,90'), findsWidgets);
+    expect(find.text('R\$ 34,90 por crédito'), findsOneWidget);
+    expect(find.text('R\$ 29,98 por crédito'), findsOneWidget);
+    expect(find.text('R\$ 19,99 por crédito'), findsOneWidget);
+    expect(find.text('Economize R\$ 24,60'), findsOneWidget);
+    expect(find.text('Economize R\$ 149,10'), findsOneWidget);
+    expect(find.text('Total: R\$ 199,90'), findsOneWidget);
+    expect(find.text('R\$ 25,00'), findsNothing);
+    expect(find.text('R\$ 115,00'), findsNothing);
+    expect(find.text('R\$ 200,00'), findsNothing);
+    expect(find.text('Economize R\$ 10,00'), findsNothing);
+    expect(find.text('Economize R\$ 50,00'), findsNothing);
+
+    await tester.tap(find.text('1 crédito'));
+    await tester.pump();
+    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+
+    await tester.tap(find.text('5 créditos'));
+    await tester.pump();
+    expect(find.text('Total: R\$ 149,90'), findsOneWidget);
+  });
+
   testWidgets('lista PIX PENDING chama GET :id, ignora finais e lojas, recarrega wallet',
       (tester) async {
     final paths = <String>[];
@@ -508,28 +647,28 @@ void main() {
               'provider': 'pix',
               'status': 'PENDING',
               'credits': 1,
-              'amountPaid': 25,
+              'amountPaid': 34.9,
             },
             {
               'id': 'pix-paid',
               'provider': 'pix',
               'status': 'PAID',
               'credits': 1,
-              'amountPaid': 25,
+              'amountPaid': 34.9,
             },
             {
               'id': 'gp-1',
               'provider': 'google_play',
               'status': 'PAID',
               'credits': 1,
-              'amountPaid': 25,
+              'amountPaid': 34.9,
             },
             {
               'id': 'ap-1',
               'provider': 'app_store',
               'status': 'PAID',
               'credits': 1,
-              'amountPaid': 25,
+              'amountPaid': 34.9,
             },
           ]),
           200,
@@ -543,7 +682,7 @@ void main() {
             'provider': 'pix',
             'status': 'PAID',
             'credits': 1,
-            'amountPaid': 25,
+            'amountPaid': 34.9,
           }),
           200,
           headers: {'content-type': 'application/json'},

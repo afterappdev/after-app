@@ -18,6 +18,8 @@ const VENUE = {
 };
 
 const UNIT = CREDIT_PACKAGES.find((p) => p.key === 'unit_1')!;
+const COMBO_5 = CREDIT_PACKAGES.find((p) => p.key === 'combo_5')!;
+const COMBO_10 = CREDIT_PACKAGES.find((p) => p.key === 'combo_10')!;
 
 function createPrisma() {
   const prisma: {
@@ -121,6 +123,24 @@ describe('CreditsService billing', () => {
     purchaseId: 'gp-1',
     verificationData: 'token-abc',
   };
+
+  it('catálogo oficial mantém IDs e cobra os preços PIX atuais', () => {
+    expect(CREDIT_PACKAGES.map((p) => p.key)).toEqual([
+      'unit_1',
+      'combo_5',
+      'combo_10',
+    ]);
+    expect(CREDIT_PACKAGES.map((p) => p.storeProductId)).toEqual([
+      'after.credits.1',
+      'after.credits.5',
+      'after.credits.10',
+    ]);
+    expect(CREDIT_PACKAGES.map((p) => p.credits)).toEqual([1, 5, 10]);
+    expect(UNIT.priceBrl).toBe(34.9);
+    expect(COMBO_5.priceBrl).toBe(149.9);
+    expect(COMBO_10.priceBrl).toBe(199.9);
+    expect(service.packages()).toEqual(CREDIT_PACKAGES);
+  });
 
   it('bloqueia dev-confirm em production sem creditar a wallet', async () => {
     process.env.NODE_ENV = 'production';
@@ -544,7 +564,7 @@ describe('CreditsService billing', () => {
     expect(createCharge).toHaveBeenCalledWith(
       expect.objectContaining({
         packageKey: 'unit_1',
-        amountBrl: 25,
+        amountBrl: UNIT.priceBrl,
         payerEmail: 'venue@test.com',
       }),
     );
@@ -555,7 +575,7 @@ describe('CreditsService billing', () => {
           provider: 'pix',
           status: 'PENDING',
           productId: null,
-          amountPaid: 25,
+          amountPaid: UNIT.priceBrl,
           credits: 1,
         }),
       }),
@@ -563,8 +583,7 @@ describe('CreditsService billing', () => {
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
   });
 
-  it('combo_5 cobra 115 do catálogo, não um valor enviado pelo cliente', async () => {
-    const combo = CREDIT_PACKAGES.find((p) => p.key === 'combo_5')!;
+  it('combo_5 cobra 149.90 do catálogo, não um valor enviado pelo cliente', async () => {
     const createCharge = jest.fn().mockResolvedValue({
       orderId: 'ORD01COMBO5',
       paymentId: 'PAY01COMBO5',
@@ -578,22 +597,88 @@ describe('CreditsService billing', () => {
       createCharge,
     });
     prisma.creditPurchase.create.mockResolvedValue(
-      pixPurchase({ packageKey: 'combo_5', amountPaid: 115, credits: 5 }),
+      pixPurchase({
+        packageKey: 'combo_5',
+        amountPaid: COMBO_5.priceBrl,
+        credits: 5,
+      }),
     );
     prisma.creditPurchase.update.mockResolvedValue(
       pixPurchase({
         packageKey: 'combo_5',
-        amountPaid: 115,
+        amountPaid: COMBO_5.priceBrl,
         credits: 5,
         providerTxId: 'pix:ORD01COMBO5',
       }),
     );
 
     const result = await service.createPixCharge(USER_ID, 'combo_5');
-    expect(result.amount).toBe(combo.priceBrl);
-    expect(result.amount).toBe(115);
+    expect(result.amount).toBe(COMBO_5.priceBrl);
+    expect(result.amount).toBe(149.9);
     expect(createCharge).toHaveBeenCalledWith(
-      expect.objectContaining({ amountBrl: 115, packageKey: 'combo_5' }),
+      expect.objectContaining({
+        amountBrl: COMBO_5.priceBrl,
+        packageKey: 'combo_5',
+      }),
+    );
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountPaid: COMBO_5.priceBrl,
+          credits: 5,
+          packageKey: 'combo_5',
+        }),
+      }),
+    );
+    expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
+  });
+
+  it('combo_10 cobra 199.90 do catálogo, não um valor enviado pelo cliente', async () => {
+    const createCharge = jest.fn().mockResolvedValue({
+      orderId: 'ORD01COMBO10',
+      paymentId: 'PAY01COMBO10',
+      qrCodeText: '00020126combo10',
+      qrCodeImage: 'data:image/png;base64,combo10',
+      expiresAt: null,
+    });
+    payments.pixProvider.mockReturnValue({
+      id: 'pix',
+      isConfigured: true,
+      createCharge,
+    });
+    prisma.creditPurchase.create.mockResolvedValue(
+      pixPurchase({
+        packageKey: 'combo_10',
+        amountPaid: COMBO_10.priceBrl,
+        credits: 10,
+      }),
+    );
+    prisma.creditPurchase.update.mockResolvedValue(
+      pixPurchase({
+        packageKey: 'combo_10',
+        amountPaid: COMBO_10.priceBrl,
+        credits: 10,
+        providerTxId: 'pix:ORD01COMBO10',
+      }),
+    );
+
+    const result = await service.createPixCharge(USER_ID, 'combo_10');
+    expect(result.amount).toBe(COMBO_10.priceBrl);
+    expect(result.amount).toBe(199.9);
+    expect(createCharge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountBrl: COMBO_10.priceBrl,
+        packageKey: 'combo_10',
+      }),
+    );
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          amountPaid: COMBO_10.priceBrl,
+          credits: 10,
+          packageKey: 'combo_10',
+        }),
+      }),
     );
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
   });
@@ -605,7 +690,7 @@ describe('CreditsService billing', () => {
         orderId: 'ORD01TESTPIX',
         paymentId: 'PAY01TESTPIX',
         status: 'PENDING',
-        amountBrl: 25,
+        amountBrl: UNIT.priceBrl,
         currency: 'BRL',
         externalReference: 'pix-p1',
         expiresAt: null,
@@ -756,7 +841,7 @@ describe('CreditsService billing', () => {
     const result = await service.purchaseById(USER_ID, 'pix-p1');
     expect(result.status).toBe('PAID');
     expect(result.provider).toBe('pix');
-    expect(result.amountPaid).toBe(25);
+    expect(result.amountPaid).toBe(UNIT.priceBrl);
     expect(result.currency).toBe('BRL');
     expect(result).not.toHaveProperty('providerTxId');
     expect(result).not.toHaveProperty('fiscalDocument');
@@ -1000,7 +1085,7 @@ describe('CreditsService billing', () => {
           fiscalName: 'João da Silva',
           fiscalDocument: '12345678909',
           fiscalEmail: 'email@exemplo.com',
-          amountPaid: 25,
+          amountPaid: UNIT.priceBrl,
           status: 'PENDING',
         }),
       }),
@@ -1072,7 +1157,7 @@ function pixPurchase(overrides: Record<string, unknown> = {}) {
     venueId: VENUE.id,
     packageKey: 'unit_1',
     productId: null,
-    amountPaid: 25,
+    amountPaid: UNIT.priceBrl,
     currency: 'BRL',
     credits: 1,
     provider: 'pix',
@@ -1090,7 +1175,7 @@ function paidOrder() {
     orderId: 'ORD01TESTPIX',
     paymentId: 'PAY01TESTPIX',
     status: 'PAID' as const,
-    amountBrl: 25,
+    amountBrl: UNIT.priceBrl,
     currency: 'BRL' as const,
     externalReference: 'pix-p1',
     expiresAt: null,

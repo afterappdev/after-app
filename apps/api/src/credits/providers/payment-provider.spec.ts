@@ -32,7 +32,7 @@ function mpPixOrder(overrides: Record<string, unknown> = {}) {
     id: 'ORD01TESTPIX',
     status: 'action_required',
     status_detail: 'waiting_transfer',
-    total_amount: '25.00',
+    total_amount: '34.90',
     external_reference: 'purchase-1',
     transactions: {
       payments: [
@@ -40,7 +40,7 @@ function mpPixOrder(overrides: Record<string, unknown> = {}) {
           id: 'PAY01TESTPIX',
           status: 'action_required',
           status_detail: 'waiting_transfer',
-          amount: '25.00',
+          amount: '34.90',
           date_of_expiration: '2026-08-26T12:00:00.000Z',
           payment_method: {
             id: 'pix',
@@ -377,7 +377,7 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     const result = await pix.createCharge({
       purchaseId: 'purchase-1',
       packageKey: 'unit_1',
-      amountBrl: 25,
+      amountBrl: 34.9,
       payerEmail: 'venue@test.com',
       payerName: 'Venue Owner',
       idempotencyKey: 'idem-1',
@@ -390,12 +390,12 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
       Record<string, unknown>,
     ];
     expect(idempotencyKey).toBe('idem-1');
-    expect(body.total_amount).toBe('25.00');
+    expect(body.total_amount).toBe('34.90');
     expect(body.external_reference).toBe('purchase-1');
     const tx = body.transactions as {
       payments: Array<{ amount: string; payment_method: { id: string } }>;
     };
-    expect(tx.payments[0].amount).toBe('25.00');
+    expect(tx.payments[0].amount).toBe('34.90');
     expect(tx.payments[0].payment_method.id).toBe('pix');
     expect((body.payer as { email: string }).email).toBe('venue@test.com');
     expect((body.payer as { email: string }).email).not.toContain('@testuser.com');

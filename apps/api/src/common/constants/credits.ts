@@ -4,9 +4,9 @@
  * Change CREDIT_PER_DISPLAY_DAY via env if the rule changes.
  */
 export const CREDIT_PACKAGES = [
-  { key: 'unit_1', credits: 1, priceBrl: 25, storeProductId: 'after.credits.1' },
-  { key: 'combo_5', credits: 5, priceBrl: 115, storeProductId: 'after.credits.5' },
-  { key: 'combo_10', credits: 10, priceBrl: 200, storeProductId: 'after.credits.10' },
+  { key: 'unit_1', credits: 1, priceBrl: 34.9, storeProductId: 'after.credits.1' },
+  { key: 'combo_5', credits: 5, priceBrl: 149.9, storeProductId: 'after.credits.5' },
+  { key: 'combo_10', credits: 10, priceBrl: 199.9, storeProductId: 'after.credits.10' },
 ] as const;
 
 export type CreditPackageKey = (typeof CREDIT_PACKAGES)[number]['key'];

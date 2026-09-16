@@ -264,30 +264,32 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                                 ],
                                               ),
                                               const SizedBox(height: 8),
-                                              Row(
-                                                children: [
-                                                  const SizedBox(width: 34),
-                                                  Text(
-                                                    '${formatBrl(unit)} por crédito',
-                                                    style: const TextStyle(
-                                                      fontFamily: AppTheme.fontFamily,
-                                                      fontSize: 11,
-                                                      color: kCreditsMuted,
-                                                    ),
-                                                  ),
-                                                  if (save != null) ...[
-                                                    const SizedBox(width: 10),
+                                              Padding(
+                                                padding: const EdgeInsets.only(left: 34),
+                                                child: Wrap(
+                                                  spacing: 10,
+                                                  runSpacing: 4,
+                                                  children: [
                                                     Text(
-                                                      'Economize ${formatBrl(save)}',
+                                                      '${formatBrl(unit)} por crédito',
                                                       style: const TextStyle(
                                                         fontFamily: AppTheme.fontFamily,
-                                                        fontWeight: FontWeight.w700,
                                                         fontSize: 11,
-                                                        color: kCreditsAccent,
+                                                        color: kCreditsMuted,
                                                       ),
                                                     ),
+                                                    if (save != null)
+                                                      Text(
+                                                        'Economize ${formatBrl(save)}',
+                                                        style: const TextStyle(
+                                                          fontFamily: AppTheme.fontFamily,
+                                                          fontWeight: FontWeight.w700,
+                                                          fontSize: 11,
+                                                          color: kCreditsAccent,
+                                                        ),
+                                                      ),
                                                   ],
-                                                ],
+                                                ),
                                               ),
                                             ],
                                           ),
