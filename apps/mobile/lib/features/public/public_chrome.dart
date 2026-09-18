@@ -5,10 +5,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
 
 void goToPublicHome(BuildContext context) {
-  Navigator.of(context).pushNamedAndRemoveUntil(
-    AppRoutes.root,
-    (route) => false,
-  );
+  Navigator.of(
+    context,
+  ).pushNamedAndRemoveUntil(AppRoutes.root, (route) => false);
 }
 
 void goToLogin(BuildContext context) {
@@ -38,20 +37,13 @@ class PublicHomeLink extends StatelessWidget {
         ),
       ),
       icon: const Icon(Icons.arrow_back_rounded, size: 18),
-      label: const Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      label: const Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }
 
 class PublicChrome extends StatelessWidget {
-  const PublicChrome({
-    super.key,
-    required this.body,
-  });
+  const PublicChrome({super.key, required this.body});
 
   final Widget body;
 
@@ -165,9 +157,7 @@ class _PublicEnterButton extends StatelessWidget {
           horizontal: compact ? 16 : 22,
           vertical: 12,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: const TextStyle(
           fontFamily: AppTheme.fontFamily,
           fontWeight: FontWeight.w700,
@@ -196,9 +186,7 @@ class _PublicFooter extends StatelessWidget {
       color: Colors.white,
       child: DecoratedBox(
         decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: AppTheme.sageBorder, width: 1),
-          ),
+          border: Border(top: BorderSide(color: AppTheme.sageBorder, width: 1)),
         ),
         child: SafeArea(
           top: false,
@@ -237,8 +225,9 @@ class _PublicFooter extends StatelessWidget {
                       label: 'Exclusão de conta',
                       style: linkStyle,
                       onTap: () {
-                        Navigator.of(context)
-                            .pushNamed(AppRoutes.accountDeletion);
+                        Navigator.of(
+                          context,
+                        ).pushNamed(AppRoutes.accountDeletion);
                       },
                     ),
                     _FooterLink(
@@ -288,17 +277,21 @@ class PublicPageFrame extends StatelessWidget {
     super.key,
     required this.child,
     this.maxWidth = 760,
+    this.backgroundColor = AppTheme.canvas,
+    this.title,
   });
 
   final Widget child;
   final double maxWidth;
+  final Color backgroundColor;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 640;
-    return PublicChrome(
+    final frame = PublicChrome(
       body: ColoredBox(
-        color: AppTheme.canvas,
+        color: backgroundColor,
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
@@ -316,5 +309,7 @@ class PublicPageFrame extends StatelessWidget {
         ),
       ),
     );
+    if (title == null || title!.isEmpty) return frame;
+    return Title(title: title!, color: AppTheme.ink, child: frame);
   }
 }

@@ -2,7 +2,7 @@
 import 'dart:html' as html;
 
 Future<void> openExternalUrl(String url) async {
-  if (url.startsWith('tel:')) {
+  if (url.startsWith('tel:') || url.startsWith('mailto:')) {
     html.window.location.assign(url);
     return;
   }

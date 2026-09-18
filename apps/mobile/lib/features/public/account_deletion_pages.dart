@@ -6,6 +6,7 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import 'account_deletion_uri.dart';
 import 'public_chrome.dart';
+import 'public_contact.dart';
 
 const _genericRequestMessage =
     'Se existir uma conta com esse e-mail, enviaremos instruções para continuar.';
@@ -71,7 +72,8 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
       if (!mounted) return;
       setState(() {
         _feedbackError = true;
-        _feedback = 'Não foi possível enviar as instruções agora. Tente novamente mais tarde.';
+        _feedback =
+            'Não foi possível enviar as instruções agora. Tente novamente mais tarde.';
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -80,91 +82,249 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 640;
     return PublicPageFrame(
+      title: 'Exclusão de Conta | After',
+      backgroundColor: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Exclusão de conta',
-            key: Key('deletion-page-title'),
-            style: TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontWeight: FontWeight.w800,
-              fontSize: 28,
-              color: AppTheme.ink,
-            ),
+          const PublicPageHeading(
+            title: 'Exclusão de conta e dados',
+            titleKey: Key('deletion-page-title'),
           ),
           const SizedBox(height: 12),
           const Text(
-            'Você pode excluir a conta After de dois jeitos:\n'
-            '• no aplicativo, autenticado, em Perfil → Excluir conta;\n'
-            '• por esta página, informando o e-mail da conta. Enviaremos um link de confirmação só para esse e-mail.\n\n'
-            'A exclusão remove a conta, o perfil do estabelecimento (se houver), favoritos, avaliações, notificações, créditos, publicações e os arquivos de upload associados.\n\n'
-            'Nenhum dado extra é mantido pelo After além do que a lei eventualmente exigir. Não dá para desfazer depois da confirmação.\n\n'
-            'Abrir o e-mail não exclui a conta. A exclusão só acontece se você confirmar no link.',
-            style: TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontWeight: FontWeight.w400,
-              fontSize: 15,
-              height: 1.5,
-              color: Color(0xFF4A524F),
-            ),
+            'Você pode solicitar a exclusão da sua conta do After e dos dados pessoais associados a ela.',
+            style: publicBodyStyle,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Essa solicitação é destinada tanto a contas de usuários quanto, quando aplicável, a contas responsáveis por estabelecimentos.',
+            style: publicBodyStyle,
           ),
           const SizedBox(height: 24),
-          TextField(
-            key: const Key('deletion-email'),
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            autofillHints: const [AutofillHints.email],
-            enabled: !_loading,
-            style: const TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontSize: 15,
-              color: AppTheme.ink,
-            ),
-            decoration: InputDecoration(
-              hintText: 'E-mail da conta',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
+          PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Como solicitar',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Você pode excluir a conta After de dois jeitos:\n'
+                  '• no aplicativo, autenticado, em Perfil → Excluir conta;\n'
+                  '• por esta página, informando o e-mail da conta. Enviaremos um link de confirmação só para esse e-mail.\n\n'
+                  'Abrir o e-mail não exclui a conta. A exclusão só acontece se você confirmar no link.',
+                  style: publicBodyStyle,
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton(
-            key: const Key('deletion-submit'),
-            onPressed: _loading ? null : _submit,
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFE53935),
-              foregroundColor: Colors.white,
-              minimumSize: const Size(0, 48),
-            ),
-            child: _loading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
+          PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Solicitar pelo e-mail da conta',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Informe o e-mail da conta. Se existir uma conta com esse e-mail, enviaremos um link temporário de confirmação.',
+                  style: publicBodyStyle,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  key: const Key('deletion-email'),
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  enabled: !_loading,
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 15,
+                    color: AppTheme.ink,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'E-mail da conta',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  )
-                : const Text('Solicitar exclusão da conta'),
-          ),
-          if (_feedback != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              key: const Key('deletion-feedback'),
-              _feedback!,
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                height: 1.4,
-                color: _feedbackError ? const Color(0xFFE53935) : AppTheme.ink,
-              ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  key: const Key('deletion-submit'),
+                  onPressed: _loading ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE53935),
+                    foregroundColor: Colors.white,
+                    minimumSize: Size(compact ? double.infinity : 0, 48),
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Solicitar exclusão da conta'),
+                ),
+                if (_feedback != null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    key: const Key('deletion-feedback'),
+                    _feedback!,
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      height: 1.4,
+                      color: _feedbackError
+                          ? const Color(0xFFE53935)
+                          : AppTheme.ink,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Dúvidas ou dificuldades',
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              color: AppTheme.ink,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Se precisar de ajuda ou tiver dificuldades relacionadas à exclusão da conta, utilize os canais oficiais de contato do After. Esses canais não substituem a solicitação acima.',
+            style: publicBodyStyle,
+          ),
+          const SizedBox(height: 16),
+          const PublicOfficialChannelsCard(),
+          const SizedBox(height: 16),
+          const PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'O que acontece após a exclusão',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'A exclusão da conta poderá resultar na remoção dos dados pessoais e conteúdos associados à conta, observadas as hipóteses em que determinadas informações precisem ser mantidas para cumprimento de obrigações legais ou regulatórias, prevenção de fraude, segurança, resolução de disputas ou exercício regular de direitos.',
+                  style: publicBodyStyle,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Compras e histórico',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'Determinados registros relacionados a compras e transações poderão ser mantidos pelo período necessário ao cumprimento de obrigações legais, fiscais, regulatórias, prevenção de fraude ou resolução de disputas.',
+                  style: publicBodyStyle,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Conteúdo do estabelecimento',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                SizedBox(height: 10),
+                Text(
+                  'A exclusão de uma conta responsável por estabelecimento poderá afetar informações, imagens, promoções e outros conteúdos associados ao estabelecimento.',
+                  style: publicBodyStyle,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          PublicSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Privacidade',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                PublicSecondaryButton(
+                  key: const Key('deletion-privacy'),
+                  label: 'Consultar Política de Privacidade',
+                  expand: compact,
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.privacy);
+                  },
+                ),
+                const SizedBox(height: 10),
+                PublicPrimaryButton(
+                  key: const Key('deletion-help'),
+                  label: 'Precisa de ajuda?',
+                  expand: compact,
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.contact);
+                  },
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 20),
           TextButton(
             onPressed: () {
@@ -188,7 +348,8 @@ class ConfirmAccountDeletionPage extends StatefulWidget {
       _ConfirmAccountDeletionPageState();
 }
 
-class _ConfirmAccountDeletionPageState extends State<ConfirmAccountDeletionPage> {
+class _ConfirmAccountDeletionPageState
+    extends State<ConfirmAccountDeletionPage> {
   late final String _token;
   bool _loading = false;
   bool _done = false;

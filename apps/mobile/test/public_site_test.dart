@@ -20,6 +20,7 @@ import 'package:after_app/features/public/landing_page.dart';
 import 'package:after_app/features/public/account_deletion_pages.dart';
 import 'package:after_app/features/public/legal_pages.dart';
 import 'package:after_app/features/public/privacy_policy_page.dart';
+import 'package:after_app/features/public/public_contact.dart';
 import 'package:after_app/features/public/web_root.dart';
 
 Widget _publicSite({
@@ -28,7 +29,8 @@ Widget _publicSite({
   ApiClient? api,
 }) {
   final client = api ?? ApiClient();
-  final controller = auth ?? AuthController(api: client, storage: AuthStorage());
+  final controller =
+      auth ?? AuthController(api: client, storage: AuthStorage());
   controller.bootstrapping = false;
   return MultiProvider(
     providers: [
@@ -41,7 +43,8 @@ Widget _publicSite({
       routes: {
         AppRoutes.root: (_) => const LandingPage(),
         AppRoutes.login: (_) => const LoginScreenRoute(),
-        AppRoutes.register: (_) => const RegisterScreen(showPublicHomeLink: true),
+        AppRoutes.register: (_) =>
+            const RegisterScreen(showPublicHomeLink: true),
         AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
         AppRoutes.accountDeletion: (_) => const AccountDeletionPage(),
         AppRoutes.confirmDeletion: (_) => const ConfirmAccountDeletionPage(),
@@ -97,8 +100,9 @@ Future<void> _expectLandingLayout(WidgetTester tester, Size size) async {
     findsNothing,
   );
 
-  final loginRect =
-      tester.getRect(find.byKey(const Key('public-header-entrar')));
+  final loginRect = tester.getRect(
+    find.byKey(const Key('public-header-entrar')),
+  );
   expect(loginRect.bottom, lessThanOrEqualTo(bar.bottom + 0.6));
   expect(loginRect.width, lessThan(size.width * 0.75));
 
@@ -111,10 +115,7 @@ Future<void> _expectLandingLayout(WidgetTester tester, Size size) async {
   }
 
   final landingImages = tester.widgetList<Image>(
-    find.descendant(
-      of: find.byType(LandingPage),
-      matching: find.byType(Image),
-    ),
+    find.descendant(of: find.byType(LandingPage), matching: find.byType(Image)),
   );
   expect(landingImages, isNotEmpty);
   for (final image in landingImages) {
@@ -166,7 +167,9 @@ void main() {
     expect(_art(const Key('landing-art-footer')), findsOneWidget);
   });
 
-  testWidgets('botão Login/Cadastre-se leva ao login existente', (tester) async {
+  testWidgets('botão Login/Cadastre-se leva ao login existente', (
+    tester,
+  ) async {
     await _surface(tester, const Size(1200, 900));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
@@ -178,24 +181,31 @@ void main() {
     expect(find.text('Bem-vindo(a)!'), findsOneWidget);
   });
 
-  testWidgets('badges das lojas não navegam (links ainda não publicados)',
-      (tester) async {
+  testWidgets('badges das lojas não navegam (links ainda não publicados)', (
+    tester,
+  ) async {
     await _surface(tester, const Size(1200, 900));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('landing-badge-play')),
-        warnIfMissed: false);
+    await tester.tap(
+      find.byKey(const Key('landing-badge-play')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('landing-badge-store')),
-        warnIfMissed: false);
+    await tester.tap(
+      find.byKey(const Key('landing-badge-store')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(LoginScreen), findsNothing);
     expect(find.byType(LandingPage), findsOneWidget);
   });
 
-  testWidgets('links de Política, Exclusão e Contato funcionam', (tester) async {
+  testWidgets('links de Política, Exclusão e Contato funcionam', (
+    tester,
+  ) async {
     await _surface(tester, const Size(1200, 1800));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
@@ -238,23 +248,20 @@ void main() {
   });
 
   testWidgets('política abre sem login', (tester) async {
-    await tester.pumpWidget(
-      _publicSite(initialRoute: AppRoutes.privacy),
-    );
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.privacy));
     await tester.pumpAndSettle();
 
     expect(find.text('Política de Privacidade'), findsWidgets);
     expect(find.textContaining('Última atualização'), findsOneWidget);
     expect(find.text('Nesta página'), findsOneWidget);
-    expect(find.text('1. Quem somos'), findsOneWidget);
+    expect(find.text('1. Dados que podemos coletar'), findsWidgets);
+    expect(find.textContaining('18 de setembro de 2026'), findsOneWidget);
     expect(find.byKey(const Key('privacy-back')), findsOneWidget);
     expect(find.byType(LoginScreen), findsNothing);
   });
 
   testWidgets('voltar ao site sai da política', (tester) async {
-    await tester.pumpWidget(
-      _publicSite(initialRoute: AppRoutes.privacy),
-    );
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.privacy));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('privacy-back')));
@@ -264,7 +271,9 @@ void main() {
     expect(find.byKey(const Key('landing-art-header')), findsOneWidget);
   });
 
-  testWidgets('usuário autenticado não vê a landing no WebRoot', (tester) async {
+  testWidgets('usuário autenticado não vê a landing no WebRoot', (
+    tester,
+  ) async {
     final api = ApiClient(
       client: MockClient((_) async => http.Response('[]', 200)),
     );
@@ -431,11 +440,15 @@ void main() {
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('landing-badge-play')),
-        warnIfMissed: false);
+    await tester.tap(
+      find.byKey(const Key('landing-badge-play')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('landing-badge-store')),
-        warnIfMissed: false);
+    await tester.tap(
+      find.byKey(const Key('landing-badge-store')),
+      warnIfMissed: false,
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(LoginScreen), findsNothing);
@@ -488,7 +501,9 @@ void main() {
   });
 
   test('landing_page.dart não intercepta scale/pointer globais', () {
-    final src = File('lib/features/public/landing_page.dart').readAsStringSync();
+    final src = File(
+      'lib/features/public/landing_page.dart',
+    ).readAsStringSync();
     expect(src.contains('InteractiveViewer'), isFalse);
     expect(src.contains('onScale'), isFalse);
     expect(src.contains('PointerMoveEvent'), isFalse);
@@ -499,8 +514,9 @@ void main() {
     expect(src.contains('O que temos pra hoje?'), isFalse);
   });
 
-  testWidgets('login direto tem Voltar para o início e vai para /',
-      (tester) async {
+  testWidgets('login direto tem Voltar para o início e vai para /', (
+    tester,
+  ) async {
     await _surface(tester, const Size(390, 844));
     await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.login));
     await tester.pumpAndSettle();
@@ -516,8 +532,9 @@ void main() {
     expect(find.byType(LoginScreen), findsNothing);
   });
 
-  testWidgets('política direta tem Voltar para o início e vai para /',
-      (tester) async {
+  testWidgets('política direta tem Voltar para o início e vai para /', (
+    tester,
+  ) async {
     await _surface(tester, const Size(1440, 900));
     await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.privacy));
     await tester.pumpAndSettle();
@@ -532,8 +549,9 @@ void main() {
     expect(find.byType(LandingPage), findsOneWidget);
   });
 
-  testWidgets('exclusão, contato e recuperação voltam para o início',
-      (tester) async {
+  testWidgets('exclusão, contato e recuperação voltam para o início', (
+    tester,
+  ) async {
     await _surface(tester, const Size(1440, 900));
 
     for (final route in [
@@ -546,13 +564,20 @@ void main() {
       await tester.pumpWidget(_publicSite(initialRoute: route));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final back = find.byKey(const Key('public-home-back'), skipOffstage: false);
+      final back = find.byKey(
+        const Key('public-home-back'),
+        skipOffstage: false,
+      );
       expect(back, findsWidgets, reason: 'missing public-home-back on $route');
 
       await tester.ensureVisible(back.first);
       await tester.tap(back.first);
       await tester.pumpAndSettle();
-      expect(find.byType(LandingPage), findsOneWidget, reason: 'did not return home from $route');
+      expect(
+        find.byType(LandingPage),
+        findsOneWidget,
+        reason: 'did not return home from $route',
+      );
     }
   });
 
@@ -569,5 +594,46 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('public-home-back')), findsWidgets);
     }
+  });
+
+  test('links oficiais de e-mail, telefone e WhatsApp', () {
+    expect(AfterPublicContact.email, 'contato@app-after.com.br');
+    expect(AfterPublicContact.phoneDisplay, '(17) 99647-0194');
+    expect(AfterPublicContact.mailtoUrl, 'mailto:contato@app-after.com.br');
+    expect(AfterPublicContact.telUrl, 'tel:+5517996470194');
+    expect(AfterPublicContact.whatsappUrl, contains('wa.me/5517996470194'));
+    expect(
+      AfterPublicContact.whatsappUrl,
+      contains(Uri.encodeQueryComponent(AfterPublicContact.whatsappMessage)),
+    );
+  });
+
+  testWidgets('contato, política e exclusão navegam entre si', (tester) async {
+    await _surface(tester, const Size(1440, 2200));
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.contact));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Entre em contato'), findsOneWidget);
+    expect(find.text('contato@app-after.com.br'), findsOneWidget);
+    expect(find.text('(17) 99647-0194'), findsWidgets);
+    expect(find.text('Conversar pelo WhatsApp'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('contact-privacy')));
+    await tester.tap(find.byKey(const Key('contact-privacy')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrivacyPolicyPage), findsOneWidget);
+    expect(find.textContaining('Última atualização'), findsOneWidget);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('privacy-request-deletion')),
+    );
+    await tester.tap(find.byKey(const Key('privacy-request-deletion')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AccountDeletionPage), findsOneWidget);
+    expect(find.byKey(const Key('deletion-email')), findsOneWidget);
+    expect(find.byKey(const Key('deletion-submit')), findsOneWidget);
+    expect(find.text('Solicitar exclusão da conta'), findsOneWidget);
+    expect(find.byKey(const Key('deletion-help')), findsOneWidget);
+    expect(find.byKey(const Key('deletion-privacy')), findsOneWidget);
   });
 }
