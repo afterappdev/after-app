@@ -99,7 +99,8 @@ describe('AuthService Apple Web', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'test';
     now = 1_000_000;
-    store = new OAuthEphemeralStore(() => now);
+    store = new OAuthEphemeralStore();
+    store.setNowForTests(() => now);
     prisma = createPrisma();
     jwt = new JwtService({ secret: 'test-secret' });
     service = new AuthService(

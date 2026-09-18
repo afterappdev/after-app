@@ -10,7 +10,8 @@ describe('OAuthEphemeralStore', () => {
 
   beforeEach(() => {
     now = 1_000_000;
-    store = new OAuthEphemeralStore(() => now);
+    store = new OAuthEphemeralStore();
+    store.setNowForTests(() => now);
   });
 
   it('aceita state válido uma vez', () => {

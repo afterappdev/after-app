@@ -21,8 +21,7 @@ export class OAuthEphemeralStore {
   private readonly sessions = new Map<string, AppleWebSession>();
   private readonly exchanges = new Map<string, AppleWebExchangeRecord<unknown>>();
   private lastCleanup = 0;
-
-  constructor(private readonly now: () => number = Date.now) {}
+  private now: () => number = Date.now;
 
   putSession(
     state: string,
@@ -69,6 +68,11 @@ export class OAuthEphemeralStore {
     this.exchanges.delete(code);
     if (row.expiresAt <= this.now()) return null;
     return row.payload as T;
+  }
+
+  /** Test-only clock. Must not be a constructor argument — Nest would try to inject Function. */
+  setNowForTests(now: () => number) {
+    this.now = now;
   }
 
   get sessionCount() {
