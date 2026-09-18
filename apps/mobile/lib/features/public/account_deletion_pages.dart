@@ -219,7 +219,7 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
           ),
           const SizedBox(height: 10),
           const Text(
-            'Se precisar de ajuda ou tiver dificuldades relacionadas à exclusão da conta, utilize os canais oficiais de contato do After. Esses canais não substituem a solicitação acima.',
+            'Se precisar de ajuda ou tiver dificuldades relacionadas à exclusão da conta, utilize o e-mail ou o WhatsApp oficiais do After. Esses canais não substituem a solicitação acima.',
             style: publicBodyStyle,
           ),
           const SizedBox(height: 16),

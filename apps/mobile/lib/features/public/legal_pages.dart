@@ -103,7 +103,7 @@ class ContactPage extends StatelessWidget {
                 ),
                 SizedBox(height: 10),
                 Text(
-                  'Utilize nossos canais para dúvidas, sugestões, suporte ou reclamações. Nossa equipe analisará sua solicitação e responderá assim que possível.',
+                  'Utilize nosso e-mail ou WhatsApp para dúvidas, sugestões, suporte ou reclamações. Nossa equipe analisará sua solicitação e responderá assim que possível.',
                   style: publicBodyStyle,
                 ),
               ],

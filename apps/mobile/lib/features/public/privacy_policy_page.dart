@@ -437,9 +437,9 @@ class _PrivacyContactFooter extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         InkWell(
-          onTap: () => openExternalUrl(AfterPublicContact.telUrl),
+          onTap: () => openExternalUrl(AfterPublicContact.whatsappUrl),
           child: const Text(
-            'Telefone e WhatsApp: ${AfterPublicContact.phoneDisplay}',
+            'WhatsApp: ${AfterPublicContact.whatsappDisplay}',
             style: TextStyle(
               fontFamily: AppTheme.fontFamily,
               fontWeight: FontWeight.w600,

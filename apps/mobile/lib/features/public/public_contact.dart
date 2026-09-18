@@ -6,10 +6,9 @@ import '../../core/theme/app_theme.dart';
 
 class AfterPublicContact {
   static const email = 'contato@app-after.com.br';
-  static const phoneDisplay = '(17) 99647-0194';
+  static const whatsappDisplay = '(17) 99647-0194';
   static const whatsappE164 = '5517996470194';
   static const mailtoUrl = 'mailto:contato@app-after.com.br';
-  static const telUrl = 'tel:+5517996470194';
   static const whatsappMessage =
       'Olá! Entrei em contato pelo site do After e gostaria de falar com a equipe.';
 
@@ -215,22 +214,12 @@ class PublicOfficialChannelsCard extends StatelessWidget {
               size: 20,
             ),
             label: 'WhatsApp',
-            value: AfterPublicContact.phoneDisplay,
+            value: AfterPublicContact.whatsappDisplay,
             actionKey: const Key('contact-whatsapp'),
             actionLabel: 'Conversar pelo WhatsApp',
             expand: true,
             showAction: showWhatsAppButton,
             onPressed: () => openExternalUrl(AfterPublicContact.whatsappUrl),
-          ),
-          const Divider(height: 1, color: AppTheme.sageBorder),
-          _ChannelRow(
-            icon: const Icon(Icons.phone_outlined, color: AppTheme.brand),
-            label: 'Telefone',
-            value: AfterPublicContact.phoneDisplay,
-            actionKey: const Key('contact-phone'),
-            actionLabel: 'Ligar',
-            expand: true,
-            onPressed: () => openExternalUrl(AfterPublicContact.telUrl),
           ),
         ],
       ),

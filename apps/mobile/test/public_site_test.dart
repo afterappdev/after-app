@@ -596,12 +596,12 @@ void main() {
     }
   });
 
-  test('links oficiais de e-mail, telefone e WhatsApp', () {
+  test('links oficiais de e-mail e WhatsApp', () {
     expect(AfterPublicContact.email, 'contato@app-after.com.br');
-    expect(AfterPublicContact.phoneDisplay, '(17) 99647-0194');
+    expect(AfterPublicContact.whatsappDisplay, '(17) 99647-0194');
     expect(AfterPublicContact.mailtoUrl, 'mailto:contato@app-after.com.br');
-    expect(AfterPublicContact.telUrl, 'tel:+5517996470194');
     expect(AfterPublicContact.whatsappUrl, contains('wa.me/5517996470194'));
+    expect(AfterPublicContact.whatsappUrl, isNot(contains('tel:')));
     expect(
       AfterPublicContact.whatsappUrl,
       contains(Uri.encodeQueryComponent(AfterPublicContact.whatsappMessage)),
@@ -615,14 +615,26 @@ void main() {
 
     expect(find.text('Entre em contato'), findsOneWidget);
     expect(find.text('contato@app-after.com.br'), findsOneWidget);
-    expect(find.text('(17) 99647-0194'), findsWidgets);
+    expect(find.text('(17) 99647-0194'), findsOneWidget);
     expect(find.text('Conversar pelo WhatsApp'), findsOneWidget);
+    expect(find.text('WHATSAPP'), findsOneWidget);
+    expect(find.text('Ligar'), findsNothing);
+    expect(find.text('TELEFONE'), findsNothing);
+    expect(find.byKey(const Key('contact-phone')), findsNothing);
+    expect(
+      find.textContaining('Utilize nosso e-mail ou WhatsApp'),
+      findsOneWidget,
+    );
 
     await tester.ensureVisible(find.byKey(const Key('contact-privacy')));
     await tester.tap(find.byKey(const Key('contact-privacy')));
     await tester.pumpAndSettle();
     expect(find.byType(PrivacyPolicyPage), findsOneWidget);
     expect(find.textContaining('Última atualização'), findsOneWidget);
+    expect(find.textContaining('número de telefone'), findsOneWidget);
+    expect(find.text('Telefone e WhatsApp: (17) 99647-0194'), findsNothing);
+    expect(find.text('WhatsApp: (17) 99647-0194'), findsOneWidget);
+    expect(find.text('Ligar'), findsNothing);
 
     await tester.ensureVisible(
       find.byKey(const Key('privacy-request-deletion')),
@@ -635,5 +647,8 @@ void main() {
     expect(find.text('Solicitar exclusão da conta'), findsOneWidget);
     expect(find.byKey(const Key('deletion-help')), findsOneWidget);
     expect(find.byKey(const Key('deletion-privacy')), findsOneWidget);
+    expect(find.text('Conversar pelo WhatsApp'), findsOneWidget);
+    expect(find.text('Ligar'), findsNothing);
+    expect(find.text('TELEFONE'), findsNothing);
   });
 }
