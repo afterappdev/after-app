@@ -94,3 +94,35 @@ export function attachOAuthOnboarding(
   url.hash = `/register?onboarding=${encodeURIComponent(onboardingToken)}`;
   return url.toString();
 }
+
+export function attachAppleWebExchangeCode(
+  redirect: string,
+  code: string,
+): string {
+  if (redirect.startsWith('after:')) {
+    const url = new URL(redirect);
+    url.pathname = '/auth/apple/callback';
+    url.search = '';
+    url.searchParams.set('code', code);
+    return url.toString();
+  }
+
+  const url = new URL(redirect);
+  url.hash = `/auth/apple/callback?code=${encodeURIComponent(code)}`;
+  return url.toString();
+}
+
+export function attachAppleWebOutcome(
+  redirect: string,
+  outcome: 'canceled' | 'error',
+): string {
+  if (redirect.startsWith('after:')) {
+    const url = new URL(redirect);
+    url.searchParams.set('apple', outcome);
+    return url.toString();
+  }
+
+  const url = new URL(redirect);
+  url.hash = `/login?apple=${outcome}`;
+  return url.toString();
+}

@@ -12,10 +12,15 @@ import 'auth_controller.dart';
 import 'social_auth.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, this.showPublicHomeLink = false});
+  const LoginScreen({
+    super.key,
+    this.showPublicHomeLink = false,
+    this.appleWebStatus,
+  });
 
   /// Web named `/login` only. Native [AppStartup] leaves this false.
   final bool showPublicHomeLink;
+  final String? appleWebStatus;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -38,6 +43,21 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordFocus = FocusNode();
   bool _loading = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final status = widget.appleWebStatus?.trim();
+    if (status == null || status.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (status == 'canceled') {
+        _showErrorSnackBar('Login com Apple cancelado.');
+      } else {
+        _showErrorSnackBar('Não foi possível concluir o login com Apple.');
+      }
+    });
+  }
 
   @override
   void dispose() {

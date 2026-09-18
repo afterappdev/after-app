@@ -9,6 +9,7 @@ import 'core/auth/oauth_callback.dart';
 import 'core/network/api_client.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/apple_web_callback_page.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/password_reset_pages.dart';
 import 'features/auth/password_reset_uri.dart';
@@ -65,7 +66,8 @@ Future<void> _consumePendingOAuthToken(AuthController auth) async {
   try {
     if (kIsWeb) {
       if (isAccountDeletionConfirmUri(Uri.base) ||
-          isPasswordResetUri(Uri.base)) {
+          isPasswordResetUri(Uri.base) ||
+          isAppleWebCallbackUri(Uri.base)) {
         return;
       }
       final onboarding = oauthOnboardingFromUri(Uri.base);
@@ -163,6 +165,24 @@ class _AfterAppState extends State<AfterApp> {
         AppRoutes.contact: (_) => const ContactPage(),
       },
       onGenerateRoute: (settings) {
+        final applePath = appleWebCallbackPath(settings.name);
+        if (applePath == AppRoutes.appleWebCallback) {
+          return MaterialPageRoute(
+            builder: (_) => AppleWebCallbackPage(
+              code: appleExchangeCodeFromRouteName(settings.name),
+              status: appleWebStatusFromRouteName(settings.name),
+            ),
+            settings: settings,
+          );
+        }
+        if (loginPath(settings.name) == AppRoutes.login) {
+          return MaterialPageRoute(
+            builder: (_) => LoginScreenRoute(
+              appleWebStatus: appleWebStatusFromRouteName(settings.name),
+            ),
+            settings: settings,
+          );
+        }
         final confirmPath = deletionConfirmPath(settings.name);
         if (confirmPath == AppRoutes.confirmDeletion) {
           return MaterialPageRoute(

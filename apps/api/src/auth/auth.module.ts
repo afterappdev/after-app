@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { PasswordResetService } from './password-reset.service';
+import { OAuthEphemeralStore } from './oauth-ephemeral.store';
 import { AdminPushModule } from '../admin/push/admin-push.module';
 
 @Module({
@@ -24,7 +25,12 @@ import { AdminPushModule } from '../admin/push/admin-push.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, PasswordResetService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    PasswordResetService,
+    OAuthEphemeralStore,
+  ],
   exports: [JwtModule, AuthService],
 })
 export class AuthModule {}

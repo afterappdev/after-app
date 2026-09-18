@@ -1,4 +1,6 @@
 import {
+  attachAppleWebExchangeCode,
+  attachAppleWebOutcome,
   attachOAuthOnboarding,
   attachOAuthToken,
   isAllowedOAuthRedirect,
@@ -113,6 +115,21 @@ describe('isAllowedOAuthRedirect', () => {
     );
     expect(attachOAuthOnboarding(`${APP}/`, 'onb-token')).not.toContain(
       'token=',
+    );
+  });
+
+  it('Apple Web devolve só o código temporário, nunca o JWT After', () => {
+    expect(attachAppleWebExchangeCode(`${APP}/`, 'temp-code')).toBe(
+      `${APP}/#/auth/apple/callback?code=temp-code`,
+    );
+    expect(attachAppleWebExchangeCode(`${APP}/`, 'temp-code')).not.toContain(
+      'token=',
+    );
+    expect(attachAppleWebOutcome(`${APP}/`, 'canceled')).toBe(
+      `${APP}/#/login?apple=canceled`,
+    );
+    expect(attachAppleWebOutcome(`${APP}/`, 'error')).toBe(
+      `${APP}/#/login?apple=error`,
     );
   });
 });

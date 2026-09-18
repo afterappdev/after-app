@@ -22,12 +22,27 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import {
+  attachAppleWebExchangeCode,
+  attachAppleWebOutcome,
   attachOAuthOnboarding,
   attachOAuthToken,
   isAllowedOAuthRedirect,
   parseAllowedRedirectOrigins,
   parseAudienceList,
 } from './oauth.util';
+import {
+  APPLE_WEB_EXCHANGE_TTL_MS,
+  APPLE_WEB_STATE_TTL_MS,
+  OAuthEphemeralStore,
+} from './oauth-ephemeral.store';
+import {
+  APPLE_ISSUER,
+  createAppleClientSecret,
+  isAppleUserCancel,
+  normalizeApplePrivateKey,
+  parseAppleUserPayload,
+  sanitizeAppleLogError,
+} from './apple-web.util';
 import {
   SOCIAL_EMAIL_TAKEN_MESSAGE,
   SOCIAL_ONBOARDING_EXPIRED_MESSAGE,
@@ -93,13 +108,17 @@ type SocialAuthResult =
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly ephemeral: OAuthEphemeralStore;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     @Optional() private readonly adminPush?: AdminPushService,
-  ) {}
+    @Optional() ephemeral?: OAuthEphemeralStore,
+  ) {
+    this.ephemeral = ephemeral ?? new OAuthEphemeralStore();
+  }
 
   providers() {
     return {
@@ -108,7 +127,7 @@ export class AuthService {
         this.googleWebClientId() && this.googleClientSecret(),
       ),
       apple: true,
-      appleBrowser: Boolean(this.appleServiceId()),
+      appleBrowser: this.appleWebConfigured(),
     };
   }
 
@@ -194,7 +213,9 @@ export class AuthService {
   }
 
   async loginWithApple(dto: AppleLoginDto) {
-    const payload = await this.verifyAppleIdToken(dto.identityToken);
+    const payload = await this.verifyAppleIdToken(dto.identityToken, {
+      audience: this.appleBundleId(),
+    });
     return this.resolveSocialLogin({
       provider: 'apple',
       providerId: payload.sub,
@@ -372,60 +393,76 @@ export class AuthService {
   }
 
   appleStartUrl(redirect: string): string {
-    const serviceId = this.appleServiceId();
-    if (!serviceId) {
-      throw new ServiceUnavailableException(
-        'Login com Apple na web não configurado. Defina APPLE_SERVICE_ID na API.',
-      );
-    }
-
+    this.requireAppleWebConfig();
     const safeRedirect = this.requireRedirect(redirect);
+    const state = randomBytes(32).toString('base64url');
+    const nonce = randomBytes(32).toString('base64url');
+    this.ephemeral.putSession(
+      state,
+      { nonce, redirect: safeRedirect },
+      APPLE_WEB_STATE_TTL_MS,
+    );
+
     const params = new URLSearchParams({
-      client_id: serviceId,
+      client_id: this.appleServiceId(),
       redirect_uri: this.appleCallbackUrl(),
       response_type: 'code id_token',
       response_mode: 'form_post',
       scope: 'name email',
-      state: this.signOAuthState({ redirect: safeRedirect, provider: 'apple' }),
+      state,
+      nonce,
     });
 
+    this.logger.log('Apple web login started');
     return `https://appleid.apple.com/auth/authorize?${params.toString()}`;
   }
 
   async appleCallback(body: {
+    code?: string;
     id_token?: string;
     state?: string;
-    user?: string;
+    user?: unknown;
+    error?: string;
+    error_description?: string;
   }) {
-    if (!body.id_token || !body.state) {
-      throw new BadRequestException('Callback da Apple inválido.');
-    }
+    return this.appleWebCallback(body);
+  }
 
-    const { redirect } = this.readOAuthState(body.state, 'apple');
-    const payload = await this.verifyAppleIdToken(body.id_token);
-    let fullName: string | undefined;
-    if (body.user) {
-      try {
-        const parsed = JSON.parse(body.user) as {
-          name?: { firstName?: string; lastName?: string };
-          email?: string;
-        };
-        fullName = [parsed.name?.firstName, parsed.name?.lastName]
-          .filter(Boolean)
-          .join(' ');
-      } catch {
-        fullName = undefined;
+  async appleWebCallback(body: {
+    code?: string;
+    id_token?: string;
+    state?: string;
+    user?: unknown;
+    error?: string;
+    error_description?: string;
+  }) {
+    try {
+      if (isAppleUserCancel(body.error)) {
+        this.logger.log('Apple web login canceled');
+        return this.appleWebOutcomeRedirect(body.state, 'canceled');
       }
+      if (body.error) {
+        this.logger.warn('Apple web authorization error');
+        return this.appleWebOutcomeRedirect(body.state, 'error');
+      }
+      return await this.completeAppleWebCallback(body);
+    } catch (error) {
+      this.logger.warn(
+        `Apple web callback failed: ${sanitizeAppleLogError(error)}`,
+      );
+      return this.appleWebOutcomeRedirect(body.state, 'error');
     }
+  }
 
-    const result = await this.resolveSocialLogin({
-      provider: 'apple',
-      providerId: payload.sub,
-      email: payload.email,
-      name: fullName,
-    });
-
-    return this.attachSocialRedirect(redirect, result);
+  async exchangeAppleWebLogin(code: string) {
+    const result = this.ephemeral.consumeExchange<SocialAuthResult>(code);
+    if (!result) {
+      throw new UnauthorizedException(
+        'Código de login Apple expirado ou inválido.',
+      );
+    }
+    this.logger.log('Apple web login exchange succeeded');
+    return result;
   }
 
   private async verifyGoogleIdToken(idToken: string) {
@@ -468,12 +505,116 @@ export class AuthService {
     }
   }
 
-  private async verifyAppleIdToken(identityToken: string) {
-    const audiences = parseAudienceList(
-      this.config.get<string>('APPLE_BUNDLE_ID'),
-      this.appleServiceId(),
+  private async completeAppleWebCallback(body: {
+    code?: string;
+    id_token?: string;
+    state?: string;
+    user?: unknown;
+  }) {
+    this.requireAppleWebConfig();
+    if (!body.state) {
+      throw new BadRequestException('Estado OAuth ausente.');
+    }
+    if (!body.code) {
+      throw new BadRequestException('Authorization code da Apple ausente.');
+    }
+
+    const session = this.ephemeral.consumeSession(body.state);
+    if (!session) {
+      throw new BadRequestException('Estado OAuth expirado ou inválido.');
+    }
+    const redirect = this.requireRedirect(session.redirect);
+
+    const tokens = await this.exchangeAppleAuthorizationCode(body.code);
+    const payload = await this.verifyAppleIdToken(tokens.id_token, {
+      audience: this.appleServiceId(),
+      nonce: session.nonce,
+    });
+
+    if (body.id_token) {
+      const posted = await this.verifyAppleIdToken(body.id_token, {
+        audience: this.appleServiceId(),
+        nonce: session.nonce,
+      });
+      if (posted.sub !== payload.sub) {
+        throw new UnauthorizedException('Token da Apple inconsistente.');
+      }
+    }
+
+    const appleUser = parseAppleUserPayload(body.user);
+    const result = await this.resolveSocialLogin({
+      provider: 'apple',
+      providerId: payload.sub,
+      email: payload.email || appleUser.email,
+      name: appleUser.fullName,
+    });
+
+    const exchangeCode = randomBytes(32).toString('base64url');
+    this.ephemeral.putExchange(
+      exchangeCode,
+      result,
+      APPLE_WEB_EXCHANGE_TTL_MS,
     );
-    if (!audiences.length) {
+    this.logger.log('Apple web login succeeded');
+    return attachAppleWebExchangeCode(redirect, exchangeCode);
+  }
+
+  private async exchangeAppleAuthorizationCode(code: string) {
+    const clientSecret = createAppleClientSecret({
+      teamId: this.appleTeamId(),
+      serviceId: this.appleServiceId(),
+      keyId: this.appleKeyId(),
+      privateKey: this.applePrivateKey(),
+    });
+    try {
+      const tokens = await appleSignin.getAuthorizationToken(code, {
+        clientID: this.appleServiceId(),
+        redirectUri: this.appleCallbackUrl(),
+        clientSecret,
+      });
+      if (!tokens?.id_token) {
+        throw new UnauthorizedException('Troca do code da Apple inválida.');
+      }
+      return tokens;
+    } catch (error) {
+      this.logger.warn(
+        `Apple web code exchange failed: ${sanitizeAppleLogError(error)}`,
+      );
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('Não foi possível validar o login Apple.');
+    }
+  }
+
+  private appleWebOutcomeRedirect(
+    state: string | undefined,
+    outcome: 'canceled' | 'error',
+  ) {
+    let redirect = this.defaultAppRedirect();
+    if (state) {
+      const session =
+        this.ephemeral.consumeSession(state) ?? this.ephemeral.peekSession(state);
+      if (session) {
+        try {
+          redirect = this.requireRedirect(session.redirect);
+        } catch {
+          redirect = this.defaultAppRedirect();
+        }
+      }
+    }
+    return attachAppleWebOutcome(redirect, outcome);
+  }
+
+  private defaultAppRedirect() {
+    const origins = this.oauthAllowedOrigins();
+    return origins[0] ? `${origins[0]}/` : 'http://localhost:8080/';
+  }
+
+  private async verifyAppleIdToken(
+    identityToken: string,
+    options: { audience: string; nonce?: string },
+  ) {
+    const audience = options.audience?.trim();
+    if (!audience) {
       throw new ServiceUnavailableException(
         'Login com Apple não configurado. Defina APPLE_BUNDLE_ID na API.',
       );
@@ -481,10 +622,15 @@ export class AuthService {
 
     try {
       const payload = await appleSignin.verifyIdToken(identityToken, {
-        audience: audiences,
+        audience,
+        issuer: APPLE_ISSUER,
         ignoreExpiration: false,
+        ...(options.nonce ? { nonce: options.nonce } : {}),
       });
       if (!payload.sub) {
+        throw new UnauthorizedException('Token da Apple inválido.');
+      }
+      if (payload.aud && payload.aud !== audience) {
         throw new UnauthorizedException('Token da Apple inválido.');
       }
       return {
@@ -752,6 +898,41 @@ export class AuthService {
     return this.config.get<string>('APPLE_SERVICE_ID')?.trim() || '';
   }
 
+  private appleBundleId() {
+    return this.config.get<string>('APPLE_BUNDLE_ID')?.trim() || '';
+  }
+
+  private appleTeamId() {
+    return this.config.get<string>('APPLE_TEAM_ID')?.trim() || '';
+  }
+
+  private appleKeyId() {
+    return this.config.get<string>('APPLE_KEY_ID')?.trim() || '';
+  }
+
+  private applePrivateKey() {
+    return normalizeApplePrivateKey(
+      this.config.get<string>('APPLE_PRIVATE_KEY'),
+    );
+  }
+
+  private appleWebConfigured() {
+    return Boolean(
+      this.appleServiceId() &&
+        this.appleTeamId() &&
+        this.appleKeyId() &&
+        this.applePrivateKey(),
+    );
+  }
+
+  private requireAppleWebConfig() {
+    if (!this.appleWebConfigured()) {
+      throw new ServiceUnavailableException(
+        'Login com Apple na web não configurado. Defina APPLE_SERVICE_ID, APPLE_TEAM_ID, APPLE_KEY_ID e APPLE_PRIVATE_KEY na API.',
+      );
+    }
+  }
+
   private publicApiUrl() {
     return (
       this.config.get<string>('PUBLIC_API_URL')?.replace(/\/$/, '') ||
@@ -769,7 +950,7 @@ export class AuthService {
   private appleCallbackUrl() {
     return (
       this.config.get<string>('APPLE_REDIRECT_URI')?.trim() ||
-      `${this.publicApiUrl()}/auth/apple/callback`
+      `${this.publicApiUrl()}/auth/apple/web/callback`
     );
   }
 

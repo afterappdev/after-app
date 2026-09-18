@@ -97,6 +97,21 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> exchangeAppleWebLogin(String code) async {
+    error = null;
+    notifyListeners();
+    try {
+      final data = await api.post('/auth/apple/web/exchange', body: {
+        'code': code,
+      }) as Map<String, dynamic>;
+      await _applySocialAuthResponse(data);
+    } on ApiException catch (e) {
+      error = e.message;
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> loginWithAccessToken(String accessToken) async {
     error = null;
     notifyListeners();

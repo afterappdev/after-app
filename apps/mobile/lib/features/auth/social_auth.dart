@@ -16,10 +16,23 @@ class SocialAuth {
   SocialAuth({
     required this.api,
     required this.auth,
-  });
+    bool? isWeb,
+    this.launchUrlFn,
+    this.nativeAppleSignIn,
+    Uri? pageUri,
+  }) : isWeb = isWeb ?? kIsWeb,
+       pageUri = pageUri ?? Uri.base;
 
   final ApiClient api;
   final AuthController auth;
+  final bool isWeb;
+  final Uri pageUri;
+  final Future<bool> Function(
+    Uri url, {
+    LaunchMode mode,
+    String? webOnlyWindowName,
+  })? launchUrlFn;
+  final Future<void> Function(AuthController auth)? nativeAppleSignIn;
 
   Future<void> signInWithGoogle() async {
     if (!kIsWeb) {
@@ -40,7 +53,11 @@ class SocialAuth {
   }
 
   Future<void> signInWithApple() async {
-    if (!kIsWeb) {
+    if (!isWeb) {
+      if (nativeAppleSignIn != null) {
+        await nativeAppleSignIn!(auth);
+        return;
+      }
       try {
         final available = await SignInWithApple.isAvailable();
         if (available) {
@@ -122,24 +139,45 @@ class SocialAuth {
     }
     if (provider == 'apple' && !browserEnabled) {
       throw ApiException(
-        kIsWeb
-            ? 'Login com Apple na web exige APPLE_SERVICE_ID e URL HTTPS de retorno.'
-            : 'Login com Apple está disponível no iPhone/iPad. No Android, configure APPLE_SERVICE_ID na API.',
+        isWeb
+            ? 'Login com Apple na web não está configurado.'
+            : 'Login com Apple está disponível no iPhone/iPad. No Android, configure o Sign in with Apple Web na API.',
       );
     }
 
-    final redirect = oauthBrowserRedirect(isWeb: kIsWeb, pageUri: Uri.base);
-    final url = Uri.parse('${ApiConfig.baseUrl}/auth/$provider/start').replace(
-      queryParameters: {'redirect': redirect},
-    );
+    final redirect = oauthBrowserRedirect(isWeb: isWeb, pageUri: pageUri);
+    final url = provider == 'apple'
+        ? appleWebStartUri(apiBase: ApiConfig.baseUrl, redirect: redirect)
+        : Uri.parse('${ApiConfig.baseUrl}/auth/$provider/start').replace(
+            queryParameters: {'redirect': redirect},
+          );
 
-    final launched = await launchUrl(
+    final launched = await _launch(
       url,
-      mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
-      webOnlyWindowName: kIsWeb ? '_self' : null,
+      mode: isWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+      webOnlyWindowName: isWeb ? '_self' : null,
     );
     if (!launched) {
       throw ApiException('Não foi possível abrir o login com $provider.');
     }
+  }
+
+  Future<bool> _launch(
+    Uri url, {
+    LaunchMode mode = LaunchMode.platformDefault,
+    String? webOnlyWindowName,
+  }) {
+    if (launchUrlFn != null) {
+      return launchUrlFn!(
+        url,
+        mode: mode,
+        webOnlyWindowName: webOnlyWindowName,
+      );
+    }
+    return launchUrl(
+      url,
+      mode: mode,
+      webOnlyWindowName: webOnlyWindowName,
+    );
   }
 }

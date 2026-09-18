@@ -12,6 +12,7 @@ import {
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { AppleLoginDto } from './dto/apple-login.dto';
+import { AppleWebExchangeDto } from './dto/apple-web-exchange.dto';
 import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginDto } from './dto/login.dto';
@@ -89,6 +90,26 @@ export class AuthController {
     return res.redirect(this.authService.appleStartUrl(redirect));
   }
 
+  @Post('apple/web/callback')
+  @UsePipes(
+    new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }),
+  )
+  async appleWebCallback(
+    @Body()
+    body: {
+      code?: string;
+      id_token?: string;
+      state?: string;
+      user?: unknown;
+      error?: string;
+      error_description?: string;
+    },
+    @Res() res: Response,
+  ) {
+    const target = await this.authService.appleWebCallback(body);
+    return res.redirect(target);
+  }
+
   @Post('apple/callback')
   @UsePipes(
     new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false }),
@@ -96,14 +117,22 @@ export class AuthController {
   async appleCallback(
     @Body()
     body: {
+      code?: string;
       id_token?: string;
       state?: string;
-      user?: string;
+      user?: unknown;
+      error?: string;
+      error_description?: string;
     },
     @Res() res: Response,
   ) {
-    const target = await this.authService.appleCallback(body);
+    const target = await this.authService.appleWebCallback(body);
     return res.redirect(target);
+  }
+
+  @Post('apple/web/exchange')
+  exchangeAppleWebLogin(@Body() dto: AppleWebExchangeDto) {
+    return this.authService.exchangeAppleWebLogin(dto.code);
   }
 
   @Post('password-reset/request')

@@ -16,4 +16,5 @@ class AppRoutes {
   static const forgotPassword = '/esqueci-minha-senha';
   static const resetPassword = '/redefinir-senha';
   static const contact = '/contato';
+  static const appleWebCallback = '/auth/apple/callback';
 }
