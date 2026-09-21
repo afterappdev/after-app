@@ -24,6 +24,7 @@ function createPrisma() {
       create: jest.Mock;
       updateMany: jest.Mock;
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
     };
     $transaction: jest.Mock;
   } = {
@@ -32,6 +33,7 @@ function createPrisma() {
       create: jest.fn(),
       updateMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -75,8 +77,7 @@ describe('AccountDeletionService', () => {
   const originalEnv = { ...process.env };
   let prisma: ReturnType<typeof createPrisma>;
   let mailer: CapturingMailer;
-  let users: { deleteUserRecord: jest.Mock };
-  let mediaCleanup: { deleteStoredUploads: jest.Mock };
+  let users: { deleteAccount: jest.Mock; deleteUserRecord: jest.Mock };
   let service: AccountDeletionService;
   const logs: string[] = [];
 
@@ -87,17 +88,14 @@ describe('AccountDeletionService', () => {
     prisma = createPrisma();
     mailer = new CapturingMailer();
     users = {
+      deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
       deleteUserRecord: jest.fn().mockResolvedValue(['/uploads/a.jpg']),
-    };
-    mediaCleanup = {
-      deleteStoredUploads: jest.fn().mockResolvedValue(undefined),
     };
     logs.length = 0;
     service = new AccountDeletionService(
       prisma as never,
       users as unknown as UsersService,
       mailer,
-      mediaCleanup as never,
     );
     jest.spyOn(service['logger'], 'log').mockImplementation((m) => {
       logs.push(String(m));
@@ -155,8 +153,7 @@ describe('AccountDeletionService', () => {
   it('token válido permite confirmação e exclui a conta', async () => {
     const token = generateDeletionToken();
     const tokenHash = hashDeletionToken(token);
-    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 1 });
-    prisma.accountDeletionRequest.findUnique.mockResolvedValue({
+    prisma.accountDeletionRequest.findFirst.mockResolvedValue({
       userId: 'user-1',
     });
 
@@ -164,40 +161,36 @@ describe('AccountDeletionService', () => {
     expect(result.ok).toBe(true);
     expect(result.message).toBe('Sua conta foi excluída.');
     expect(JSON.stringify(result)).not.toContain(token);
-    expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith({
+    expect(prisma.accountDeletionRequest.findFirst).toHaveBeenCalledWith({
       where: {
         tokenHash,
         usedAt: null,
         expiresAt: { gt: expect.any(Date) },
       },
-      data: { usedAt: expect.any(Date) },
+      select: { userId: true },
     });
-    expect(users.deleteUserRecord).toHaveBeenCalledWith(prisma, 'user-1');
-    expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([
-      '/uploads/a.jpg',
-    ]);
+    expect(users.deleteAccount).toHaveBeenCalledWith('user-1');
   });
 
   it('token expirado ou inexistente é rejeitado', async () => {
-    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
+    prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
     await expect(
       service.confirmDeletion(generateDeletionToken()),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(users.deleteUserRecord).not.toHaveBeenCalled();
-    expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+    expect(users.deleteAccount).not.toHaveBeenCalled();
   });
 
   it('token usado é rejeitado e não exclui de novo', async () => {
-    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
+    prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
     const token = generateDeletionToken();
     await expect(service.confirmDeletion(token)).rejects.toThrow(
       ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
     );
-    expect(users.deleteUserRecord).not.toHaveBeenCalled();
+    expect(users.deleteAccount).not.toHaveBeenCalled();
   });
 
   it('token inválido é rejeitado', async () => {
-    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
+    prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
     await expect(
       service.confirmDeletion('token-invalido-sem-pedido'),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -208,23 +201,21 @@ describe('AccountDeletionService', () => {
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     await service.requestDeletion('user@after.local');
+    expect(users.deleteAccount).not.toHaveBeenCalled();
     expect(users.deleteUserRecord).not.toHaveBeenCalled();
   });
 
   it('segunda confirmação não executa exclusão novamente', async () => {
     const token = generateDeletionToken();
-    prisma.accountDeletionRequest.updateMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
-    prisma.accountDeletionRequest.findUnique.mockResolvedValue({
-      userId: 'user-1',
-    });
+    prisma.accountDeletionRequest.findFirst
+      .mockResolvedValueOnce({ userId: 'user-1' })
+      .mockResolvedValueOnce(null);
 
     await service.confirmDeletion(token);
     await expect(service.confirmDeletion(token)).rejects.toThrow(
       ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
     );
-    expect(users.deleteUserRecord).toHaveBeenCalledTimes(1);
+    expect(users.deleteAccount).toHaveBeenCalledTimes(1);
   });
 
   it('response não permite inferir se o e-mail existe', async () => {
@@ -270,6 +261,7 @@ describe('AccountDeletionService', () => {
     mailer.fail = true;
     const result = await service.requestDeletion('user@after.local');
     expect(result).toEqual({ message: GENERIC });
+    expect(users.deleteAccount).not.toHaveBeenCalled();
     expect(users.deleteUserRecord).not.toHaveBeenCalled();
   });
 

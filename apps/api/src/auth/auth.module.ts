@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { PasswordResetService } from './password-reset.service';
 import { OAuthEphemeralStore } from './oauth-ephemeral.store';
 import { AdminPushModule } from '../admin/push/admin-push.module';
+import { AppleAuthTokensService } from './apple-auth-tokens.service';
 
 @Module({
   imports: [
@@ -30,7 +31,8 @@ import { AdminPushModule } from '../admin/push/admin-push.module';
     JwtStrategy,
     PasswordResetService,
     OAuthEphemeralStore,
+    AppleAuthTokensService,
   ],
-  exports: [JwtModule, AuthService],
+  exports: [JwtModule, AuthService, AppleAuthTokensService],
 })
 export class AuthModule {}

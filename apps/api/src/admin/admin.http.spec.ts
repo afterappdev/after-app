@@ -7,6 +7,7 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { PrismaService } from '../prisma/prisma.service';
 import { AdminDashboardController } from './dashboard/admin-dashboard.controller';
 import { AdminDashboardService } from './dashboard/admin-dashboard.service';
 import { RolesGuard } from './guards/roles.guard';
@@ -15,6 +16,13 @@ describe('Admin HTTP guards', () => {
   let app: INestApplication<App>;
   let jwt: JwtService;
   const dashboard = { getDashboard: jest.fn() };
+  const prisma = {
+    user: {
+      findUnique: jest.fn(async (args: { where: { id: string } }) =>
+        args.where.id ? { id: args.where.id } : null,
+      ),
+    },
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -27,6 +35,7 @@ describe('Admin HTTP guards', () => {
         { provide: AdminDashboardService, useValue: dashboard },
         JwtStrategy,
         RolesGuard,
+        { provide: PrismaService, useValue: prisma },
         {
           provide: ConfigService,
           useValue: { getOrThrow: () => 'test-secret' },

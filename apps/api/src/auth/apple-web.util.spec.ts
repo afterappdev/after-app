@@ -4,6 +4,7 @@ import {
   normalizeApplePrivateKey,
   parseAppleUserPayload,
   isAppleUserCancel,
+  sanitizeAppleLogError,
 } from './apple-web.util';
 
 function testPrivateKeyPem() {
@@ -82,5 +83,31 @@ describe('apple-web.util', () => {
     expect(isAppleUserCancel('user_cancelled_authorize')).toBe(true);
     expect(isAppleUserCancel('access_denied')).toBe(true);
     expect(isAppleUserCancel('invalid_request')).toBe(false);
+  });
+
+  it('redige tokens e JWTs em erros de log da Apple', () => {
+    const token = createAppleClientSecret({
+      teamId: 'TEAMID1234',
+      clientId: 'com.r2p.after.afterApp',
+      keyId: 'KEYID12345',
+      privateKey: pem,
+    });
+    const sanitized = sanitizeAppleLogError(
+      new Error(`refresh_token=apple-refresh client_secret=${token}`),
+    );
+    expect(sanitized).not.toContain('apple-refresh');
+    expect(sanitized).not.toContain(token);
+    expect(sanitized).toContain('[redacted]');
+  });
+
+  it('gera client_secret com clientId (Bundle ID nativo)', () => {
+    const token = createAppleClientSecret({
+      teamId: 'TEAMID1234',
+      clientId: 'com.r2p.after.afterApp',
+      keyId: 'KEYID12345',
+      privateKey: pem,
+    });
+    const { payload } = decodeJwt(token);
+    expect(payload.sub).toBe('com.r2p.after.afterApp');
   });
 });

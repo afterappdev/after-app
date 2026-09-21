@@ -43,6 +43,7 @@ import {
   parseAppleUserPayload,
   sanitizeAppleLogError,
 } from './apple-web.util';
+import { AppleAuthTokensService, AppleRevocableAuth } from './apple-auth-tokens.service';
 import {
   SOCIAL_EMAIL_TAKEN_MESSAGE,
   SOCIAL_ONBOARDING_EXPIRED_MESSAGE,
@@ -78,6 +79,7 @@ type SocialProfileInput = {
   email?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
+  appleRevocable?: AppleRevocableAuth;
 };
 
 type SocialAuthResult =
@@ -109,6 +111,7 @@ type SocialAuthResult =
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly ephemeral: OAuthEphemeralStore;
+  private readonly appleTokens: AppleAuthTokensService;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -116,8 +119,10 @@ export class AuthService {
     private readonly config: ConfigService,
     @Optional() private readonly adminPush?: AdminPushService,
     @Optional() ephemeral?: OAuthEphemeralStore,
+    @Optional() appleTokens?: AppleAuthTokensService,
   ) {
     this.ephemeral = ephemeral ?? new OAuthEphemeralStore();
+    this.appleTokens = appleTokens ?? new AppleAuthTokensService(config);
   }
 
   providers() {
@@ -216,11 +221,15 @@ export class AuthService {
     const payload = await this.verifyAppleIdToken(dto.identityToken, {
       audience: this.appleBundleId(),
     });
+    const appleRevocable = dto.authorizationCode
+      ? await this.appleTokens.exchangeNativeCode(dto.authorizationCode)
+      : undefined;
     return this.resolveSocialLogin({
       provider: 'apple',
       providerId: payload.sub,
       email: payload.email || dto.email,
       name: dto.fullName,
+      appleRevocable,
     });
   }
 
@@ -271,7 +280,15 @@ export class AuthService {
         const providerData =
           row.provider === 'google'
             ? { googleId: row.providerId }
-            : { appleId: row.providerId };
+            : {
+                appleId: row.providerId,
+                ...(row.appleRefreshTokenEnc && row.appleClientId
+                  ? {
+                      appleRefreshTokenEnc: row.appleRefreshTokenEnc,
+                      appleClientId: row.appleClientId,
+                    }
+                  : {}),
+              };
 
         return tx.user.create({
           data: {
@@ -547,6 +564,12 @@ export class AuthService {
       providerId: payload.sub,
       email: payload.email || appleUser.email,
       name: appleUser.fullName,
+      appleRevocable: tokens.refresh_token
+        ? {
+            refreshToken: tokens.refresh_token,
+            clientId: this.appleServiceId(),
+          }
+        : undefined,
     });
 
     const exchangeCode = randomBytes(32).toString('base64url');
@@ -666,12 +689,16 @@ export class AuthService {
       if (user.role === Role.ADMIN) {
         throw new UnauthorizedException('Credenciais inválidas');
       }
+      await this.persistAppleRevocable(user.id, input.appleRevocable);
       return this.buildAuthResponse(user);
     }
 
     let email = input.email?.trim().toLowerCase() || null;
     let name = input.name?.trim() || '';
     let avatarUrl = input.avatarUrl ?? null;
+    let pendingAppleStored:
+      | { appleRefreshTokenEnc: string; appleClientId: string }
+      | undefined;
 
     if (!email) {
       const pending = await this.prisma.socialOnboardingToken.findFirst({
@@ -687,6 +714,12 @@ export class AuthService {
         email = pending.email;
         name = name || pending.name;
         avatarUrl = avatarUrl || pending.avatarUrl;
+        if (pending.appleRefreshTokenEnc && pending.appleClientId) {
+          pendingAppleStored = {
+            appleRefreshTokenEnc: pending.appleRefreshTokenEnc,
+            appleClientId: pending.appleClientId,
+          };
+        }
       }
     }
 
@@ -711,6 +744,8 @@ export class AuthService {
       email,
       name: displayName,
       avatarUrl,
+      appleRevocable: input.appleRevocable,
+      appleStored: pendingAppleStored,
     });
 
     return {
@@ -723,6 +758,18 @@ export class AuthService {
         avatarUrl,
       },
     };
+  }
+
+  private async persistAppleRevocable(
+    userId: string,
+    creds: AppleRevocableAuth | undefined,
+  ) {
+    const stored = this.appleTokens.storedFromRevocable(creds);
+    if (!stored) return;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: stored,
+    });
   }
 
   private async findUserByProvider(
@@ -746,10 +793,15 @@ export class AuthService {
     email: string;
     name: string;
     avatarUrl: string | null;
+    appleRevocable?: AppleRevocableAuth;
+    appleStored?: { appleRefreshTokenEnc: string; appleClientId: string };
   }) {
     const expiresAt = new Date(
       Date.now() + SOCIAL_ONBOARDING_TTL_SECONDS * 1000,
     );
+    const appleStored =
+      this.appleTokens.storedFromRevocable(input.appleRevocable) ??
+      input.appleStored;
     const row = await this.prisma.$transaction(async (tx) => {
       await tx.socialOnboardingToken.updateMany({
         where: {
@@ -767,6 +819,7 @@ export class AuthService {
           name: input.name,
           avatarUrl: input.avatarUrl,
           expiresAt,
+          ...(appleStored ?? {}),
         },
       });
     });

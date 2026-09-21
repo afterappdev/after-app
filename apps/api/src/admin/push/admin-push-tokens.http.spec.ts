@@ -7,6 +7,7 @@ import { Role } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { JwtStrategy } from '../../auth/jwt.strategy';
+import { PrismaService } from '../../prisma/prisma.service';
 import { RolesGuard } from '../guards/roles.guard';
 import { AdminPushTokensController } from './admin-push-tokens.controller';
 import { AdminPushTokensService } from './admin-push-tokens.service';
@@ -17,6 +18,13 @@ describe('Admin push token HTTP', () => {
   const tokens = {
     register: jest.fn(),
     unregister: jest.fn(),
+  };
+  const prisma = {
+    user: {
+      findUnique: jest.fn(async (args: { where: { id: string } }) =>
+        args.where.id ? { id: args.where.id } : null,
+      ),
+    },
   };
 
   beforeAll(async () => {
@@ -30,6 +38,7 @@ describe('Admin push token HTTP', () => {
         { provide: AdminPushTokensService, useValue: tokens },
         JwtStrategy,
         RolesGuard,
+        { provide: PrismaService, useValue: prisma },
         {
           provide: ConfigService,
           useValue: { getOrThrow: () => 'test-secret' },

@@ -22,13 +22,15 @@ export function normalizeApplePrivateKey(
 
 export function createAppleClientSecret(input: {
   teamId: string;
-  serviceId: string;
+  serviceId?: string;
+  clientId?: string;
   keyId: string;
   privateKey: string;
   expAfterSeconds?: number;
 }): string {
+  const clientID = (input.clientId || input.serviceId || '').trim();
   return appleSignin.getClientSecret({
-    clientID: input.serviceId,
+    clientID,
     teamID: input.teamId,
     keyIdentifier: input.keyId,
     privateKey: normalizeApplePrivateKey(input.privateKey),
@@ -82,5 +84,10 @@ export function sanitizeAppleLogError(error: unknown): string {
   return message
     .replace(/-----BEGIN[\s\S]+?-----END [A-Z ]+-----/g, '[redacted]')
     .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-jwt]')
+    .replace(
+      /(?:refresh_token|access_token|id_token|client_secret|authorization_code|code|token)\s*[:=]\s*[^&\s,;]+/gi,
+      '[redacted]',
+    )
+    .replace(/v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-enc]')
     .slice(0, 180);
 }

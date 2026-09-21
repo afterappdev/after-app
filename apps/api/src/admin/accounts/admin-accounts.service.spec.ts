@@ -63,16 +63,21 @@ describe('AdminAccountsService.remove', () => {
   it('reutiliza deleteUserRecord e o MediaCleanupService existente', async () => {
     const prismaClient = {
       user: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValueOnce({ id: 'u-user', role: Role.USER })
-          .mockResolvedValueOnce({
-            id: 'u-user',
-            role: 'USER',
-            avatarUrl: 'https://cdn.example/avatar.jpg',
-            venue: null,
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'u-user',
+          role: Role.USER,
+          email: 'user@after.local',
+          appleId: null,
+          googleId: null,
+          appleRefreshTokenEnc: null,
+          appleClientId: null,
+          avatarUrl: 'https://cdn.example/avatar.jpg',
+          venue: null,
+        }),
         delete: jest.fn().mockResolvedValue({ id: 'u-user' }),
+      },
+      socialOnboardingToken: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
     const mediaCleanup = {
@@ -81,6 +86,7 @@ describe('AdminAccountsService.remove', () => {
     const usersService = new UsersService(
       prismaClient as never,
       mediaCleanup as never,
+      { revokeForAccount: jest.fn().mockResolvedValue(undefined) } as never,
     );
     const deleteUserRecord = jest.spyOn(usersService, 'deleteUserRecord');
     const adminService = new AdminAccountsService(
@@ -92,6 +98,7 @@ describe('AdminAccountsService.remove', () => {
       success: true,
     });
     expect(deleteUserRecord).toHaveBeenCalledWith(prismaClient, 'u-user');
+    expect(prismaClient.socialOnboardingToken.deleteMany).toHaveBeenCalled();
     expect(prismaClient.user.delete).toHaveBeenCalledWith({
       where: { id: 'u-user' },
     });

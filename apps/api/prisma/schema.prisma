@@ -45,6 +45,10 @@ model User {
   passwordHash      String
   googleId          String?                  @unique
   appleId           String?                  @unique
+  /// AES-256-GCM ciphertext of the Apple refresh token. Never log or return.
+  appleRefreshTokenEnc String?
+  /// client_id used to issue the refresh token (Bundle ID or Services ID).
+  appleClientId     String?
   role              Role                     @default(USER)
   state             String
   city              String
@@ -103,6 +107,8 @@ model SocialOnboardingToken {
   email      String
   name       String
   avatarUrl  String?
+  appleRefreshTokenEnc String?
+  appleClientId        String?
   expiresAt  DateTime
   usedAt     DateTime?
   createdAt  DateTime  @default(now())

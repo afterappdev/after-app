@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
 import 'push_notifications.dart';
 
@@ -11,7 +12,7 @@ class NotificationsController extends ChangeNotifier {
 
   final ApiClient api;
 
-  static const _lastPushedKey = 'notifications_last_pushed_id';
+  static const _lastPushedKey = AuthStorage.notificationsLastPushedKey;
 
   int unreadCount = 0;
   Timer? _timer;
@@ -39,6 +40,7 @@ class NotificationsController extends ChangeNotifier {
     _timer = null;
     _started = false;
     unreadCount = 0;
+    _lastPushedId = null;
     notifyListeners();
   }
 

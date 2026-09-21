@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
+import 'google_session.dart';
 import 'models/user_session.dart';
 import 'models/social_onboarding.dart';
 
@@ -11,10 +12,12 @@ class AuthController extends ChangeNotifier {
   AuthController({
     required this.api,
     required this.storage,
-  });
+    GoogleSessionCleaner? googleSession,
+  }) : googleSession = googleSession ?? PluginGoogleSessionCleaner();
 
   final ApiClient api;
   final AuthStorage storage;
+  final GoogleSessionCleaner googleSession;
 
   UserSession? user;
   SocialOnboarding? pendingSocialOnboarding;
@@ -213,6 +216,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await googleSession.signOut();
     await storage.clear();
     api.setToken(null);
     user = null;
@@ -222,6 +226,7 @@ class AuthController extends ChangeNotifier {
 
   Future<void> deleteAccount() async {
     await api.delete('/users/me');
+    await googleSession.disconnect();
     await logout();
   }
 

@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { JwtStrategy } from '../auth/jwt.strategy';
+import { PrismaService } from '../prisma/prisma.service';
 import { VenuesController } from './venues.controller';
 import { VenuesService } from './venues.service';
 
@@ -19,6 +20,13 @@ describe('Venues geocode HTTP', () => {
     listReviews: jest.fn(),
     getPublic: jest.fn(),
   };
+  const prisma = {
+    user: {
+      findUnique: jest.fn(async (args: { where: { id: string } }) =>
+        args.where.id ? { id: args.where.id } : null,
+      ),
+    },
+  };
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -30,6 +38,7 @@ describe('Venues geocode HTTP', () => {
       providers: [
         { provide: VenuesService, useValue: venues },
         JwtStrategy,
+        { provide: PrismaService, useValue: prisma },
         {
           provide: ConfigService,
           useValue: { getOrThrow: () => 'test-secret' },

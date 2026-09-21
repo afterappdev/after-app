@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Role } from '@prisma/client';
 import appleSignin from 'apple-signin-auth';
 import { AuthService } from './auth.service';
+import { decryptAppleRefreshToken } from './apple-token.crypto';
 import {
   APPLE_WEB_EXCHANGE_TTL_MS,
   APPLE_WEB_STATE_TTL_MS,
@@ -86,6 +87,7 @@ describe('AuthService Apple Web', () => {
 
   const env = {
     JWT_SECRET: 'test-secret',
+    APPLE_TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'),
     APPLE_BUNDLE_ID: BUNDLE_ID,
     APPLE_SERVICE_ID: SERVICE_ID,
     APPLE_TEAM_ID: 'TEAMID1234',
@@ -376,7 +378,22 @@ describe('AuthService Apple Web', () => {
     const code = new URL(target.replace('/#/', '/')).searchParams.get('code');
     const session = await service.exchangeAppleWebLogin(code!);
     expect(prisma.user.create).not.toHaveBeenCalled();
-    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u-apple' },
+      data: expect.objectContaining({
+        appleClientId: SERVICE_ID,
+        appleRefreshTokenEnc: expect.stringMatching(/^v1\./),
+      }),
+    });
+    const stored = prisma.user.update.mock.calls[0][0].data;
+    expect(JSON.stringify(stored)).not.toContain('apple-refresh');
+    expect(JSON.stringify(stored)).not.toContain(env.JWT_SECRET);
+    expect(
+      decryptAppleRefreshToken(
+        stored.appleRefreshTokenEnc,
+        Buffer.alloc(32, 9),
+      ),
+    ).toBe('apple-refresh');
     expect(session).toMatchObject({
       user: { id: 'u-apple', name: 'Ada Lovelace' },
     });
@@ -391,7 +408,9 @@ describe('AuthService Apple Web', () => {
       code: 'auth-code-1',
       state,
     });
-    expect(prisma.user.update).not.toHaveBeenCalled();
+    const stored = prisma.user.update.mock.calls[0][0].data;
+    expect(stored.name).toBeUndefined();
+    expect(stored.appleClientId).toBe(SERVICE_ID);
   });
 
   it('sem APPLE_PRIVATE_KEY o Apple Web falha de forma controlada', () => {
@@ -418,5 +437,78 @@ describe('AuthService Apple Web', () => {
     expect(() => service.appleStartUrl('https://evil.example/')).toThrow(
       'Redirect OAuth não permitido.',
     );
+  });
+
+  it('login nativo com authorizationCode persiste token revogável', async () => {
+    const appleTokens = {
+      exchangeNativeCode: jest.fn().mockResolvedValue({
+        refreshToken: 'native-refresh',
+        clientId: BUNDLE_ID,
+      }),
+      storedFromRevocable: jest.fn((creds?: { refreshToken: string; clientId: string }) =>
+        creds
+          ? {
+              appleRefreshTokenEnc: 'v1.enc',
+              appleClientId: creds.clientId,
+            }
+          : undefined,
+      ),
+    };
+    const native = new AuthService(
+      prisma as never,
+      jwt,
+      config(env),
+      undefined,
+      store,
+      appleTokens as never,
+    );
+    prisma.user.findUnique.mockResolvedValue(EXISTING);
+    await native.loginWithApple({
+      identityToken: 'a'.repeat(24),
+      authorizationCode: 'native-code',
+    });
+    expect(appleTokens.exchangeNativeCode).toHaveBeenCalledWith('native-code');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u-apple' },
+      data: {
+        appleRefreshTokenEnc: 'v1.enc',
+        appleClientId: BUNDLE_ID,
+      },
+    });
+  });
+
+  it('falha ao trocar authorizationCode nativo não quebra o login', async () => {
+    const appleTokens = {
+      exchangeNativeCode: jest.fn().mockResolvedValue(undefined),
+      storedFromRevocable: jest.fn().mockReturnValue(undefined),
+    };
+    const native = new AuthService(
+      prisma as never,
+      jwt,
+      config(env),
+      undefined,
+      store,
+      appleTokens as never,
+    );
+    prisma.user.findUnique.mockResolvedValue(EXISTING);
+    const result = await native.loginWithApple({
+      identityToken: 'a'.repeat(24),
+      authorizationCode: 'bad-code',
+    });
+    expect(result).toHaveProperty('accessToken');
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('novo login Apple Web guarda refresh token cifrado no onboarding', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    const { state } = startAndParse();
+    await service.appleWebCallback({
+      code: 'auth-code-1',
+      state,
+    });
+    const created = prisma.socialOnboardingToken.create.mock.calls[0][0];
+    expect(created.data.appleClientId).toBe(SERVICE_ID);
+    expect(created.data.appleRefreshTokenEnc).toMatch(/^v1\./);
+    expect(JSON.stringify(created)).not.toContain('apple-refresh');
   });
 });

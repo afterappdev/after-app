@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:after_app/core/auth/auth_storage.dart';
 import 'package:after_app/core/network/api_client.dart';
 import 'package:after_app/features/auth/auth_controller.dart';
+import 'package:after_app/features/auth/google_session.dart';
 import 'package:after_app/features/auth/models/user_session.dart';
 import 'package:after_app/features/profile/delete_account_button.dart';
 import 'package:after_app/features/public/account_deletion_pages.dart';
@@ -35,6 +36,21 @@ Future<void> _useTallSurface(WidgetTester tester) async {
 Future<void> _pumpAsync(WidgetTester tester) async {
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
+}
+
+class _RecordingGoogleSession implements GoogleSessionCleaner {
+  int signOuts = 0;
+  int disconnects = 0;
+
+  @override
+  Future<void> signOut() async {
+    signOuts += 1;
+  }
+
+  @override
+  Future<void> disconnect() async {
+    disconnects += 1;
+  }
 }
 
 void main() {
@@ -218,7 +234,12 @@ void main() {
       return http.Response('{}', 404);
     });
     final api = ApiClient(client: client);
-    final auth = AuthController(api: api, storage: AuthStorage());
+    final google = _RecordingGoogleSession();
+    final auth = AuthController(
+      api: api,
+      storage: AuthStorage(),
+      googleSession: google,
+    );
     auth.bootstrapping = false;
     auth.user = UserSession(
       id: 'u1',
@@ -240,5 +261,82 @@ void main() {
     await _pumpAsync(tester);
     expect(deleted, isTrue);
     expect(auth.user, isNull);
+    expect(google.disconnects, 1);
+    expect(google.signOuts, 1);
+  });
+
+  test('logout e exclusão limpam sessão e preferências locais', () async {
+    SharedPreferences.setMockInitialValues({
+      AuthStorage.tokenKey: 'jwt-test',
+      AuthStorage.userJsonKey: jsonEncode({
+        'id': 'u1',
+        'name': 'Ana',
+        'email': 'ana@after.local',
+        'role': 'USER',
+        'state': 'SP',
+        'city': 'São Paulo',
+      }),
+      AuthStorage.notificationsLastPushedKey: 'n-99',
+    });
+    final google = _RecordingGoogleSession();
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.method == 'DELETE' && req.url.path.endsWith('/users/me')) {
+          return http.Response(
+            jsonEncode({'ok': true}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response('{}', 404);
+      }),
+    );
+    final storage = AuthStorage();
+    final auth = AuthController(
+      api: api,
+      storage: storage,
+      googleSession: google,
+    );
+    await auth.bootstrap();
+    expect(auth.user?.id, 'u1');
+
+    await auth.logout();
+    expect(auth.user, isNull);
+    expect(auth.pendingSocialOnboarding, isNull);
+    expect(await storage.readToken(), isNull);
+    expect(await storage.readUserJson(), isNull);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(AuthStorage.notificationsLastPushedKey), isNull);
+    expect(google.signOuts, 1);
+    expect(google.disconnects, 0);
+
+    await storage.saveSession(
+      token: 'jwt-2',
+      userJson: jsonEncode({
+        'id': 'u1',
+        'name': 'Ana',
+        'email': 'ana@after.local',
+        'role': 'USER',
+        'state': 'SP',
+        'city': 'São Paulo',
+      }),
+    );
+    await prefs.setString(AuthStorage.notificationsLastPushedKey, 'n-100');
+    api.setToken('jwt-2');
+    auth.user = UserSession(
+      id: 'u1',
+      name: 'Ana',
+      email: 'ana@after.local',
+      role: 'USER',
+      state: 'SP',
+      city: 'São Paulo',
+    );
+
+    await auth.deleteAccount();
+    expect(auth.user, isNull);
+    expect(await storage.readToken(), isNull);
+    expect(prefs.getString(AuthStorage.notificationsLastPushedKey), isNull);
+    expect(google.disconnects, 1);
+    expect(google.signOuts, 2);
   });
 }

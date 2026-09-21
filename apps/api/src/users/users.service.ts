@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { AppleAuthTokensService } from '../auth/apple-auth-tokens.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 
@@ -13,6 +14,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mediaCleanup: MediaCleanupService,
+    private readonly appleTokens: AppleAuthTokensService,
   ) {}
 
   async getMe(userId: string) {
@@ -112,6 +114,27 @@ export class UsersService {
   }
 
   async deleteAccount(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        appleId: true,
+        appleRefreshTokenEnc: true,
+        appleClientId: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    if (user.role === 'ADMIN') {
+      throw new BadRequestException(
+        'Conta administrativa não pode ser excluída por este fluxo.',
+      );
+    }
+
+    await this.appleTokens.revokeForAccount(user);
+
     const urls = await this.deleteUserRecord(this.prisma, userId);
     await this.mediaCleanup.deleteStoredUploads(urls);
     return { ok: true };
@@ -148,7 +171,28 @@ export class UsersService {
       urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
     }
 
+    await this.deleteRelatedOnboarding(db, {
+      email: user.email,
+      appleId: user.appleId,
+      googleId: user.googleId,
+    });
     await db.user.delete({ where: { id: userId } });
     return urls;
+  }
+
+  private async deleteRelatedOnboarding(
+    db: PrismaService | Prisma.TransactionClient,
+    user: { email: string; appleId: string | null; googleId: string | null },
+  ) {
+    const or: Prisma.SocialOnboardingTokenWhereInput[] = [
+      { email: user.email },
+    ];
+    if (user.appleId) {
+      or.push({ provider: 'apple', providerId: user.appleId });
+    }
+    if (user.googleId) {
+      or.push({ provider: 'google', providerId: user.googleId });
+    }
+    await db.socialOnboardingToken.deleteMany({ where: { OR: or } });
   }
 }

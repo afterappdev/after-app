@@ -142,6 +142,8 @@ describe('AuthService social onboarding', () => {
     avatarUrl: string | null;
     usedAt?: Date | null;
     expiresAt?: Date;
+    appleRefreshTokenEnc?: string | null;
+    appleClientId?: string | null;
   }) {
     prisma.socialOnboardingToken.updateMany.mockResolvedValue({ count: 1 });
     prisma.socialOnboardingToken.findUnique.mockResolvedValue({
@@ -425,6 +427,42 @@ describe('AuthService social onboarding', () => {
     expect(result.user.venueId).toBe('v1');
   });
 
+  it('copia refresh token Apple cifrado do onboarding para o User', async () => {
+    const issued = await appleNew();
+    if (!issued.needsRegistration) throw new Error('esperado onboarding');
+    stubConsumedOnboarding({
+      id: 'jti-1',
+      provider: 'apple',
+      providerId: 'aid-new',
+      email: 'hidden@privaterelay.appleid.com',
+      name: 'Ada Lovelace',
+      avatarUrl: null,
+      appleRefreshTokenEnc: 'v1.enc',
+      appleClientId: 'com.r2p.after.afterApp',
+    });
+    prisma.user.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
+      id: 'u-user',
+      venue: null,
+      ...args.data,
+    }));
+    await service.completeSocialRegistration({
+      onboardingToken: issued.onboardingToken,
+      accountType: 'user',
+      name: 'Ada Lovelace',
+      state: 'SP',
+      city: 'São Paulo',
+    });
+    expect(prisma.user.create.mock.calls[0][0].data.appleRefreshTokenEnc).toBe(
+      'v1.enc',
+    );
+    expect(prisma.user.create.mock.calls[0][0].data.appleClientId).toBe(
+      'com.r2p.after.afterApp',
+    );
+    expect(JSON.stringify(prisma.user.create.mock.calls[0][0])).not.toContain(
+      'native-refresh',
+    );
+  });
+
   it('11. provider id é preservado', async () => {
     const issued = await googleNew();
     if (!issued.needsRegistration) throw new Error('esperado onboarding');
@@ -556,21 +594,26 @@ describe('AuthService social onboarding', () => {
     expect(prisma.user.create.mock.calls[0][0].data.passwordHash).toBeTruthy();
   });
 
-  it('token de onboarding não serve como JWT de sessão', () => {
-    const strategy = new JwtStrategy({
-      getOrThrow: (key: string) => {
-        if (key === 'JWT_SECRET') return 'test-secret';
-        throw new Error(key);
-      },
-    } as unknown as ConfigService);
-    expect(() =>
+  it('token de onboarding não serve como JWT de sessão', async () => {
+    const strategy = new JwtStrategy(
+      {
+        getOrThrow: (key: string) => {
+          if (key === 'JWT_SECRET') return 'test-secret';
+          throw new Error(key);
+        },
+      } as unknown as ConfigService,
+      {
+        user: { findUnique: jest.fn() },
+      } as never,
+    );
+    await expect(
       strategy.validate({
         typ: SOCIAL_ONBOARDING_TYP,
         sub: 'jti-1',
         email: 'nova@gmail.com',
         role: 'USER',
       }),
-    ).toThrow(UnauthorizedException);
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('DTO de conclusão rejeita email e providerId extras', async () => {

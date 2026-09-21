@@ -10,7 +10,6 @@ import { isProduction } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from './users.service';
 import { AccountDeletionMailer } from './account-deletion.mailer';
-import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { sanitizeMailerError } from './resend-account-deletion.mailer';
 import {
   ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
@@ -32,7 +31,6 @@ export class AccountDeletionService {
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
     private readonly mailer: AccountDeletionMailer,
-    private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
   async requestDeletion(email: string) {
@@ -108,33 +106,21 @@ export class AccountDeletionService {
 
     const tokenHash = hashDeletionToken(raw);
 
-    let urls: Array<string | null | undefined>;
+    const row = await this.prisma.accountDeletionRequest.findFirst({
+      where: {
+        tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { userId: true },
+    });
+    if (!row) {
+      throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
+    }
+
     try {
-      urls = await this.prisma.$transaction(async (tx) => {
-        const marked = await tx.accountDeletionRequest.updateMany({
-          where: {
-            tokenHash,
-            usedAt: null,
-            expiresAt: { gt: new Date() },
-          },
-          data: { usedAt: new Date() },
-        });
-        if (marked.count !== 1) {
-          throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
-        }
-        const row = await tx.accountDeletionRequest.findUnique({
-          where: { tokenHash },
-          select: { userId: true },
-        });
-        if (!row) {
-          throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
-        }
-        return this.users.deleteUserRecord(tx, row.userId);
-      });
+      await this.users.deleteAccount(row.userId);
     } catch (err) {
-      if (err instanceof BadRequestException) {
-        throw err;
-      }
       if (err instanceof NotFoundException) {
         throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
       }
@@ -147,7 +133,6 @@ export class AccountDeletionService {
       throw err;
     }
 
-    await this.mediaCleanup.deleteStoredUploads(urls);
     return { ok: true, message: 'Sua conta foi excluída.' };
   }
 }
