@@ -196,7 +196,10 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
 
   bool _ownsVenue(UserSession? session) {
     if (session == null || !session.isVenue) return false;
-    if (session.venueId != null && session.venueId == widget.venueId) {
+    if (_venue?['isOwner'] == true) return true;
+    final loadedId = _venue?['id']?.toString();
+    if (session.venueId != null &&
+        (session.venueId == widget.venueId || session.venueId == loadedId)) {
       return true;
     }
     final ownerId = _venue?['ownerUserId']?.toString();
@@ -1798,7 +1801,7 @@ class _ReviewCardState extends State<_ReviewCard> {
   void initState() {
     super.initState();
     _replyCtrl = TextEditingController(text: _venueReply);
-    _editing = false;
+    _editing = widget.canReply && _venueReply.isEmpty;
   }
 
   @override
@@ -1808,7 +1811,10 @@ class _ReviewCardState extends State<_ReviewCard> {
     final prevReply = oldWidget.review['venueReply']?.toString().trim() ?? '';
     if (nextReply != prevReply) {
       _replyCtrl.text = nextReply;
-      if (nextReply.isNotEmpty) _editing = false;
+      _editing = widget.canReply && nextReply.isEmpty;
+    }
+    if (widget.canReply && !oldWidget.canReply && nextReply.isEmpty) {
+      _editing = true;
     }
   }
 
@@ -1841,8 +1847,8 @@ class _ReviewCardState extends State<_ReviewCard> {
     final initial =
         name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'C';
     final showPublishedReply = _venueReply.isNotEmpty && !_editing;
-    final showReplyCta = widget.canReply && !_editing && _venueReply.isEmpty;
-    final showReplyField = widget.canReply && _editing;
+    final showReplyField =
+        widget.canReply && (_editing || _venueReply.isEmpty);
     final session = context.watch<AuthController>().user;
     final canReportReview = widget.showReport &&
         _reviewId.isNotEmpty &&
@@ -2004,33 +2010,6 @@ class _ReviewCardState extends State<_ReviewCard> {
                 ),
               ),
           ],
-          if (showReplyCta) ...[
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: FilledButton(
-                key: const Key('review-reply-cta'),
-                onPressed: widget.replying
-                    ? null
-                    : () => setState(() => _editing = true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFF58634),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Responder avaliação',
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ],
           if (showReplyField) ...[
             const SizedBox(height: 12),
             TextField(
@@ -2062,40 +2041,15 @@ class _ReviewCardState extends State<_ReviewCard> {
               ),
             ),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: FilledButton(
-                key: const Key('review-reply-submit'),
-                onPressed: widget.replying
-                    ? null
-                    : () => widget.onReply(_reviewId, _replyCtrl.text),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFF58634),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: widget.replying
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        _venueReply.isEmpty
-                            ? 'Publicar resposta'
-                            : 'Atualizar resposta',
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-              ),
+            _ReviewActionButton(
+              key: const Key('review-reply-submit'),
+              label: _venueReply.isEmpty
+                  ? 'Publicar resposta'
+                  : 'Atualizar resposta',
+              loading: widget.replying,
+              onPressed: widget.replying
+                  ? null
+                  : () => widget.onReply(_reviewId, _replyCtrl.text),
             ),
             if (_venueReply.isNotEmpty)
               TextButton(
@@ -2116,6 +2070,56 @@ class _ReviewCardState extends State<_ReviewCard> {
               ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ReviewActionButton extends StatelessWidget {
+  const _ReviewActionButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF58634),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: Center(
+            child: loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

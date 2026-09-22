@@ -236,6 +236,9 @@ export class VenuesService {
       photos: venue.photos,
       banners: venue.banners,
       isOpen: computeIsOpen(venue.hoursJson),
+      isOwner: Boolean(
+        user && user.role === 'VENUE' && user.userId === venue.ownerUserId,
+      ),
       distanceKm: origin ? haversineKm(origin, venue) : null,
       ...reviewStats,
     };

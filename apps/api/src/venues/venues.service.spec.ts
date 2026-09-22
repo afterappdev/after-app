@@ -117,6 +117,21 @@ describe('VenuesService geolocation', () => {
       expect(prisma.venue.update).not.toHaveBeenCalled();
       expect(result.lat).toBe(SAVED_LAT);
       expect(result.lng).toBe(SAVED_LNG);
+      expect(result.isOwner).toBe(false);
+    });
+
+    it('marca isOwner para a conta VENUE dona do local', async () => {
+      prisma.venue.findUnique.mockResolvedValue(venueRecord());
+
+      const result = await service.getPublic(
+        VENUE_ID,
+        undefined,
+        undefined,
+        undefined,
+        { userId: OWNER_ID, email: 'owner@after.local', role: 'VENUE' },
+      );
+
+      expect(result.isOwner).toBe(true);
     });
   });
 

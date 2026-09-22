@@ -12,7 +12,7 @@ import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Map<String, dynamic> _venue({String? venueReply}) {
+Map<String, dynamic> _venue({String? venueReply, bool isOwner = false}) {
   return {
     'id': 'venue-1',
     'name': 'Refúgio do Chef',
@@ -21,6 +21,7 @@ Map<String, dynamic> _venue({String? venueReply}) {
     'city': 'São Paulo',
     'state': 'SP',
     'isOpen': false,
+    'isOwner': isOwner,
     'ownerUserId': 'owner-1',
     'avgRating': 5,
     'reviewCount': 1,
@@ -132,13 +133,6 @@ void main() {
     await _openReviews(tester);
 
     expect(find.text('Excelente local.'), findsOneWidget);
-    expect(find.byKey(const Key('review-reply-cta')), findsOneWidget);
-    expect(find.text('Responder avaliação'), findsOneWidget);
-
-    await tester.ensureVisible(find.byKey(const Key('review-reply-cta')));
-    await tester.tap(find.byKey(const Key('review-reply-cta')));
-    await tester.pump();
-
     expect(find.byKey(const Key('review-reply-field')), findsOneWidget);
     expect(find.byKey(const Key('review-reply-submit')), findsOneWidget);
     expect(find.text('Publicar resposta'), findsOneWidget);
@@ -184,9 +178,7 @@ void main() {
     );
     await _openReviews(tester);
 
-    await tester.ensureVisible(find.byKey(const Key('review-reply-cta')));
-    await tester.tap(find.byKey(const Key('review-reply-cta')));
-    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('review-reply-field')));
     await tester.enterText(
       find.byKey(const Key('review-reply-field')),
       'Obrigado pela visita!',
@@ -232,7 +224,7 @@ void main() {
     await tester.pumpWidget(_app(api: api, auth: auth));
     await _openReviews(tester);
 
-    expect(find.byKey(const Key('review-reply-cta')), findsNothing);
-    expect(find.text('Responder avaliação'), findsNothing);
+    expect(find.byKey(const Key('review-reply-submit')), findsNothing);
+    expect(find.text('Publicar resposta'), findsNothing);
   });
 }
