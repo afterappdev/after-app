@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
+import '../auth/models/user_session.dart';
 import '../moderation/report_reasons.dart';
 import '../moderation/report_sheet.dart';
 
@@ -193,9 +194,18 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     }
   }
 
+  bool _ownsVenue(UserSession? session) {
+    if (session == null || !session.isVenue) return false;
+    if (session.venueId != null && session.venueId == widget.venueId) {
+      return true;
+    }
+    final ownerId = _venue?['ownerUserId']?.toString();
+    return ownerId != null && ownerId == session.id;
+  }
+
   Future<void> _submitReply(String reviewId, String reply) async {
     final auth = context.read<AuthController>();
-    if (auth.user?.isVenue != true || auth.user?.venueId != widget.venueId) {
+    if (!_ownsVenue(auth.user)) {
       return;
     }
     final text = reply.trim();
@@ -234,8 +244,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
 
   Future<void> _openSafetyMenu() async {
     final session = context.read<AuthController>().user;
-    final isOwnVenue = session?.venueId == widget.venueId;
-    if (isOwnVenue) return;
+    if (_ownsVenue(session)) return;
     final canBlock = session?.isVenue != true;
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -353,9 +362,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     final isUser = context.watch<AuthController>().user?.isVenue != true;
     final session = context.watch<AuthController>().user;
     final canReview = session != null && session.isVenue != true;
-    final canReply =
-        session != null && session.isVenue && session.venueId == widget.venueId;
-    final isOwnVenue = session?.venueId == widget.venueId;
+    final isOwnVenue = _ownsVenue(session);
+    final canReply = isOwnVenue;
     final showSafetyMenu = !isOwnVenue && _venue != null && _error == null;
     final cover = ApiConfig.resolveMediaUrl(_venue?['coverUrl']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
@@ -1790,7 +1798,7 @@ class _ReviewCardState extends State<_ReviewCard> {
   void initState() {
     super.initState();
     _replyCtrl = TextEditingController(text: _venueReply);
-    _editing = widget.canReply && _venueReply.isEmpty;
+    _editing = false;
   }
 
   @override
@@ -1800,7 +1808,7 @@ class _ReviewCardState extends State<_ReviewCard> {
     final prevReply = oldWidget.review['venueReply']?.toString().trim() ?? '';
     if (nextReply != prevReply) {
       _replyCtrl.text = nextReply;
-      _editing = widget.canReply && nextReply.isEmpty;
+      if (nextReply.isNotEmpty) _editing = false;
     }
   }
 
@@ -1833,7 +1841,8 @@ class _ReviewCardState extends State<_ReviewCard> {
     final initial =
         name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'C';
     final showPublishedReply = _venueReply.isNotEmpty && !_editing;
-    final showReplyField = widget.canReply && (_editing || _venueReply.isEmpty);
+    final showReplyCta = widget.canReply && !_editing && _venueReply.isEmpty;
+    final showReplyField = widget.canReply && _editing;
     final session = context.watch<AuthController>().user;
     final canReportReview = widget.showReport &&
         _reviewId.isNotEmpty &&
@@ -1976,6 +1985,7 @@ class _ReviewCardState extends State<_ReviewCard> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
+                  key: const Key('review-reply-edit'),
                   onPressed: widget.replying
                       ? null
                       : () => setState(() => _editing = true),
@@ -1994,16 +2004,45 @@ class _ReviewCardState extends State<_ReviewCard> {
                 ),
               ),
           ],
+          if (showReplyCta) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                key: const Key('review-reply-cta'),
+                onPressed: widget.replying
+                    ? null
+                    : () => setState(() => _editing = true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFF58634),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Responder avaliação',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
           if (showReplyField) ...[
             const SizedBox(height: 12),
             TextField(
+              key: const Key('review-reply-field'),
               controller: _replyCtrl,
               enabled: !widget.replying,
-              maxLines: 3,
+              minLines: 3,
+              maxLines: 5,
               maxLength: 800,
               textCapitalization: TextCapitalization.sentences,
               decoration: InputDecoration(
-                hintText: 'Resposta do estabelecimento',
+                hintText: 'Escreva a resposta do estabelecimento',
                 counterText: '',
                 filled: true,
                 fillColor: Colors.white,
@@ -2023,60 +2062,58 @@ class _ReviewCardState extends State<_ReviewCard> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                if (_venueReply.isNotEmpty)
-                  TextButton(
-                    onPressed: widget.replying
-                        ? null
-                        : () {
-                            _replyCtrl.text = _venueReply;
-                            setState(() => _editing = false);
-                          },
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF6B6B75),
-                    ),
-                    child: const Text(
-                      'Cancelar',
-                      style: TextStyle(fontFamily: AppTheme.fontFamily),
-                    ),
-                  ),
-                const Spacer(),
-                SizedBox(
-                  height: 40,
-                  child: FilledButton(
-                    onPressed: widget.replying
-                        ? null
-                        : () => widget.onReply(_reviewId, _replyCtrl.text),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFF58634),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: widget.replying
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            _venueReply.isEmpty
-                                ? 'Publicar resposta'
-                                : 'Atualizar resposta',
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: FilledButton(
+                key: const Key('review-reply-submit'),
+                onPressed: widget.replying
+                    ? null
+                    : () => widget.onReply(_reviewId, _replyCtrl.text),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFF58634),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              ],
+                child: widget.replying
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _venueReply.isEmpty
+                            ? 'Publicar resposta'
+                            : 'Atualizar resposta',
+                        style: const TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
             ),
+            if (_venueReply.isNotEmpty)
+              TextButton(
+                key: const Key('review-reply-cancel'),
+                onPressed: widget.replying
+                    ? null
+                    : () {
+                        _replyCtrl.text = _venueReply;
+                        setState(() => _editing = false);
+                      },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF6B6B75),
+                ),
+                child: const Text(
+                  'Cancelar',
+                  style: TextStyle(fontFamily: AppTheme.fontFamily),
+                ),
+              ),
           ],
         ],
       ),
