@@ -1,9 +1,13 @@
 import 'package:after_admin/core/formatters/admin_formatters.dart';
 import 'package:after_admin/data/admin_api.dart';
+import 'package:after_admin/data/admin_report.dart';
 import 'package:after_admin/features/accounts/accounts_controller.dart';
 import 'package:after_admin/features/accounts/accounts_screen.dart';
 import 'package:after_admin/features/dashboard/dashboard_controller.dart';
 import 'package:after_admin/features/dashboard/dashboard_screen.dart';
+import 'package:after_admin/features/reports/report_detail_screen.dart';
+import 'package:after_admin/features/reports/reports_controller.dart';
+import 'package:after_admin/features/reports/reports_screen.dart';
 import 'package:after_admin/features/sales/sales_controller.dart';
 import 'package:after_admin/features/sales/sales_screen.dart';
 import 'package:flutter/material.dart';
@@ -123,5 +127,54 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('Nenhuma venda'), findsOneWidget);
+  });
+
+  testWidgets('reports empty state', (tester) async {
+    final api = FakeAdminApi();
+    await tester.pumpWidget(
+      _app(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ReportsController(api)),
+        ],
+        home: const Scaffold(body: ReportsScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Nenhuma denúncia'), findsOneWidget);
+  });
+
+  testWidgets('confirma reexibir estabelecimento ocultado', (tester) async {
+    final api = FakeAdminApi(
+      reportDetail: AdminReportDetail(
+        id: 'r1',
+        targetType: 'VENUE',
+        targetId: 'v1',
+        reason: 'SPAM',
+        status: 'RESOLVED',
+        createdAt: DateTime.parse('2026-09-22T15:00:00.000Z'),
+        targetSnapshot: const {'name': 'Bar Central'},
+        moderationAction: 'VENUE_HIDDEN',
+        venueHidden: true,
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        providers: [Provider<AdminApi>.value(value: api)],
+        home: const ReportDetailScreen(id: 'r1'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Reexibir estabelecimento'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('admin-report-restore-venue-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('Reexibir estabelecimento?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('admin-report-restore-venue')));
+    await tester.pumpAndSettle();
+    expect(api.restoredVenueReportIds, ['r1']);
+    expect(find.text('Oculto por moderação'), findsNothing);
   });
 }

@@ -13,6 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
+import '../moderation/report_reasons.dart';
+import '../moderation/report_sheet.dart';
 
 class VenuePublicScreen extends StatefulWidget {
   const VenuePublicScreen({
@@ -230,6 +232,116 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     }
   }
 
+  Future<void> _openSafetyMenu() async {
+    final session = context.read<AuthController>().user;
+    final isOwnVenue = session?.venueId == widget.venueId;
+    if (isOwnVenue) return;
+    final canBlock = session?.isVenue != true;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                key: const Key('report-venue-action'),
+                leading: const Icon(Icons.flag_outlined, color: _accent),
+                title: const Text(
+                  'Denunciar estabelecimento',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, 'report'),
+              ),
+              if (canBlock)
+                ListTile(
+                  key: const Key('block-venue-action'),
+                  leading: const Icon(Icons.block, color: Color(0xFFE53935)),
+                  title: const Text(
+                    'Bloquear estabelecimento',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF282829),
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(ctx, 'block'),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || action == null) return;
+    if (action == 'report') {
+      await showReportSheet(
+        context,
+        targetType: ReportTargetType.venue,
+        targetId: widget.venueId,
+      );
+      return;
+    }
+    if (action == 'block') {
+      await _confirmBlock();
+    }
+  }
+
+  Future<void> _confirmBlock() async {
+    final loggedIn = await ensureSignedIn(context);
+    if (!loggedIn || !mounted) return;
+    final session = context.read<AuthController>().user;
+    if (session == null || session.isVenue) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Entre com uma conta de cliente para bloquear estabelecimentos.',
+          ),
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bloquear este estabelecimento?'),
+        content: const Text(
+          'Você deixará de ver este estabelecimento e seus conteúdos no After. Você poderá desbloqueá-lo posteriormente nas configurações do seu perfil.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('block-cancel'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            key: const Key('block-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Bloquear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await context.read<ApiClient>().post(
+            '/users/me/blocked-venues/${widget.venueId}',
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop('blocked');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _reviewCtrl.dispose();
@@ -243,6 +355,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     final canReview = session != null && session.isVenue != true;
     final canReply =
         session != null && session.isVenue && session.venueId == widget.venueId;
+    final isOwnVenue = session?.venueId == widget.venueId;
+    final showSafetyMenu = !isOwnVenue && _venue != null && _error == null;
     final cover = ApiConfig.resolveMediaUrl(_venue?['coverUrl']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
     final name = _venue?['name']?.toString() ?? 'Local';
@@ -303,6 +417,9 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                           onBack: () =>
                                               Navigator.of(context).maybePop(),
                                           onFavorite: _toggleFavorite,
+                                          onMenu: showSafetyMenu
+                                              ? _openSafetyMenu
+                                              : null,
                                         ),
                                         Padding(
                                           padding: const EdgeInsets.fromLTRB(
@@ -360,18 +477,21 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                     context,
                                                     url,
                                                   ),
+                                                  showReport: showSafetyMenu,
                                                 )
                                               : _tab == 1
                                                   ? _PhotoGrid(
                                                       photos: gallery,
                                                       emptyLabel:
                                                           'Nenhuma foto ou vídeo do local ainda.',
+                                                      showReport: showSafetyMenu,
                                                     )
                                                   : _tab == 2
                                                       ? _PhotoGrid(
                                                           photos: menu,
                                                           emptyLabel:
                                                               'Cardápio ainda não publicado.',
+                                                          showReport: showSafetyMenu,
                                                         )
                                                       : _tab == 3
                                                           ? _ReviewsTab(
@@ -408,6 +528,8 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                                   _submitReview,
                                                               onReply:
                                                                   _submitReply,
+                                                              showReport:
+                                                                  showSafetyMenu,
                                                             )
                                                           : _ContactTab(
                                                               contacts:
@@ -450,6 +572,7 @@ class _Header extends StatelessWidget {
     required this.favoriting,
     required this.onBack,
     required this.onFavorite,
+    this.onMenu,
   });
 
   final String cover;
@@ -466,6 +589,7 @@ class _Header extends StatelessWidget {
   final bool favoriting;
   final VoidCallback onBack;
   final VoidCallback onFavorite;
+  final VoidCallback? onMenu;
 
   static const _coverHeight = 196.0;
   static const _logoSize = 116.0;
@@ -495,6 +619,16 @@ class _Header extends StatelessWidget {
                 left: 12,
                 child: _RoundIcon(icon: Icons.arrow_back_ios_new_rounded, onTap: onBack),
               ),
+              if (onMenu != null)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 8,
+                  right: 12,
+                  child: _RoundIcon(
+                    key: const Key('venue-safety-menu'),
+                    icon: Icons.more_vert_rounded,
+                    onTap: onMenu,
+                  ),
+                ),
               if (isUser)
                 Positioned(
                   top: _coverHeight - 38 - 12,
@@ -631,6 +765,7 @@ class _Header extends StatelessWidget {
 
 class _RoundIcon extends StatelessWidget {
   const _RoundIcon({
+    super.key,
     required this.icon,
     required this.onTap,
     this.iconColor = const Color(0xFF333333),
@@ -795,6 +930,7 @@ class _AboutTab extends StatelessWidget {
     required this.onTogglePromos,
     required this.onOpenMap,
     required this.onOpenImage,
+    this.showReport = false,
   });
 
   final String city;
@@ -806,6 +942,7 @@ class _AboutTab extends StatelessWidget {
   final VoidCallback onTogglePromos;
   final VoidCallback onOpenMap;
   final ValueChanged<String> onOpenImage;
+  final bool showReport;
 
   @override
   Widget build(BuildContext context) {
@@ -860,6 +997,8 @@ class _AboutTab extends StatelessWidget {
                     : 'Promoção do dia',
                 detail: banner['description']?.toString() ?? '',
                 validUntil: _formatDate(date),
+                bannerId: banner['id']?.toString() ?? '',
+                showReport: showReport,
                 onImageTap: () {
                   final url = ApiConfig.resolveMediaUrl(banner['imageUrl']?.toString());
                   onOpenImage(url);
@@ -1212,6 +1351,8 @@ class _PromoRow extends StatelessWidget {
     required this.detail,
     required this.validUntil,
     required this.onImageTap,
+    this.bannerId = '',
+    this.showReport = false,
   });
 
   final String imageUrl;
@@ -1219,6 +1360,8 @@ class _PromoRow extends StatelessWidget {
   final String detail;
   final String validUntil;
   final VoidCallback onImageTap;
+  final String bannerId;
+  final bool showReport;
 
   @override
   Widget build(BuildContext context) {
@@ -1293,7 +1436,13 @@ class _PromoRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFFB0B0B8)),
+          if (showReport && bannerId.isNotEmpty)
+            ContentReportButton(
+              targetType: ReportTargetType.banner,
+              targetId: bannerId,
+            )
+          else
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFFB0B0B8)),
         ],
       ),
     );
@@ -1301,10 +1450,15 @@ class _PromoRow extends StatelessWidget {
 }
 
 class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({required this.photos, required this.emptyLabel});
+  const _PhotoGrid({
+    required this.photos,
+    required this.emptyLabel,
+    this.showReport = false,
+  });
 
   final List<dynamic> photos;
   final String emptyLabel;
+  final bool showReport;
 
   @override
   Widget build(BuildContext context) {
@@ -1329,12 +1483,29 @@ class _PhotoGrid extends StatelessWidget {
         final item = photos[i] as Map;
         final url = ApiConfig.resolveMediaUrl(item['url']?.toString());
         final video = isVideoMedia(item);
-        return GalleryMediaThumb(
-          url: url,
-          video: video,
-          onTap: url.isEmpty
-              ? null
-              : () => openExpandedMedia(context, url, video: video),
+        final photoId = item['id']?.toString() ?? '';
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            GalleryMediaThumb(
+              url: url,
+              video: video,
+              onTap: url.isEmpty
+                  ? null
+                  : () => openExpandedMedia(context, url, video: video),
+            ),
+            if (showReport && photoId.isNotEmpty)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: ContentReportButton(
+                  targetType: video
+                      ? ReportTargetType.video
+                      : ReportTargetType.photo,
+                  targetId: photoId,
+                ),
+              ),
+          ],
         );
       },
     );
@@ -1412,6 +1583,7 @@ class _ReviewsTab extends StatelessWidget {
     required this.onRating,
     required this.onSubmit,
     required this.onReply,
+    this.showReport = false,
   });
 
   final List<dynamic> reviews;
@@ -1426,6 +1598,7 @@ class _ReviewsTab extends StatelessWidget {
   final ValueChanged<int> onRating;
   final VoidCallback onSubmit;
   final Future<void> Function(String reviewId, String reply) onReply;
+  final bool showReport;
 
   @override
   Widget build(BuildContext context) {
@@ -1571,6 +1744,7 @@ class _ReviewsTab extends StatelessWidget {
               ),
               review: Map<String, dynamic>.from(reviews[i] as Map),
               canReply: canReply,
+              showReport: showReport,
               replying:
                   submittingReplyId ==
                   (reviews[i] as Map)['id']?.toString(),
@@ -1590,12 +1764,14 @@ class _ReviewCard extends StatefulWidget {
     required this.canReply,
     required this.replying,
     required this.onReply,
+    this.showReport = false,
   });
 
   final Map<String, dynamic> review;
   final bool canReply;
   final bool replying;
   final Future<void> Function(String reviewId, String reply) onReply;
+  final bool showReport;
 
   @override
   State<_ReviewCard> createState() => _ReviewCardState();
@@ -1658,6 +1834,10 @@ class _ReviewCardState extends State<_ReviewCard> {
         name.isNotEmpty ? name.substring(0, 1).toUpperCase() : 'C';
     final showPublishedReply = _venueReply.isNotEmpty && !_editing;
     final showReplyField = widget.canReply && (_editing || _venueReply.isEmpty);
+    final session = context.watch<AuthController>().user;
+    final canReportReview = widget.showReport &&
+        _reviewId.isNotEmpty &&
+        widget.review['userId']?.toString() != session?.id;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -1715,6 +1895,11 @@ class _ReviewCardState extends State<_ReviewCard> {
                 ),
               ),
               _AvgStars(value: rating, size: 16),
+              if (canReportReview)
+                ContentReportButton(
+                  targetType: ReportTargetType.review,
+                  targetId: _reviewId,
+                ),
             ],
           ),
           if (testimonial.isNotEmpty) ...[

@@ -19,6 +19,7 @@ import 'features/home/home_screen.dart';
 import 'features/intro/app_startup.dart';
 import 'features/notifications/notifications_controller.dart';
 import 'features/notifications/notifications_screen.dart';
+import 'features/profile/blocked_venues_screen.dart';
 import 'features/profile/favorites_screen.dart';
 import 'features/profile/user_profile_screen.dart';
 import 'features/profile/venue_account_screen.dart';
@@ -26,6 +27,7 @@ import 'features/public/account_deletion_pages.dart';
 import 'features/public/account_deletion_uri.dart';
 import 'features/public/legal_pages.dart';
 import 'features/public/privacy_policy_page.dart';
+import 'features/public/terms_of_use_page.dart';
 import 'features/public/web_root.dart';
 import 'features/venue/venue_edit_screen.dart';
 import 'features/venue/venue_public_screen.dart';
@@ -156,8 +158,10 @@ class _AfterAppState extends State<AfterApp> {
         AppRoutes.venueEdit: (_) => const VenueEditScreen(),
         AppRoutes.credits: (_) => const CreditsScreen(),
         AppRoutes.favorites: (_) => const FavoritesScreen(),
+        AppRoutes.blockedVenues: (_) => const BlockedVenuesScreen(),
         AppRoutes.notifications: (_) => const NotificationsScreen(),
         AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
+        AppRoutes.terms: (_) => const TermsOfUsePage(),
         AppRoutes.accountDeletion: (_) => const AccountDeletionPage(),
         AppRoutes.confirmDeletion: (_) => const ConfirmAccountDeletionPage(),
         AppRoutes.forgotPassword: (_) => const ForgotPasswordPage(),

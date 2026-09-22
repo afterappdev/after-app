@@ -18,9 +18,11 @@ import 'package:after_app/features/auth/register_screen.dart';
 import 'package:after_app/features/home/home_screen.dart';
 import 'package:after_app/features/public/landing_page.dart';
 import 'package:after_app/features/public/account_deletion_pages.dart';
+import 'package:after_app/features/public/legal_agreement_notice.dart';
 import 'package:after_app/features/public/legal_pages.dart';
 import 'package:after_app/features/public/privacy_policy_page.dart';
 import 'package:after_app/features/public/public_contact.dart';
+import 'package:after_app/features/public/terms_of_use_page.dart';
 import 'package:after_app/features/public/web_root.dart';
 
 Widget _publicSite({
@@ -46,6 +48,7 @@ Widget _publicSite({
         AppRoutes.register: (_) =>
             const RegisterScreen(showPublicHomeLink: true),
         AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
+        AppRoutes.terms: (_) => const TermsOfUsePage(),
         AppRoutes.accountDeletion: (_) => const AccountDeletionPage(),
         AppRoutes.confirmDeletion: (_) => const ConfirmAccountDeletionPage(),
         AppRoutes.forgotPassword: (_) => const ForgotPasswordPage(),
@@ -203,19 +206,27 @@ void main() {
     expect(find.byType(LandingPage), findsOneWidget);
   });
 
-  testWidgets('links de Política, Exclusão e Contato funcionam', (
+  testWidgets('links de Termos, Política, Exclusão e Contato funcionam', (
     tester,
   ) async {
     await _surface(tester, const Size(1200, 1800));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('public-footer-privacy'), skipOffstage: false),
-      400,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await _scrollToKey(tester, const Key('public-footer-terms'));
+    await tester.tap(find.byKey(const Key('public-footer-terms')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+    expect(find.text('Termos de Uso'), findsWidgets);
+    expect(find.textContaining('Última atualização'), findsOneWidget);
+    expect(find.textContaining('22 de setembro de 2026'), findsWidgets);
+    expect(find.byType(LoginScreen), findsNothing);
 
+    await tester.tap(find.byKey(const Key('terms-back')));
+    await tester.pumpAndSettle();
+    expect(find.byType(LandingPage), findsOneWidget);
+
+    await _scrollToKey(tester, const Key('public-footer-privacy'));
     await tester.tap(find.byKey(const Key('public-footer-privacy')));
     await tester.pumpAndSettle();
     expect(find.text('Política de Privacidade'), findsWidgets);
@@ -255,8 +266,22 @@ void main() {
     expect(find.textContaining('Última atualização'), findsOneWidget);
     expect(find.text('Nesta página'), findsOneWidget);
     expect(find.text('1. Dados que podemos coletar'), findsWidgets);
-    expect(find.textContaining('18 de setembro de 2026'), findsOneWidget);
+    expect(find.textContaining('22 de setembro de 2026'), findsOneWidget);
     expect(find.byKey(const Key('privacy-back')), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
+  });
+
+  testWidgets('termos abrem sem login', (tester) async {
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.terms));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+    expect(find.text('Termos de Uso'), findsWidgets);
+    expect(find.textContaining('Última atualização'), findsOneWidget);
+    expect(find.text('Nesta página'), findsOneWidget);
+    expect(find.text('1. Aceitação dos Termos'), findsWidgets);
+    expect(find.textContaining('22 de setembro de 2026'), findsOneWidget);
+    expect(find.byKey(const Key('terms-back')), findsOneWidget);
     expect(find.byType(LoginScreen), findsNothing);
   });
 
@@ -301,6 +326,7 @@ void main() {
     expect(AppRoutes.home, '/home');
     expect(AppRoutes.register, '/register');
     expect(AppRoutes.privacy, '/politica-de-privacidade');
+    expect(AppRoutes.terms, '/termos-de-uso');
     expect(AppRoutes.accountDeletion, '/exclusao-de-conta');
     expect(AppRoutes.confirmDeletion, '/confirmar-exclusao');
     expect(AppRoutes.forgotPassword, '/esqueci-minha-senha');
@@ -462,6 +488,19 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
+      find.byKey(const Key('public-footer-terms'), skipOffstage: false),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('public-footer-terms')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('terms-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('landing-mobile')), findsOneWidget);
+
+    await tester.scrollUntilVisible(
       find.byKey(const Key('public-footer-privacy'), skipOffstage: false),
       400,
       scrollable: find.byType(Scrollable).first,
@@ -560,6 +599,7 @@ void main() {
       AppRoutes.forgotPassword,
       AppRoutes.resetPassword,
       AppRoutes.confirmDeletion,
+      AppRoutes.terms,
     ]) {
       await tester.pumpWidget(_publicSite(initialRoute: route));
       await tester.pumpAndSettle();
@@ -586,6 +626,7 @@ void main() {
     for (final route in [
       AppRoutes.login,
       AppRoutes.privacy,
+      AppRoutes.terms,
       AppRoutes.accountDeletion,
       AppRoutes.contact,
     ]) {
@@ -626,6 +667,16 @@ void main() {
       findsOneWidget,
     );
 
+    await tester.ensureVisible(find.byKey(const Key('contact-terms')));
+    await tester.tap(find.byKey(const Key('contact-terms')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+    expect(find.textContaining('Última atualização'), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(TermsOfUsePage))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactPage), findsOneWidget);
+
     await tester.ensureVisible(find.byKey(const Key('contact-privacy')));
     await tester.tap(find.byKey(const Key('contact-privacy')));
     await tester.pumpAndSettle();
@@ -650,5 +701,69 @@ void main() {
     expect(find.text('Conversar pelo WhatsApp'), findsOneWidget);
     expect(find.text('Ligar'), findsNothing);
     expect(find.text('TELEFONE'), findsNothing);
+  });
+
+  testWidgets('política liga para os termos sem login', (tester) async {
+    await _surface(tester, const Size(1440, 2400));
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.privacy));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('privacy-terms')));
+    await tester.tap(find.byKey(const Key('privacy-terms')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
+  });
+
+  testWidgets('termos ligam para a política sem login', (tester) async {
+    await _surface(tester, const Size(1440, 2400));
+    await tester.pumpWidget(_publicSite(initialRoute: AppRoutes.terms));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('terms-privacy')));
+    await tester.tap(find.byKey(const Key('terms-privacy')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PrivacyPolicyPage), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
+  });
+
+  testWidgets('aviso legal abre Termos e Política', (tester) async {
+    final client = ApiClient();
+    final controller = AuthController(api: client, storage: AuthStorage())
+      ..bootstrapping = false;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: client),
+          ChangeNotifierProvider.value(value: controller),
+        ],
+        child: MaterialApp(
+          home: const Scaffold(body: Center(child: LegalAgreementNotice())),
+          routes: {
+            AppRoutes.terms: (_) => const TermsOfUsePage(),
+            AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Termos de Uso'), findsOneWidget);
+    expect(find.text('Política de Privacidade'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('legal-terms-link')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
+
+    Navigator.of(tester.element(find.byType(TermsOfUsePage))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('legal-privacy-link')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrivacyPolicyPage), findsOneWidget);
+    expect(find.byType(LoginScreen), findsNothing);
   });
 }

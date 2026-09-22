@@ -1,6 +1,7 @@
 import '../core/network/api_client.dart';
 import 'admin_account.dart';
 import 'admin_dashboard.dart';
+import 'admin_report.dart';
 import 'admin_sale.dart';
 import 'admin_session.dart';
 import 'paginated.dart';
@@ -42,6 +43,24 @@ abstract class AdminApi {
   });
 
   Future<void> unregisterPushToken(String token);
+
+  Future<Paginated<AdminReport>> reports({
+    int page = 1,
+    int limit = 20,
+    String? status,
+    String? targetType,
+  });
+
+  Future<AdminReportDetail> report(String id);
+
+  Future<AdminReportDetail> moderateReport(
+    String id, {
+    required String status,
+    String? adminNote,
+    bool removeContent = false,
+  });
+
+  Future<AdminReportDetail> restoreVenue(String id);
 }
 
 class HttpAdminApi implements AdminApi {
@@ -155,5 +174,58 @@ class HttpAdminApi implements AdminApi {
       body: {'token': token},
       notifyUnauthorized: false,
     );
+  }
+
+  @override
+  Future<Paginated<AdminReport>> reports({
+    int page = 1,
+    int limit = 20,
+    String? status,
+    String? targetType,
+  }) async {
+    final data = await client.get(
+      '/admin/reports',
+      query: {
+        'page': '$page',
+        'limit': '$limit',
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (targetType != null && targetType.isNotEmpty) 'targetType': targetType,
+      },
+    );
+    return Paginated.fromJson(
+      Map<String, dynamic>.from(data as Map),
+      AdminReport.fromJson,
+    );
+  }
+
+  @override
+  Future<AdminReportDetail> report(String id) async {
+    final data = await client.get('/admin/reports/$id');
+    return AdminReportDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminReportDetail> moderateReport(
+    String id, {
+    required String status,
+    String? adminNote,
+    bool removeContent = false,
+  }) async {
+    final data = await client.patch(
+      '/admin/reports/$id',
+      body: {
+        'status': status,
+        if (adminNote != null && adminNote.trim().isNotEmpty)
+          'adminNote': adminNote.trim(),
+        if (removeContent) 'removeContent': true,
+      },
+    );
+    return AdminReportDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminReportDetail> restoreVenue(String id) async {
+    final data = await client.post('/admin/reports/$id/restore-venue');
+    return AdminReportDetail.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

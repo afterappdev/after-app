@@ -9,8 +9,10 @@ class AppRoutes {
   static const venuePublic = '/venue-public';
   static const credits = '/credits';
   static const favorites = '/favorites';
+  static const blockedVenues = '/blocked-venues';
   static const notifications = '/notifications';
   static const privacy = '/politica-de-privacidade';
+  static const terms = '/termos-de-uso';
   static const accountDeletion = '/exclusao-de-conta';
   static const confirmDeletion = '/confirmar-exclusao';
   static const forgotPassword = '/esqueci-minha-senha';

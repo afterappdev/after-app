@@ -1,5 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+function inboxWhere(userId: string): Prisma.NotificationWhereInput {
+  return {
+    userId,
+    venue: {
+      moderationHiddenAt: null,
+      blockedByUsers: { none: { userId } },
+    },
+  };
+}
 
 @Injectable()
 export class NotificationsService {
@@ -7,7 +18,7 @@ export class NotificationsService {
 
   list(userId: string) {
     return this.prisma.notification.findMany({
-      where: { userId },
+      where: inboxWhere(userId),
       include: {
         venue: {
           select: {
@@ -25,7 +36,7 @@ export class NotificationsService {
 
   unreadCount(userId: string) {
     return this.prisma.notification.count({
-      where: { userId, readAt: null },
+      where: { ...inboxWhere(userId), readAt: null },
     });
   }
 
@@ -52,7 +63,12 @@ export class NotificationsService {
     promoTitle?: string | null;
   }) {
     const followers = await this.prisma.favorite.findMany({
-      where: { venueId: params.venueId },
+      where: {
+        venueId: params.venueId,
+        user: {
+          venueBlocks: { none: { venueId: params.venueId } },
+        },
+      },
       select: { userId: true },
     });
     if (!followers.length) return;

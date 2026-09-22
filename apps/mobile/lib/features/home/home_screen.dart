@@ -505,6 +505,10 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
     if (!mounted) return;
+    if (result == 'blocked') {
+      await _load(silent: true);
+      return;
+    }
     if (result is int) {
       _onNavTap(result);
     }

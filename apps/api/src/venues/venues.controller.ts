@@ -29,6 +29,7 @@ import {
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { VenuesService } from './venues.service';
 
 class UpdateVenueDto {
@@ -133,12 +134,15 @@ export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
 
   @Get()
-  list(@Query('city') city: string) {
-    return this.venuesService.listByCity(city ?? '');
+  @UseGuards(OptionalJwtAuthGuard)
+  list(@Query('city') city: string, @CurrentUser() user?: AuthUser) {
+    return this.venuesService.listByCity(city ?? '', user);
   }
 
   @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
   search(
+    @CurrentUser() user?: AuthUser,
     @Query('q') q?: string,
     @Query('category') category?: string,
     @Query('minRating') minRating?: string,
@@ -156,22 +160,26 @@ export class VenuesController {
     @Query('hasBabyChangingRoom') hasBabyChangingRoom?: string,
   ) {
     const rating = Number(minRating);
-    return this.venuesService.searchByName(q ?? '', {
-      category: category?.trim() || undefined,
-      minRating: Number.isFinite(rating) && rating > 0 ? rating : undefined,
-      acceptsMealVoucher: acceptsMealVoucher === 'true',
-      hasKidsSpace: hasKidsSpace === 'true',
-      hasCoverCharge: hasCoverCharge === 'true',
-      hasWheelchairAccess: hasWheelchairAccess === 'true',
-      isPetFriendly: isPetFriendly === 'true',
-      hasLiveMusic: hasLiveMusic === 'true',
-      hasBirthdayTreat: hasBirthdayTreat === 'true',
-      hasDelivery: hasDelivery === 'true',
-      hasGlutenFreeFood: hasGlutenFreeFood === 'true',
-      hasLactoseFreeFood: hasLactoseFreeFood === 'true',
-      hasAirConditioning: hasAirConditioning === 'true',
-      hasBabyChangingRoom: hasBabyChangingRoom === 'true',
-    });
+    return this.venuesService.searchByName(
+      q ?? '',
+      {
+        category: category?.trim() || undefined,
+        minRating: Number.isFinite(rating) && rating > 0 ? rating : undefined,
+        acceptsMealVoucher: acceptsMealVoucher === 'true',
+        hasKidsSpace: hasKidsSpace === 'true',
+        hasCoverCharge: hasCoverCharge === 'true',
+        hasWheelchairAccess: hasWheelchairAccess === 'true',
+        isPetFriendly: isPetFriendly === 'true',
+        hasLiveMusic: hasLiveMusic === 'true',
+        hasBirthdayTreat: hasBirthdayTreat === 'true',
+        hasDelivery: hasDelivery === 'true',
+        hasGlutenFreeFood: hasGlutenFreeFood === 'true',
+        hasLactoseFreeFood: hasLactoseFreeFood === 'true',
+        hasAirConditioning: hasAirConditioning === 'true',
+        hasBabyChangingRoom: hasBabyChangingRoom === 'true',
+      },
+      user,
+    );
   }
 
   @Get('geocode')
@@ -181,8 +189,9 @@ export class VenuesController {
   }
 
   @Get(':id/reviews')
-  listReviews(@Param('id') id: string) {
-    return this.venuesService.listReviews(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  listReviews(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.venuesService.listReviews(id, user);
   }
 
   @Post(':id/reviews')
@@ -207,13 +216,15 @@ export class VenuesController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   get(
     @Param('id') id: string,
+    @CurrentUser() user?: AuthUser,
     @Query('lat') lat?: string,
     @Query('lng') lng?: string,
     @Query('city') city?: string,
   ) {
-    return this.venuesService.getPublic(id, lat, lng, city);
+    return this.venuesService.getPublic(id, lat, lng, city, user);
   }
 
   @Put(':id')

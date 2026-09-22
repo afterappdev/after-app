@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Patch, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { IsOptional, IsString, MinLength } from 'class-validator';
 import {
   AuthUser,
@@ -67,5 +76,26 @@ export class UsersController {
   @Delete('me')
   deleteMe(@CurrentUser() user: AuthUser) {
     return this.usersService.deleteAccount(user.userId);
+  }
+
+  @Get('me/blocked-venues')
+  listBlockedVenues(@CurrentUser() user: AuthUser) {
+    return this.usersService.listBlockedVenues(user);
+  }
+
+  @Post('me/blocked-venues/:venueId')
+  blockVenue(
+    @CurrentUser() user: AuthUser,
+    @Param('venueId') venueId: string,
+  ) {
+    return this.usersService.blockVenue(user, venueId);
+  }
+
+  @Delete('me/blocked-venues/:venueId')
+  unblockVenue(
+    @CurrentUser() user: AuthUser,
+    @Param('venueId') venueId: string,
+  ) {
+    return this.usersService.unblockVenue(user, venueId);
   }
 }

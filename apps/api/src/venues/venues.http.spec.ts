@@ -64,6 +64,7 @@ describe('Venues geocode HTTP', () => {
 
   beforeEach(() => {
     venues.geocodeLookup.mockReset();
+    venues.getPublic.mockReset();
     venues.geocodeLookup.mockResolvedValue({
       lat: -20.811234,
       lng: -49.375678,
@@ -103,6 +104,74 @@ describe('Venues geocode HTTP', () => {
       city: 'São José do Rio Preto',
       state: 'SP',
     });
+  });
+
+  it('GET /venues/:id sem Authorization continua anônimo', async () => {
+    venues.getPublic.mockResolvedValue({ id: 'venue-1', name: 'Bar Central' });
+
+    await request(app.getHttpServer()).get('/venues/venue-1').expect(200);
+
+    expect(venues.getPublic).toHaveBeenCalledWith(
+      'venue-1',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
+  it('GET /venues/:id com Bearer válido identifica o usuário', async () => {
+    venues.getPublic.mockResolvedValue({ id: 'venue-1', name: 'Bar Central' });
+    const access = jwt.sign({
+      sub: 'user-1',
+      email: 'user@after.local',
+      role: 'USER',
+    });
+
+    await request(app.getHttpServer())
+      .get('/venues/venue-1')
+      .set('Authorization', `Bearer ${access}`)
+      .expect(200);
+
+    expect(venues.getPublic).toHaveBeenCalledWith(
+      'venue-1',
+      undefined,
+      undefined,
+      undefined,
+      expect.objectContaining({ userId: 'user-1', role: 'USER' }),
+    );
+  });
+
+  it('GET /venues/:id com Bearer malformado → 401 (não vira anônimo)', async () => {
+    await request(app.getHttpServer())
+      .get('/venues/venue-1')
+      .set('Authorization', 'Bearer not-a-jwt')
+      .expect(401);
+    expect(venues.getPublic).not.toHaveBeenCalled();
+  });
+
+  it('GET /venues/:id com Bearer expirado → 401 (não vira anônimo)', async () => {
+    const expired = jwt.sign(
+      { sub: 'user-1', email: 'user@after.local', role: 'USER' },
+      { expiresIn: '-1s' },
+    );
+
+    await request(app.getHttpServer())
+      .get('/venues/venue-1')
+      .set('Authorization', `Bearer ${expired}`)
+      .expect(401);
+    expect(venues.getPublic).not.toHaveBeenCalled();
+  });
+
+  it('GET /venues/:id com Bearer de assinatura inválida → 401 (não vira anônimo)', async () => {
+    await request(app.getHttpServer())
+      .get('/venues/venue-1')
+      .set(
+        'Authorization',
+        'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEiLCJlbWFpbCI6InVzZXJAYWZ0ZXIubG9jYWwiLCJyb2xlIjoiVVNFUiJ9.invalidsig',
+      )
+      .expect(401);
+    expect(venues.getPublic).not.toHaveBeenCalled();
   });
 
   it('GET /venues/geocode sem endereço → 400', async () => {

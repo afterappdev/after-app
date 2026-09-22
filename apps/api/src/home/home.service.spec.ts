@@ -46,6 +46,9 @@ function createPrisma() {
     bannerSchedule: {
       findMany: jest.fn(),
     },
+    userVenueBlock: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -126,5 +129,71 @@ describe('HomeService geolocation', () => {
     expect(result[0].venue.lat).toBe(SAVED_LAT);
     expect(result[0].venue.lng).toBe(SAVED_LNG);
     expect(result[0].distanceKm).toEqual(expect.any(Number));
+  });
+
+  it('venues autenticado omite estabelecimentos bloqueados', async () => {
+    prisma.userVenueBlock.findMany.mockResolvedValue([{ venueId: 'blocked-1' }]);
+    prisma.venue.findMany.mockResolvedValue([venueRow()]);
+
+    await service.venues('São Paulo', String(USER_LAT), String(USER_LNG), {
+      userId: 'user-1',
+      email: 'user@after.local',
+      role: 'USER',
+    });
+
+    expect(prisma.venue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          moderationHiddenAt: null,
+          id: { notIn: ['blocked-1'] },
+        }),
+      }),
+    );
+  });
+
+  it('venues sem autenticação mantém listagem pública', async () => {
+    prisma.venue.findMany.mockResolvedValue([venueRow()]);
+
+    await service.venues('São Paulo', String(USER_LAT), String(USER_LNG));
+
+    expect(prisma.userVenueBlock.findMany).not.toHaveBeenCalled();
+    expect(prisma.venue.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          moderationHiddenAt: null,
+        }),
+      }),
+    );
+    const where = prisma.venue.findMany.mock.calls[0][0].where;
+    expect(where.id).toBeUndefined();
+  });
+
+  it('promotions autenticado filtra venue bloqueado', async () => {
+    prisma.userVenueBlock.findMany.mockResolvedValue([{ venueId: 'blocked-1' }]);
+    prisma.bannerSchedule.findMany.mockResolvedValue([]);
+
+    await service.promotions(
+      'São Paulo',
+      '2026-09-14',
+      String(USER_LAT),
+      String(USER_LNG),
+      {
+        userId: 'user-1',
+        email: 'user@after.local',
+        role: 'USER',
+      },
+    );
+
+    expect(prisma.bannerSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          banner: expect.objectContaining({
+            venue: expect.objectContaining({
+              id: { notIn: ['blocked-1'] },
+            }),
+          }),
+        }),
+      }),
+    );
   });
 });

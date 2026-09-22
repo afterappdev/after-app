@@ -89,6 +89,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       },
     );
     if (!mounted) return;
+    if (result == 'blocked') {
+      await _load();
+      return;
+    }
     if (result is int && result != 2) {
       Navigator.of(context).pop(result);
     }

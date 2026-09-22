@@ -72,6 +72,22 @@ class ApiClient {
     );
   }
 
+  Future<dynamic> patch(
+    String path, {
+    Object? body,
+    bool notifyUnauthorized = true,
+  }) {
+    final uri = Uri.parse('$baseUrl$path');
+    return _send(
+      () => _client.patch(
+        uri,
+        headers: _jsonHeaders,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      notifyUnauthorized,
+    );
+  }
+
   Future<dynamic> delete(
     String path, {
     Object? body,

@@ -31,7 +31,7 @@ class ContactPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Privacidade e dados pessoais',
+                  'Termos, privacidade e dados pessoais',
                   style: TextStyle(
                     fontFamily: AppTheme.fontFamily,
                     fontWeight: FontWeight.w800,
@@ -45,6 +45,15 @@ class ContactPage extends StatelessWidget {
                   style: publicBodyStyle,
                 ),
                 const SizedBox(height: 16),
+                PublicSecondaryButton(
+                  key: const Key('contact-terms'),
+                  label: 'Consultar Termos de Uso',
+                  expand: compact,
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.terms);
+                  },
+                ),
+                const SizedBox(height: 10),
                 PublicSecondaryButton(
                   key: const Key('contact-privacy'),
                   label: 'Consultar Política de Privacidade',

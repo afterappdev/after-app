@@ -215,6 +215,13 @@ class _PublicFooter extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     _FooterLink(
+                      label: 'Termos de Uso',
+                      style: linkStyle,
+                      onTap: () {
+                        Navigator.of(context).pushNamed(AppRoutes.terms);
+                      },
+                    ),
+                    _FooterLink(
                       label: 'Política de Privacidade',
                       style: linkStyle,
                       onTap: () {

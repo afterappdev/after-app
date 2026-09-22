@@ -15,6 +15,11 @@ import {
   parseCoord,
 } from '../common/utils/geo';
 import { inferMediaType } from '../common/utils/media-type';
+import { AuthUser } from '../common/decorators/current-user.decorator';
+import {
+  blockedVenueIdsForUser,
+  publicVenueWhere,
+} from '../common/moderation/audience';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 
@@ -67,9 +72,13 @@ export class VenuesService {
     private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
-  async listByCity(city: string) {
+  async listByCity(city: string, user?: AuthUser | null) {
+    const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
     return this.prisma.venue.findMany({
-      where: { city: { equals: city, mode: 'insensitive' } },
+      where: {
+        city: { equals: city, mode: 'insensitive' },
+        ...publicVenueWhere(blockedIds),
+      },
       select: {
         id: true,
         name: true,
@@ -115,8 +124,11 @@ export class VenuesService {
       category?: string;
       minRating?: number;
     } & Partial<Record<AmenityBoolKey, boolean>> = {},
+    user?: AuthUser | null,
   ) {
+    const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
     const venues = await this.prisma.venue.findMany({
+      where: publicVenueWhere(blockedIds),
       select: {
         id: true,
         name: true,
@@ -183,7 +195,13 @@ export class VenuesService {
     });
   }
 
-  async getPublic(id: string, lat?: string, lng?: string, city?: string) {
+  async getPublic(
+    id: string,
+    lat?: string,
+    lng?: string,
+    city?: string,
+    user?: AuthUser | null,
+  ) {
     const venue = await this.prisma.venue.findUnique({
       where: { id },
       include: {
@@ -196,7 +214,11 @@ export class VenuesService {
         },
       },
     });
-    if (!venue) {
+    if (!venue || venue.moderationHiddenAt) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
+    if (blockedIds.includes(id)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
 
@@ -219,12 +241,16 @@ export class VenuesService {
     };
   }
 
-  async listReviews(venueId: string) {
+  async listReviews(venueId: string, user?: AuthUser | null) {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true },
+      select: { id: true, moderationHiddenAt: true },
     });
-    if (!venue) {
+    if (!venue || venue.moderationHiddenAt) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
+    if (blockedIds.includes(venueId)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     return this.reviewStats(venueId);
@@ -243,15 +269,27 @@ export class VenuesService {
 
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true, ownerUserId: true },
+      select: { id: true, ownerUserId: true, moderationHiddenAt: true },
     });
-    if (!venue) {
+    if (!venue || venue.moderationHiddenAt) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     if (venue.ownerUserId === user.userId) {
       throw new ForbiddenException(
         'Você não pode avaliar o próprio estabelecimento',
       );
+    }
+    if (user.role === 'USER') {
+      const blocked = await this.prisma.userVenueBlock.findUnique({
+        where: {
+          userId_venueId: { userId: user.userId, venueId },
+        },
+      });
+      if (blocked) {
+        throw new ForbiddenException(
+          'Desbloqueie o estabelecimento para avaliá-lo',
+        );
+      }
     }
 
     const testimonial = data.testimonial?.trim() || null;

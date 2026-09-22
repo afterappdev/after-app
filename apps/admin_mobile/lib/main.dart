@@ -15,6 +15,7 @@ import 'features/accounts/accounts_controller.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_controller.dart';
+import 'features/reports/reports_controller.dart';
 import 'features/sales/sales_controller.dart';
 import 'features/shell/admin_shell.dart';
 
@@ -47,6 +48,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => DashboardController(api)),
         ChangeNotifierProvider(create: (_) => AccountsController(api)),
         ChangeNotifierProvider(create: (_) => SalesController(api)),
+        ChangeNotifierProvider(create: (_) => ReportsController(api)),
       ],
       child: const AfterAdminApp(),
     ),

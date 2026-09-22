@@ -75,6 +75,61 @@ String monthAbbrevFromYearMonth(String yearMonth) {
   return _monthNames[month - 1];
 }
 
+String reportStatusLabel(String? status) {
+  switch ((status ?? '').trim().toUpperCase()) {
+    case 'PENDING':
+      return 'Pendente';
+    case 'REVIEWING':
+      return 'Em análise';
+    case 'RESOLVED':
+      return 'Resolvida';
+    case 'REJECTED':
+      return 'Rejeitada';
+    default:
+      return status?.trim().isNotEmpty == true ? status!.trim() : '—';
+  }
+}
+
+String reportTargetLabel(String? type) {
+  switch ((type ?? '').trim().toUpperCase()) {
+    case 'VENUE':
+      return 'Estabelecimento';
+    case 'BANNER':
+      return 'Promoção';
+    case 'PHOTO':
+      return 'Foto';
+    case 'VIDEO':
+      return 'Vídeo';
+    case 'REVIEW':
+      return 'Avaliação';
+    default:
+      return type?.trim().isNotEmpty == true ? type!.trim() : '—';
+  }
+}
+
+String reportReasonLabel(String? reason) {
+  switch ((reason ?? '').trim().toUpperCase()) {
+    case 'INAPPROPRIATE':
+      return 'Conteúdo impróprio ou ofensivo';
+    case 'SPAM':
+      return 'Spam';
+    case 'MISLEADING':
+      return 'Informação falsa ou enganosa';
+    case 'VIOLENCE':
+      return 'Violência ou conteúdo perigoso';
+    case 'SEXUAL':
+      return 'Conteúdo sexual ou impróprio';
+    case 'HATE':
+      return 'Discurso de ódio ou assédio';
+    case 'COPYRIGHT':
+      return 'Violação de direitos autorais';
+    case 'OTHER':
+      return 'Outro';
+    default:
+      return reason?.trim().isNotEmpty == true ? reason!.trim() : '—';
+  }
+}
+
 String statusLabel(String? status) {
   switch ((status ?? '').trim().toUpperCase()) {
     case 'PAID':

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
@@ -6,17 +7,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:after_app/core/auth/auth_storage.dart';
 import 'package:after_app/core/network/api_client.dart';
+import 'package:after_app/core/router/app_router.dart';
+import 'package:after_app/features/auth/auth_controller.dart';
 import 'package:after_app/features/credits/billing_channel.dart';
 import 'package:after_app/features/credits/pix_charge.dart';
 import 'package:after_app/features/credits/pix_checkout.dart';
 import 'package:after_app/features/credits/buy_credits_screen.dart';
+import 'package:after_app/features/credits/checkout_screen.dart';
 import 'package:after_app/features/credits/credits_ui.dart';
 import 'package:after_app/features/credits/pix_pending_reconcile.dart';
 import 'package:after_app/features/credits/pix_poller.dart';
 import 'package:after_app/features/credits/purchase_labels.dart';
 import 'package:after_app/features/credits/store_billing_types.dart';
+import 'package:after_app/features/public/legal_agreement_notice.dart';
+import 'package:after_app/features/public/privacy_policy_page.dart';
+import 'package:after_app/features/public/terms_of_use_page.dart';
 
 const _pack = {
   'key': 'unit_1',
@@ -845,6 +854,69 @@ void main() {
     final afterFirst = purchaseGets;
     await tester.pump(const Duration(seconds: 4));
     expect(purchaseGets, afterFirst);
+  });
+
+  test('checkout nativo usa links de Termos e Política', () {
+    final src = File(
+      'lib/features/credits/checkout_screen.dart',
+    ).readAsStringSync();
+    expect(src.contains('LegalAgreementNotice'), isTrue);
+    expect(src.contains('legal_agreement_notice.dart'), isTrue);
+  });
+
+  testWidgets('checkout IAP abre Termos sem quebrar o pagamento', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+
+    final api = ApiClient(
+      client: MockClient((_) async => http.Response('{}', 200)),
+    );
+    final auth = AuthController(api: api, storage: AuthStorage())
+      ..bootstrapping = false;
+
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: auth),
+        ],
+        child: MaterialApp(
+          home: CheckoutScreen(pack: Map<String, dynamic>.from(_pack)),
+          routes: {
+            AppRoutes.terms: (_) => const TermsOfUsePage(),
+            AppRoutes.privacy: (_) => const PrivacyPolicyPage(),
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    tester.takeException();
+
+    expect(find.byType(CheckoutScreen), findsOneWidget);
+    expect(find.byType(LegalAgreementNotice), findsOneWidget);
+    expect(find.textContaining('Pagar com'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('legal-terms-link')));
+    await tester.tap(find.byKey(const Key('legal-terms-link')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TermsOfUsePage), findsOneWidget);
+
+    Navigator.of(tester.element(find.byType(TermsOfUsePage))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckoutScreen), findsOneWidget);
+    expect(find.byType(LegalAgreementNotice), findsOneWidget);
+    expect(find.textContaining('Pagar com'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('legal-privacy-link')));
+    await tester.tap(find.byKey(const Key('legal-privacy-link')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PrivacyPolicyPage), findsOneWidget);
   });
 }
 

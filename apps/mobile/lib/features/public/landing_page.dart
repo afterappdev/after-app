@@ -318,6 +318,13 @@ class _MenuDropdown extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _MenuItem(
+                  label: 'Termos de Uso',
+                  onTap: () {
+                    onClose();
+                    Navigator.of(context).pushNamed(AppRoutes.terms);
+                  },
+                ),
+                _MenuItem(
                   label: 'Política de Privacidade',
                   onTap: () {
                     onClose();
@@ -964,6 +971,13 @@ class _FooterSection extends StatelessWidget {
       children: [
         Text('Páginas', style: titleStyle),
         SizedBox(height: compact ? 13 : 12),
+        _FooterLink(
+          key: const Key('public-footer-terms'),
+          label: 'Termos de Uso',
+          compact: compact,
+          centered: stacked,
+          onTap: () => Navigator.of(context).pushNamed(AppRoutes.terms),
+        ),
         _FooterLink(
           key: const Key('public-footer-privacy'),
           label: 'Política de Privacidade',

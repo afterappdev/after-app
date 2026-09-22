@@ -42,6 +42,7 @@ function venueRecord(overrides: Record<string, unknown> = {}) {
     hoursJson: { mon: { open: '10:00', close: '22:00' } },
     photos: [],
     banners: [],
+    moderationHiddenAt: null,
     ...overrides,
   };
 }
@@ -64,6 +65,9 @@ function createPrisma() {
       groupBy: jest.fn(),
       upsert: jest.fn(),
       update: jest.fn(),
+    },
+    userVenueBlock: {
+      findMany: jest.fn(),
     },
   };
 }
@@ -113,6 +117,95 @@ describe('VenuesService geolocation', () => {
       expect(prisma.venue.update).not.toHaveBeenCalled();
       expect(result.lat).toBe(SAVED_LAT);
       expect(result.lng).toBe(SAVED_LNG);
+    });
+  });
+
+  describe('getPublic block and moderation hide', () => {
+    const blocker = {
+      userId: 'user-blocker',
+      email: 'blocker@after.local',
+      role: 'USER' as const,
+    };
+    const otherUser = {
+      userId: 'user-other',
+      email: 'other@after.local',
+      role: 'USER' as const,
+    };
+
+    beforeEach(() => {
+      prisma.userVenueBlock.findMany.mockResolvedValue([]);
+    });
+
+    it('USER que bloqueou o VENUE não acessa o estabelecimento', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({ moderationHiddenAt: null }),
+      );
+      prisma.userVenueBlock.findMany.mockResolvedValue([{ venueId: VENUE_ID }]);
+
+      await expect(
+        service.getPublic(VENUE_ID, undefined, undefined, undefined, blocker),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('outro USER continua acessando', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({ moderationHiddenAt: null }),
+      );
+      prisma.userVenueBlock.findMany.mockResolvedValue([]);
+
+      const result = await service.getPublic(
+        VENUE_ID,
+        undefined,
+        undefined,
+        undefined,
+        otherUser,
+      );
+      expect(result.id).toBe(VENUE_ID);
+    });
+
+    it('anônimo mantém o acesso público previsto', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({ moderationHiddenAt: null }),
+      );
+
+      const result = await service.getPublic(VENUE_ID);
+      expect(result.id).toBe(VENUE_ID);
+      expect(prisma.userVenueBlock.findMany).not.toHaveBeenCalled();
+    });
+
+    it('USER que desbloqueia volta a acessar', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({ moderationHiddenAt: null }),
+      );
+      prisma.userVenueBlock.findMany
+        .mockResolvedValueOnce([{ venueId: VENUE_ID }])
+        .mockResolvedValueOnce([]);
+
+      await expect(
+        service.getPublic(VENUE_ID, undefined, undefined, undefined, blocker),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      const result = await service.getPublic(
+        VENUE_ID,
+        undefined,
+        undefined,
+        undefined,
+        blocker,
+      );
+      expect(result.id).toBe(VENUE_ID);
+    });
+
+    it('VENUE ocultado por moderação não aparece no acesso direto', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({ moderationHiddenAt: new Date('2026-09-22T12:00:00.000Z') }),
+      );
+
+      await expect(service.getPublic(VENUE_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      await expect(
+        service.getPublic(VENUE_ID, undefined, undefined, undefined, otherUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

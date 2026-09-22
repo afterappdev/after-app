@@ -10,6 +10,7 @@ import { LocationsModule } from './locations/locations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { VenuesModule } from './venues/venues.module';
 
@@ -28,6 +29,7 @@ import { VenuesModule } from './venues/venues.module';
     UploadsModule,
     LocationsModule,
     NotificationsModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

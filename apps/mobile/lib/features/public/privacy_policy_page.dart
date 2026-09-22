@@ -9,7 +9,7 @@ import 'public_contact.dart';
 class PrivacyPolicyPage extends StatefulWidget {
   const PrivacyPolicyPage({super.key});
 
-  static const lastUpdated = '18 de setembro de 2026';
+  static const lastUpdated = '22 de setembro de 2026';
 
   @override
   State<PrivacyPolicyPage> createState() => _PrivacyPolicyPageState();
@@ -60,6 +60,8 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
               'Estabelecimentos e usuários autorizados podem fornecer conteúdo ao After, incluindo:',
           bullets: [
             'fotografias e imagens;',
+            'vídeos;',
+            'avaliações;',
             'informações e descrições de estabelecimentos;',
             'promoções;',
             'informações sobre eventos;',
@@ -97,6 +99,23 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
               'Nos serviços Web, quando disponibilizado, pagamentos podem ser processados por provedor de pagamento integrado ao After.\n\n'
               'Cada plataforma ou provedor poderá tratar dados de acordo com sua própria política de privacidade.',
         ),
+        _PrivacySub(
+          title: '1.6. Denúncias, bloqueio e moderação',
+          intro:
+              'Para segurança, moderação, prevenção de abuso, atendimento de denúncias e cumprimento dos Termos de Uso, podemos tratar:',
+          bullets: [
+            'denúncias enviadas;',
+            'motivo da denúncia;',
+            'descrição opcional informada na denúncia;',
+            'identificadores do conteúdo ou estabelecimento denunciado;',
+            'registro (snapshot) do material denunciado, necessário para moderação e auditoria;',
+            'estabelecimentos bloqueados pelo usuário;',
+            'registros de ações de moderação, como análise, ocultação, remoção, restauração e anotações internas relacionadas ao caso.',
+          ],
+          body:
+              'Esses dados podem permanecer associados à conta, ao conteúdo ou ao estabelecimento, conforme aplicável.\n\n'
+              'O snapshot e os demais registros da denúncia ou da moderação podem ser conservados mesmo que o conteúdo original seja posteriormente removido, ocultado ou deixe de existir no After, quando necessário para segurança, auditoria, prevenção de fraude ou abuso, ou cumprimento de obrigação legal.',
+        ),
       ],
     ),
     _PrivacySection(
@@ -112,8 +131,12 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
         'processar e confirmar compras de créditos;',
         'manter carteira e histórico de créditos;',
         'prevenir fraudes, abusos e transações duplicadas;',
+        'receber, analisar e atender denúncias;',
+        'aplicar o bloqueio de estabelecimentos na experiência do usuário;',
+        'moderar conteúdo publicado, inclusive ocultar estabelecimentos e remover avaliações, fotos, vídeos ou promoções;',
         'manter a segurança e o funcionamento do serviço;',
         'prestar suporte e responder dúvidas, solicitações ou reclamações;',
+        'cumprir os Termos de Uso;',
         'cumprir obrigações legais e regulatórias.',
       ],
       body:
@@ -133,6 +156,10 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
         'identificador da conta;',
         'conteúdo enviado;',
         'fotos e imagens;',
+        'avaliações;',
+        'denúncias enviadas;',
+        'estabelecimentos bloqueados;',
+        'registros de moderação;',
         'histórico de compras.',
       ],
       body:
@@ -176,7 +203,8 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
         'cumprir obrigações legais ou regulatórias;',
         'resolver disputas;',
         'prevenir fraudes;',
-        'manter registros necessários de transações.',
+        'manter registros necessários de transações;',
+        'manter registros de denúncia e moderação, inclusive quando o conteúdo original deixar de existir, quando necessário para segurança, auditoria, prevenção de fraude ou abuso, ou cumprimento de obrigação legal.',
       ],
       body:
           'Quando os dados deixarem de ser necessários e não existir obrigação legal ou outra base legítima para sua conservação, poderão ser excluídos ou anonimizados de forma adequada.',
@@ -356,7 +384,7 @@ class _PrivacyPolicyPageState extends State<PrivacyPolicyPage> {
                           ),
                           SizedBox(height: 12),
                           Text(
-                            'Ao utilizar o After, o usuário reconhece as práticas descritas nesta Política de Privacidade.',
+                            'Ao utilizar o After, o usuário reconhece as práticas descritas nesta Política de Privacidade. O uso do After também está sujeito aos Termos de Uso.',
                             style: publicBodyStyle,
                           ),
                         ],
@@ -456,6 +484,15 @@ class _PrivacyContactFooter extends StatelessWidget {
           expand: compact,
           onPressed: () {
             Navigator.of(context).pushNamed(AppRoutes.contact);
+          },
+        ),
+        const SizedBox(height: 10),
+        PublicSecondaryButton(
+          key: const Key('privacy-terms'),
+          label: 'Termos de Uso',
+          expand: compact,
+          onPressed: () {
+            Navigator.of(context).pushNamed(AppRoutes.terms);
           },
         ),
         const SizedBox(height: 10),

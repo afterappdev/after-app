@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
+import { UploadsModule } from '../uploads/uploads.module';
 import { AdminAccountsController } from './accounts/admin-accounts.controller';
 import { AdminAccountsService } from './accounts/admin-accounts.service';
 import { AdminAuthController } from './auth/admin-auth.controller';
@@ -11,11 +12,13 @@ import { AdminMeController } from './me/admin-me.controller';
 import { AdminMeService } from './me/admin-me.service';
 import { AdminPushTokensController } from './push/admin-push-tokens.controller';
 import { AdminPushModule } from './push/admin-push.module';
+import { AdminReportsController } from './reports/admin-reports.controller';
+import { AdminReportsService } from './reports/admin-reports.service';
 import { AdminSalesController } from './sales/admin-sales.controller';
 import { AdminSalesService } from './sales/admin-sales.service';
 
 @Module({
-  imports: [AuthModule, UsersModule, AdminPushModule],
+  imports: [AuthModule, UsersModule, AdminPushModule, UploadsModule],
   controllers: [
     AdminAuthController,
     AdminMeController,
@@ -23,6 +26,7 @@ import { AdminSalesService } from './sales/admin-sales.service';
     AdminAccountsController,
     AdminSalesController,
     AdminPushTokensController,
+    AdminReportsController,
   ],
   providers: [
     RolesGuard,
@@ -30,6 +34,7 @@ import { AdminSalesService } from './sales/admin-sales.service';
     AdminDashboardService,
     AdminAccountsService,
     AdminSalesService,
+    AdminReportsService,
   ],
 })
 export class AdminModule {}

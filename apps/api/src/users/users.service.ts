@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
+import { AuthUser } from '../common/decorators/current-user.decorator';
 import * as bcrypt from 'bcrypt';
 import { AppleAuthTokensService } from '../auth/apple-auth-tokens.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -111,6 +113,91 @@ export class UsersService {
       data: { passwordHash },
     });
     return { ok: true };
+  }
+
+  async listBlockedVenues(user: AuthUser) {
+    this.assertConsumerUser(user);
+    const rows = await this.prisma.userVenueBlock.findMany({
+      where: { userId: user.userId },
+      include: {
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            coverUrl: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      venueId: row.venueId,
+      createdAt: row.createdAt,
+      venue: row.venue,
+    }));
+  }
+
+  async blockVenue(user: AuthUser, venueId: string) {
+    this.assertConsumerUser(user);
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true, ownerUserId: true },
+    });
+    if (!venue) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    if (venue.ownerUserId === user.userId) {
+      throw new ForbiddenException(
+        'Você não pode bloquear o próprio estabelecimento',
+      );
+    }
+
+    const block = await this.prisma.userVenueBlock.upsert({
+      where: { userId_venueId: { userId: user.userId, venueId } },
+      create: { userId: user.userId, venueId },
+      update: {},
+      include: {
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            coverUrl: true,
+            city: true,
+            state: true,
+          },
+        },
+      },
+    });
+    await this.prisma.favorite.deleteMany({
+      where: { userId: user.userId, venueId },
+    });
+    return {
+      id: block.id,
+      venueId: block.venueId,
+      createdAt: block.createdAt,
+      venue: block.venue,
+    };
+  }
+
+  async unblockVenue(user: AuthUser, venueId: string) {
+    this.assertConsumerUser(user);
+    await this.prisma.userVenueBlock.deleteMany({
+      where: { userId: user.userId, venueId },
+    });
+    return { ok: true };
+  }
+
+  private assertConsumerUser(user: AuthUser) {
+    if (user.role !== Role.USER) {
+      throw new ForbiddenException(
+        'Apenas contas de cliente podem bloquear estabelecimentos',
+      );
+    }
   }
 
   async deleteAccount(userId: string) {

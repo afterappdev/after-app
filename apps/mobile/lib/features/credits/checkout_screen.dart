@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../public/legal_agreement_notice.dart';
 import 'billing_channel.dart';
 import 'credits_ui.dart';
 import 'fiscal_invoice_controller.dart';
@@ -364,35 +365,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Text.rich(
-                      TextSpan(
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 10,
-                          color: kCreditsMuted,
-                        ),
-                        children: [
-                          const TextSpan(text: 'Ao finalizar, você concorda com nossos '),
-                          TextSpan(
-                            text: 'Termos de Uso',
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              color: kCreditsAccent,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const TextSpan(text: ' e '),
-                          TextSpan(
-                            text: 'Política de Privacidade',
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              color: kCreditsAccent,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                    const LegalAgreementNotice(
+                      textStyle: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 10,
+                        color: kCreditsMuted,
                       ),
-                      textAlign: TextAlign.center,
+                      linkStyle: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 10,
+                        color: kCreditsAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),

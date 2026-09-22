@@ -3,6 +3,7 @@ import 'package:after_admin/core/storage/secure_token_store.dart';
 import 'package:after_admin/data/admin_account.dart';
 import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/data/admin_dashboard.dart';
+import 'package:after_admin/data/admin_report.dart';
 import 'package:after_admin/data/admin_sale.dart';
 import 'package:after_admin/data/admin_session.dart';
 import 'package:after_admin/data/paginated.dart';
@@ -28,6 +29,8 @@ class FakeAdminApi implements AdminApi {
     this.accountsPage,
     this.salesPage,
     this.accountDetail,
+    this.reportsPage,
+    this.reportDetail,
   });
 
   Future<AdminLoginResult> Function(String email, String password)?
@@ -37,10 +40,13 @@ class FakeAdminApi implements AdminApi {
   Paginated<AdminAccount>? accountsPage;
   Paginated<AdminSale>? salesPage;
   AdminAccountDetail? accountDetail;
+  Paginated<AdminReport>? reportsPage;
+  AdminReportDetail? reportDetail;
   String? deleteAccountError;
   final List<String> deletedAccountIds = [];
   final List<({String token, String platform})> registeredTokens = [];
   final List<String> unregisteredTokens = [];
+  final List<String> restoredVenueReportIds = [];
   bool failUnregister = false;
 
   @override
@@ -126,6 +132,63 @@ class FakeAdminApi implements AdminApi {
       throw Exception('network');
     }
     unregisteredTokens.add(token);
+  }
+
+  @override
+  Future<Paginated<AdminReport>> reports({
+    int page = 1,
+    int limit = 20,
+    String? status,
+    String? targetType,
+  }) async {
+    return reportsPage ??
+        const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0);
+  }
+
+  @override
+  Future<AdminReportDetail> report(String id) async {
+    if (reportDetail != null) return reportDetail!;
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AdminReportDetail> moderateReport(
+    String id, {
+    required String status,
+    String? adminNote,
+    bool removeContent = false,
+  }) async {
+      throw UnimplementedError();
+  }
+
+  @override
+  Future<AdminReportDetail> restoreVenue(String id) async {
+    restoredVenueReportIds.add(id);
+    final current = reportDetail;
+    if (current == null) throw UnimplementedError();
+    reportDetail = AdminReportDetail(
+      id: current.id,
+      targetType: current.targetType,
+      targetId: current.targetId,
+      reason: current.reason,
+      status: current.status,
+      createdAt: current.createdAt,
+      description: current.description,
+      targetSnapshot: current.targetSnapshot,
+      moderationAction: current.moderationAction,
+      reporterName: current.reporterName,
+      reporterId: current.reporterId,
+      adminNote: current.adminNote,
+      resolvedAt: current.resolvedAt,
+      reviewedById: current.reviewedById,
+      reviewedByName: current.reviewedByName,
+      updatedAt: current.updatedAt,
+      contentRestoredAt: DateTime.parse('2026-09-22T16:00:00.000Z'),
+      contentRestoredById: 'admin-1',
+      contentRestoredByName: 'Admin',
+      venueHidden: false,
+    );
+    return reportDetail!;
   }
 }
 

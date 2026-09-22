@@ -651,6 +651,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           label: 'Meus favoritos',
                           onTap: () => _onNavTap(2),
                         ),
+                        const _RowDivider(),
+                        _ProfileRow(
+                          icon: Icons.block,
+                          label: 'Estabelecimentos bloqueados',
+                          onTap: () => Navigator.of(context).pushNamed(
+                            AppRoutes.blockedVenues,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 22),

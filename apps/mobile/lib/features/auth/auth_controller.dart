@@ -13,7 +13,9 @@ class AuthController extends ChangeNotifier {
     required this.api,
     required this.storage,
     GoogleSessionCleaner? googleSession,
-  }) : googleSession = googleSession ?? PluginGoogleSessionCleaner();
+  }) : googleSession = googleSession ?? PluginGoogleSessionCleaner() {
+    api.onUnauthorized = invalidateExpiredSession;
+  }
 
   final ApiClient api;
   final AuthStorage storage;
@@ -215,13 +217,31 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> logout() async {
-    await googleSession.signOut();
-    await storage.clear();
+  Future<void>? _sessionClearing;
+
+  Future<void> logout() => _clearSession();
+
+  /// Idempotent. Used when a Bearer token is rejected with 401.
+  /// Does not show dialogs; AppStartup/listeners react to [user] == null.
+  Future<void> invalidateExpiredSession() => _clearSession();
+
+  Future<void> _clearSession() {
     api.setToken(null);
-    user = null;
-    pendingSocialOnboarding = null;
-    notifyListeners();
+    final inFlight = _sessionClearing;
+    if (inFlight != null) return inFlight;
+    return _sessionClearing = _clearSessionBody();
+  }
+
+  Future<void> _clearSessionBody() async {
+    try {
+      await googleSession.signOut();
+      await storage.clear();
+      user = null;
+      pendingSocialOnboarding = null;
+      notifyListeners();
+    } finally {
+      _sessionClearing = null;
+    }
   }
 
   Future<void> deleteAccount() async {
