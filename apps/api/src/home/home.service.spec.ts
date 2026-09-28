@@ -188,6 +188,7 @@ describe('HomeService geolocation', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           banner: expect.objectContaining({
+            status: 'ACTIVE',
             venue: expect.objectContaining({
               id: { notIn: ['blocked-1'] },
             }),

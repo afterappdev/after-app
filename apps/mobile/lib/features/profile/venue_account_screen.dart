@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
+import '../../core/constants/venue_categories.dart';
 import '../../core/network/api_client.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
@@ -103,7 +104,7 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
     }
 
     final venueName = _venue?['name']?.toString() ?? user?.name ?? 'Estabelecimento';
-    final category = _venue?['category']?.toString() ?? '';
+    final category = VenueCategories.present(_venue?['category']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
 
     return Scaffold(

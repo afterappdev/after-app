@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
 import { UploadsModule } from '../uploads/uploads.module';
+import { CouponsModule } from '../coupons/coupons.module';
 import { AdminAccountsController } from './accounts/admin-accounts.controller';
 import { AdminAccountsService } from './accounts/admin-accounts.service';
+import { AdminCouponsController } from './coupons/admin-coupons.controller';
 import { AdminAuthController } from './auth/admin-auth.controller';
 import { AdminDashboardController } from './dashboard/admin-dashboard.controller';
 import { AdminDashboardService } from './dashboard/admin-dashboard.service';
@@ -18,13 +20,14 @@ import { AdminSalesController } from './sales/admin-sales.controller';
 import { AdminSalesService } from './sales/admin-sales.service';
 
 @Module({
-  imports: [AuthModule, UsersModule, AdminPushModule, UploadsModule],
+  imports: [AuthModule, UsersModule, AdminPushModule, UploadsModule, CouponsModule],
   controllers: [
     AdminAuthController,
     AdminMeController,
     AdminDashboardController,
     AdminAccountsController,
     AdminSalesController,
+    AdminCouponsController,
     AdminPushTokensController,
     AdminReportsController,
   ],

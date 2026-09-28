@@ -66,6 +66,7 @@ model User {
   reportsFiled             Report[]             @relation("ReportReporter")
   reportsReviewed          Report[]             @relation("ReportReviewer")
   reportsContentRestored   Report[]             @relation("ReportContentRestorer")
+  creditCouponsCreated     CreditCoupon[]       @relation("CreditCouponCreator")
 
   @@index([role, createdAt])
 }
@@ -172,6 +173,7 @@ model Venue {
   notifications       Notification[]
   blockedByUsers      UserVenueBlock[]
   moderationHiddenAt  DateTime?
+  couponRedemptions   CreditCouponRedemption[]
 
   @@index([moderationHiddenAt])
 }
@@ -248,6 +250,45 @@ model CreditPurchase {
   @@index([venueId, createdAt])
   @@index([status, confirmedAt])
   @@index([provider, status, confirmedAt])
+}
+
+/// Bonus credits granted by an admin code. Not a store discount.
+model CreditCoupon {
+  id                     String                   @id @default(cuid())
+  /// Stored trimmed and uppercased. Unique regardless of client casing.
+  code                   String                   @unique
+  creditAmount           Int
+  active                 Boolean                  @default(true)
+  startsAt               DateTime?
+  expiresAt              DateTime?
+  maxRedemptions         Int?
+  maxRedemptionsPerVenue Int                      @default(1)
+  createdById            String?
+  createdBy              User?                    @relation("CreditCouponCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  redemptions            CreditCouponRedemption[]
+
+  @@index([active, expiresAt])
+}
+
+model CreditCouponRedemption {
+  id           String       @id @default(cuid())
+  couponId     String
+  coupon       CreditCoupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  /// Null after the venue account is deleted. The snapshot columns keep the audit trail.
+  venueId      String?
+  venue        Venue?       @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  /// Public establishment name at redemption. Not the owner's personal data.
+  venueNameSnapshot String
+  /// Public city at redemption.
+  venueCitySnapshot String?
+  creditAmount Int
+  redeemedAt   DateTime     @default(now())
+
+  @@index([couponId, redeemedAt])
+  @@index([venueId, redeemedAt])
+  @@index([couponId, venueId])
 }
 
 model Banner {

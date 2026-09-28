@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ArrayMinSize, IsArray, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import {
   AuthUser,
@@ -35,6 +35,16 @@ export class BannersController {
   @Get('history')
   history(@CurrentUser() user: AuthUser) {
     return this.bannersService.history(user.userId);
+  }
+
+  @Get('pricing')
+  pricing() {
+    return this.bannersService.pricing();
+  }
+
+  @Post(':id/cancel')
+  cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.bannersService.cancel(user.userId, id);
   }
 
   @Post()

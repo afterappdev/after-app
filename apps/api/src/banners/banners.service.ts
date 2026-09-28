@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -24,6 +25,35 @@ export class BannersService {
     });
   }
 
+  /** Days selected × CREDIT_PER_DISPLAY_DAY. Read-only; does not debit the wallet. */
+  pricing() {
+    return { creditPerDisplayDay: this.creditPerDisplayDay() };
+  }
+
+  /**
+   * Soft-cancels a banner owned by the authenticated venue.
+   * Credits already spent stay spent. The row is kept for audit.
+   */
+  async cancel(userId: string, bannerId: string) {
+    const venue = await this.requireVenueOwned(userId);
+    const banner = await this.prisma.banner.findUnique({
+      where: { id: bannerId },
+      include: { schedules: true },
+    });
+    if (!banner || banner.venueId !== venue.id) {
+      throw new NotFoundException('Promoção não encontrada');
+    }
+    if (banner.status === 'CANCELLED') {
+      return banner;
+    }
+
+    return this.prisma.banner.update({
+      where: { id: banner.id },
+      data: { status: 'CANCELLED' },
+      include: { schedules: true },
+    });
+  }
+
   /**
    * Creates a banner for the given display dates.
    * Cost = dates.length * CREDIT_PER_DISPLAY_DAY (default 1).
@@ -40,7 +70,7 @@ export class BannersService {
     }
 
     const venue = await this.requireVenueOwned(userId);
-    const perDay = Number(this.config.get('CREDIT_PER_DISPLAY_DAY') ?? 1);
+    const perDay = this.creditPerDisplayDay();
     const creditsCost = dates.length * perDay;
 
     const wallet = await this.prisma.creditWallet.findUnique({
@@ -90,6 +120,11 @@ export class BannersService {
     }
 
     return banner;
+  }
+
+  private creditPerDisplayDay() {
+    const perDay = Number(this.config.get('CREDIT_PER_DISPLAY_DAY') ?? 1);
+    return Number.isFinite(perDay) && perDay > 0 ? perDay : 1;
   }
 
   private async requireVenueOwned(userId: string) {

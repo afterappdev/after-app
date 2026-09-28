@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
+import '../../core/constants/venue_amenities.dart';
 import '../../core/constants/venue_categories.dart';
 import '../../core/location/device_locator.dart';
 import '../../core/location/geo_math.dart';
@@ -19,6 +20,7 @@ import '../../core/widgets/after_logo.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
+import 'venue_filter_sheet_layout.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -457,18 +459,9 @@ class _HomeScreenState extends State<HomeScreen> {
             'category': _venueFilters.category!,
           if (_venueFilters.minRating > 0)
             'minRating': '${_venueFilters.minRating}',
-          if (_venueFilters.acceptsMealVoucher) 'acceptsMealVoucher': 'true',
-          if (_venueFilters.hasKidsSpace) 'hasKidsSpace': 'true',
           if (_venueFilters.hasCoverCharge) 'hasCoverCharge': 'true',
-          if (_venueFilters.hasWheelchairAccess) 'hasWheelchairAccess': 'true',
-          if (_venueFilters.isPetFriendly) 'isPetFriendly': 'true',
-          if (_venueFilters.hasLiveMusic) 'hasLiveMusic': 'true',
-          if (_venueFilters.hasBirthdayTreat) 'hasBirthdayTreat': 'true',
-          if (_venueFilters.hasDelivery) 'hasDelivery': 'true',
-          if (_venueFilters.hasGlutenFreeFood) 'hasGlutenFreeFood': 'true',
-          if (_venueFilters.hasLactoseFreeFood) 'hasLactoseFreeFood': 'true',
-          if (_venueFilters.hasAirConditioning) 'hasAirConditioning': 'true',
-          if (_venueFilters.hasBabyChangingRoom) 'hasBabyChangingRoom': 'true',
+          for (final item in VenueAmenities.all)
+            if (_venueFilters.amenity(item.key)) item.key: 'true',
         },
       );
       if (!mounted) return;
@@ -634,22 +627,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => _VenueFilterSheet(initial: _venueFilters.copy()),
     );
     if (next == null || !mounted) return;
-    setState(() {
-      _venueFilters.category = next.category;
-      _venueFilters.minRating = next.minRating;
-      _venueFilters.acceptsMealVoucher = next.acceptsMealVoucher;
-      _venueFilters.hasKidsSpace = next.hasKidsSpace;
-      _venueFilters.hasCoverCharge = next.hasCoverCharge;
-      _venueFilters.hasWheelchairAccess = next.hasWheelchairAccess;
-      _venueFilters.isPetFriendly = next.isPetFriendly;
-      _venueFilters.hasLiveMusic = next.hasLiveMusic;
-      _venueFilters.hasBirthdayTreat = next.hasBirthdayTreat;
-      _venueFilters.hasDelivery = next.hasDelivery;
-      _venueFilters.hasGlutenFreeFood = next.hasGlutenFreeFood;
-      _venueFilters.hasLactoseFreeFood = next.hasLactoseFreeFood;
-      _venueFilters.hasAirConditioning = next.hasAirConditioning;
-      _venueFilters.hasBabyChangingRoom = next.hasBabyChangingRoom;
-    });
+    setState(() => _venueFilters.applyFrom(next));
     _searchVenues(_venueQuery.text);
   }
 
@@ -1252,7 +1230,9 @@ class _VenueSearchField extends StatelessWidget {
                     if (city.isNotEmpty) city,
                     if (uf.isNotEmpty) uf,
                   ].join(', ');
-                  final category = item['category']?.toString() ?? '';
+                  final category = VenueCategories.present(
+                    item['category']?.toString(),
+                  );
                   final avg = (item['avgRating'] as num?)?.toDouble();
                   final reviewCount = (item['reviewCount'] as num?)?.toInt() ?? 0;
                   final ratingLabel = reviewCount > 0 && avg != null
@@ -1370,7 +1350,7 @@ class _PromotionCards extends StatelessWidget {
             isOpen: item['isOpen'] == true,
             hasOpenInfo: item['isOpen'] != null,
             distanceLabel: _formatDistanceKm(item['distanceKm']),
-            category: venue['category']?.toString() ?? '',
+            category: VenueCategories.present(venue['category']?.toString()),
             dealTitle: item['title']?.toString().trim().isNotEmpty == true
                 ? item['title'].toString()
                 : 'Promoção do dia',
@@ -1437,7 +1417,7 @@ class _VenueCards extends StatelessWidget {
             isOpen: venue['isOpen'] == true,
             hasOpenInfo: venue['isOpen'] != null,
             distanceLabel: _formatDistanceKm(venue['distanceKm']),
-            category: venue['category']?.toString() ?? '',
+            category: VenueCategories.present(venue['category']?.toString()),
             dealTitle: venue['city']?.toString() ?? '',
             dealDetail: venue['description']?.toString() ?? '',
             validUntil: '',
@@ -1737,70 +1717,46 @@ String _formatDate(dynamic value) {
 class _VenueSearchFilters {
   String? category;
   int minRating = 0;
-  bool acceptsMealVoucher = false;
-  bool hasKidsSpace = false;
   bool hasCoverCharge = false;
-  bool hasWheelchairAccess = false;
-  bool isPetFriendly = false;
-  bool hasLiveMusic = false;
-  bool hasBirthdayTreat = false;
-  bool hasDelivery = false;
-  bool hasGlutenFreeFood = false;
-  bool hasLactoseFreeFood = false;
-  bool hasAirConditioning = false;
-  bool hasBabyChangingRoom = false;
+  final Map<String, bool> amenities = {
+    for (final item in VenueAmenities.all) item.key: false,
+  };
 
   bool get isActive => count > 0;
+
+  bool amenity(String key) => amenities[key] == true;
 
   int get count =>
       (category != null ? 1 : 0) +
       (minRating > 0 ? 1 : 0) +
-      (acceptsMealVoucher ? 1 : 0) +
-      (hasKidsSpace ? 1 : 0) +
       (hasCoverCharge ? 1 : 0) +
-      (hasWheelchairAccess ? 1 : 0) +
-      (isPetFriendly ? 1 : 0) +
-      (hasLiveMusic ? 1 : 0) +
-      (hasBirthdayTreat ? 1 : 0) +
-      (hasDelivery ? 1 : 0) +
-      (hasGlutenFreeFood ? 1 : 0) +
-      (hasLactoseFreeFood ? 1 : 0) +
-      (hasAirConditioning ? 1 : 0) +
-      (hasBabyChangingRoom ? 1 : 0);
+      amenities.values.where((value) => value).length;
 
   void reset() {
     category = null;
     minRating = 0;
-    acceptsMealVoucher = false;
-    hasKidsSpace = false;
     hasCoverCharge = false;
-    hasWheelchairAccess = false;
-    isPetFriendly = false;
-    hasLiveMusic = false;
-    hasBirthdayTreat = false;
-    hasDelivery = false;
-    hasGlutenFreeFood = false;
-    hasLactoseFreeFood = false;
-    hasAirConditioning = false;
-    hasBabyChangingRoom = false;
+    for (final key in amenities.keys) {
+      amenities[key] = false;
+    }
+  }
+
+  void applyFrom(_VenueSearchFilters next) {
+    category = next.category;
+    minRating = next.minRating;
+    hasCoverCharge = next.hasCoverCharge;
+    for (final entry in next.amenities.entries) {
+      amenities[entry.key] = entry.value;
+    }
   }
 
   _VenueSearchFilters copy() {
-    return _VenueSearchFilters()
+    final next = _VenueSearchFilters()
       ..category = category
       ..minRating = minRating
-      ..acceptsMealVoucher = acceptsMealVoucher
-      ..hasKidsSpace = hasKidsSpace
-      ..hasCoverCharge = hasCoverCharge
-      ..hasWheelchairAccess = hasWheelchairAccess
-      ..isPetFriendly = isPetFriendly
-      ..hasLiveMusic = hasLiveMusic
-      ..hasBirthdayTreat = hasBirthdayTreat
-      ..hasDelivery = hasDelivery
-      ..hasGlutenFreeFood = hasGlutenFreeFood
-      ..hasLactoseFreeFood = hasLactoseFreeFood
-      ..hasAirConditioning = hasAirConditioning
-      ..hasBabyChangingRoom = hasBabyChangingRoom;
+      ..hasCoverCharge = hasCoverCharge;
+    next.applyFrom(this);
+    return next;
   }
 }
 
@@ -1828,66 +1784,17 @@ class _VenueActiveFilters extends StatelessWidget {
           '${filters.minRating}+ estrelas',
           () => onClear(() => filters.minRating = 0),
         ),
-      if (filters.acceptsMealVoucher)
-        _filterChip(
-          'Vale-refeição',
-          () => onClear(() => filters.acceptsMealVoucher = false),
-        ),
-      if (filters.hasKidsSpace)
-        _filterChip(
-          'Espaço kids',
-          () => onClear(() => filters.hasKidsSpace = false),
-        ),
       if (filters.hasCoverCharge)
         _filterChip(
-          'Custo de entrada',
+          'Entrada paga',
           () => onClear(() => filters.hasCoverCharge = false),
         ),
-      if (filters.hasWheelchairAccess)
-        _filterChip(
-          'Acessível',
-          () => onClear(() => filters.hasWheelchairAccess = false),
-        ),
-      if (filters.isPetFriendly)
-        _filterChip(
-          'Pet friendly',
-          () => onClear(() => filters.isPetFriendly = false),
-        ),
-      if (filters.hasLiveMusic)
-        _filterChip(
-          'Música ao vivo',
-          () => onClear(() => filters.hasLiveMusic = false),
-        ),
-      if (filters.hasBirthdayTreat)
-        _filterChip(
-          'Brinde aniversariante',
-          () => onClear(() => filters.hasBirthdayTreat = false),
-        ),
-      if (filters.hasDelivery)
-        _filterChip(
-          'Delivery',
-          () => onClear(() => filters.hasDelivery = false),
-        ),
-      if (filters.hasGlutenFreeFood)
-        _filterChip(
-          'Sem glúten',
-          () => onClear(() => filters.hasGlutenFreeFood = false),
-        ),
-      if (filters.hasLactoseFreeFood)
-        _filterChip(
-          'Sem lactose',
-          () => onClear(() => filters.hasLactoseFreeFood = false),
-        ),
-      if (filters.hasAirConditioning)
-        _filterChip(
-          'Climatizado',
-          () => onClear(() => filters.hasAirConditioning = false),
-        ),
-      if (filters.hasBabyChangingRoom)
-        _filterChip(
-          'Fraldário',
-          () => onClear(() => filters.hasBabyChangingRoom = false),
-        ),
+      for (final item in VenueAmenities.all)
+        if (filters.amenity(item.key))
+          _filterChip(
+            item.label,
+            () => onClear(() => filters.amenities[item.key] = false),
+          ),
     ];
     return Wrap(
       spacing: 8,
@@ -1961,10 +1868,9 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
+    return VenueFilterSheetLayout(
       child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -2094,65 +2000,16 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
               ),
             ),
             _filterCheck(
-              'Aceita vale-refeição',
-              _draft.acceptsMealVoucher,
-              (v) => setState(() => _draft.acceptsMealVoucher = v),
-            ),
-            _filterCheck(
-              'Tem espaço kids',
-              _draft.hasKidsSpace,
-              (v) => setState(() => _draft.hasKidsSpace = v),
-            ),
-            _filterCheck(
-              'Tem custo de entrada',
+              'Entrada paga',
               _draft.hasCoverCharge,
               (v) => setState(() => _draft.hasCoverCharge = v),
             ),
-            _filterCheck(
-              'Acessibilidade para cadeirantes',
-              _draft.hasWheelchairAccess,
-              (v) => setState(() => _draft.hasWheelchairAccess = v),
-            ),
-            _filterCheck(
-              'Pet friendly',
-              _draft.isPetFriendly,
-              (v) => setState(() => _draft.isPetFriendly = v),
-            ),
-            _filterCheck(
-              'Música ao vivo',
-              _draft.hasLiveMusic,
-              (v) => setState(() => _draft.hasLiveMusic = v),
-            ),
-            _filterCheck(
-              'Brinde aniversariante',
-              _draft.hasBirthdayTreat,
-              (v) => setState(() => _draft.hasBirthdayTreat = v),
-            ),
-            _filterCheck(
-              'Delivery',
-              _draft.hasDelivery,
-              (v) => setState(() => _draft.hasDelivery = v),
-            ),
-            _filterCheck(
-              'Comida sem glúten',
-              _draft.hasGlutenFreeFood,
-              (v) => setState(() => _draft.hasGlutenFreeFood = v),
-            ),
-            _filterCheck(
-              'Comida sem lactose',
-              _draft.hasLactoseFreeFood,
-              (v) => setState(() => _draft.hasLactoseFreeFood = v),
-            ),
-            _filterCheck(
-              'Ambiente climatizado',
-              _draft.hasAirConditioning,
-              (v) => setState(() => _draft.hasAirConditioning = v),
-            ),
-            _filterCheck(
-              'Fraldário',
-              _draft.hasBabyChangingRoom,
-              (v) => setState(() => _draft.hasBabyChangingRoom = v),
-            ),
+            for (final item in VenueAmenities.all)
+              _filterCheck(
+                item.filterLabel,
+                _draft.amenity(item.key),
+                (v) => setState(() => _draft.amenities[item.key] = v),
+              ),
             const SizedBox(height: 16),
             Row(
               children: [

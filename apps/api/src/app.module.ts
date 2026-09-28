@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { BannersModule } from './banners/banners.module';
+import { CouponsModule } from './coupons/coupons.module';
 import { CreditsModule } from './credits/credits.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { HomeModule } from './home/home.module';
@@ -25,6 +26,7 @@ import { VenuesModule } from './venues/venues.module';
     HomeModule,
     FavoritesModule,
     CreditsModule,
+    CouponsModule,
     BannersModule,
     UploadsModule,
     LocationsModule,

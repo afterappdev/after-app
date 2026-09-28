@@ -717,8 +717,8 @@ void main() {
     expect(paths.where((p) => p.contains('/credits/purchases/pix-paid')), isEmpty);
     expect(paths.where((p) => p.contains('/credits/purchases/gp-1')), isEmpty);
     expect(paths.where((p) => p.contains('/credits/purchases/ap-1')), isEmpty);
-    expect(find.text('Pago'), findsWidgets);
-    expect(find.text('Aguardando pagamento'), findsNothing);
+    expect(find.text('Pago', skipOffstage: false), findsWidgets);
+    expect(find.text('Aguardando pagamento', skipOffstage: false), findsNothing);
     expect(find.text('4'), findsOneWidget);
     expect(walletReads, 2);
     expect(paths.where((p) => p.contains('dev-confirm')), isEmpty);

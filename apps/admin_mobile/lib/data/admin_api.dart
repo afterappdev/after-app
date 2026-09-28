@@ -1,5 +1,6 @@
 import '../core/network/api_client.dart';
 import 'admin_account.dart';
+import 'admin_coupon.dart';
 import 'admin_dashboard.dart';
 import 'admin_report.dart';
 import 'admin_sale.dart';
@@ -61,6 +62,29 @@ abstract class AdminApi {
   });
 
   Future<AdminReportDetail> restoreVenue(String id);
+
+  Future<Paginated<AdminCoupon>> coupons({int page = 1, int limit = 20});
+
+  Future<AdminCouponDetail> coupon(String id);
+
+  Future<AdminCoupon> createCoupon({
+    required String code,
+    required int creditAmount,
+    bool active = true,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int maxRedemptionsPerVenue = 1,
+  });
+
+  Future<AdminCoupon> updateCoupon(
+    String id, {
+    bool? active,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int? maxRedemptionsPerVenue,
+  });
 }
 
 class HttpAdminApi implements AdminApi {
@@ -227,5 +251,72 @@ class HttpAdminApi implements AdminApi {
   Future<AdminReportDetail> restoreVenue(String id) async {
     final data = await client.post('/admin/reports/$id/restore-venue');
     return AdminReportDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<Paginated<AdminCoupon>> coupons({int page = 1, int limit = 20}) async {
+    final data = await client.get(
+      '/admin/coupons',
+      query: {'page': '$page', 'limit': '$limit'},
+    );
+    return Paginated.fromJson(
+      Map<String, dynamic>.from(data as Map),
+      AdminCoupon.fromJson,
+    );
+  }
+
+  @override
+  Future<AdminCouponDetail> coupon(String id) async {
+    final data = await client.get('/admin/coupons/$id');
+    return AdminCouponDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminCoupon> createCoupon({
+    required String code,
+    required int creditAmount,
+    bool active = true,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int maxRedemptionsPerVenue = 1,
+  }) async {
+    final start = startsAt != null && startsAt.isNotEmpty ? startsAt : null;
+    final end = expiresAt != null && expiresAt.isNotEmpty ? expiresAt : null;
+    final data = await client.post(
+      '/admin/coupons',
+      body: {
+        'code': code.trim(),
+        'creditAmount': creditAmount,
+        'active': active,
+        'maxRedemptionsPerVenue': maxRedemptionsPerVenue,
+        'startsAt': ?start,
+        'expiresAt': ?end,
+        'maxRedemptions': ?maxRedemptions,
+      },
+    );
+    return AdminCoupon.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminCoupon> updateCoupon(
+    String id, {
+    bool? active,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int? maxRedemptionsPerVenue,
+  }) async {
+    final data = await client.patch(
+      '/admin/coupons/$id',
+      body: {
+        'active': ?active,
+        'startsAt': ?startsAt,
+        'expiresAt': ?expiresAt,
+        'maxRedemptions': ?maxRedemptions,
+        'maxRedemptionsPerVenue': ?maxRedemptionsPerVenue,
+      },
+    );
+    return AdminCoupon.fromJson(Map<String, dynamic>.from(data as Map));
   }
 }

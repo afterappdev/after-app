@@ -13,6 +13,7 @@ import 'core/theme/admin_theme.dart';
 import 'data/admin_api.dart';
 import 'features/accounts/accounts_controller.dart';
 import 'features/auth/auth_controller.dart';
+import 'features/coupons/coupons_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_controller.dart';
 import 'features/reports/reports_controller.dart';
@@ -48,6 +49,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => DashboardController(api)),
         ChangeNotifierProvider(create: (_) => AccountsController(api)),
         ChangeNotifierProvider(create: (_) => SalesController(api)),
+        ChangeNotifierProvider(create: (_) => CouponsController(api)),
         ChangeNotifierProvider(create: (_) => ReportsController(api)),
       ],
       child: const AfterAdminApp(),

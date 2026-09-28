@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/admin_theme.dart';
 import '../accounts/accounts_screen.dart';
+import '../coupons/coupons_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../reports/reports_screen.dart';
 import '../sales/sales_screen.dart';
@@ -17,7 +18,7 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
 
-  static const _titles = ['Dashboard', 'Contas', 'Vendas', 'Denúncias'];
+  static const _titles = ['Dashboard', 'Contas', 'Vendas', 'Cupons', 'Denúncias'];
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +44,7 @@ class _AdminShellState extends State<AdminShell> {
           DashboardScreen(),
           AccountsScreen(),
           SalesScreen(),
+          CouponsScreen(),
           ReportsScreen(),
         ],
       ),
@@ -75,6 +77,11 @@ class _AdminShellState extends State<AdminShell> {
               icon: Icon(Icons.payments_outlined),
               selectedIcon: Icon(Icons.payments),
               label: 'Vendas',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.confirmation_number_outlined),
+              selectedIcon: Icon(Icons.confirmation_number),
+              label: 'Cupons',
             ),
             NavigationDestination(
               icon: Icon(Icons.flag_outlined),

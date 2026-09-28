@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants/venue_amenities.dart';
 import '../../core/constants/venue_categories.dart';
 import '../../core/config/api_config.dart';
 import '../../core/media/gallery_media.dart';
@@ -60,6 +61,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   final Map<String, bool> _closed = {};
 
   String? _category;
+  bool _requiresCategoryChoice = false;
   String? _logoUrl;
   String? _coverUrl;
   List<dynamic> _photos = [];
@@ -69,18 +71,10 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   String _loadedCity = '';
   String _loadedState = '';
   String _loadedAddress = '';
-  bool _acceptsMealVoucher = false;
-  bool _hasKidsSpace = false;
   bool _hasCoverCharge = false;
-  bool _hasWheelchairAccess = false;
-  bool _isPetFriendly = false;
-  bool _hasLiveMusic = false;
-  bool _hasBirthdayTreat = false;
-  bool _hasDelivery = false;
-  bool _hasGlutenFreeFood = false;
-  bool _hasLactoseFreeFood = false;
-  bool _hasAirConditioning = false;
-  bool _hasBabyChangingRoom = false;
+  final Map<String, bool> _amenities = {
+    for (final item in VenueAmenities.all) item.key: false,
+  };
   final _pin = VenuePin();
   final _mapController = MapController();
   bool _mapReady = false;
@@ -148,8 +142,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       if (!mounted) return;
       _applyAccountFields(user, venue: data);
       _description.text = data['description']?.toString() ?? '';
-      final category = data['category']?.toString();
-      _category = VenueCategories.all.contains(category) ? category : null;
+      final loadedCategory = data['category']?.toString();
+      _requiresCategoryChoice =
+          VenueCategories.resolve(loadedCategory) ==
+          VenueCategories.legacyLiveMusic;
+      _category = VenueCategories.selectionFor(loadedCategory);
       _logoUrl = data['logoUrl'] as String?;
       _coverUrl = data['coverUrl'] as String?;
       _photos = (data['photos'] as List<dynamic>?) ?? [];
@@ -161,19 +158,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         _whatsapp.text = contacts['whatsapp']?.toString() ?? '';
         _address.text = contacts['address']?.toString() ?? '';
         _loadedAddress = _address.text;
-        _acceptsMealVoucher = contacts['acceptsMealVoucher'] == true;
-        _hasKidsSpace = contacts['hasKidsSpace'] == true;
         _hasCoverCharge = contacts['hasCoverCharge'] == true;
         _coverCharge.text = contacts['coverCharge']?.toString() ?? '';
-        _hasWheelchairAccess = contacts['hasWheelchairAccess'] == true;
-        _isPetFriendly = contacts['isPetFriendly'] == true;
-        _hasLiveMusic = contacts['hasLiveMusic'] == true;
-        _hasBirthdayTreat = contacts['hasBirthdayTreat'] == true;
-        _hasDelivery = contacts['hasDelivery'] == true;
-        _hasGlutenFreeFood = contacts['hasGlutenFreeFood'] == true;
-        _hasLactoseFreeFood = contacts['hasLactoseFreeFood'] == true;
-        _hasAirConditioning = contacts['hasAirConditioning'] == true;
-        _hasBabyChangingRoom = contacts['hasBabyChangingRoom'] == true;
+        for (final item in VenueAmenities.all) {
+          _amenities[item.key] = contacts[item.key] == true;
+        }
       }
 
       final hours = data['hoursJson'];
@@ -440,6 +429,10 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   Future<void> _save() async {
     final venueId = _venueId;
     if (venueId == null) return;
+    if (_requiresCategoryChoice && !VenueCategories.all.contains(_category)) {
+      _toast('Selecione uma categoria do catálogo atual.');
+      return;
+    }
     setState(() => _loading = true);
     try {
       final city = _city.text.trim();
@@ -458,19 +451,10 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           'instagram': _instagram.text.trim(),
           'whatsapp': _whatsapp.text.trim(),
           'address': _address.text.trim(),
-          'acceptsMealVoucher': _acceptsMealVoucher,
-          'hasKidsSpace': _hasKidsSpace,
           'hasCoverCharge': _hasCoverCharge,
           'coverCharge': _coverCharge.text.trim(),
-          'hasWheelchairAccess': _hasWheelchairAccess,
-          'isPetFriendly': _isPetFriendly,
-          'hasLiveMusic': _hasLiveMusic,
-          'hasBirthdayTreat': _hasBirthdayTreat,
-          'hasDelivery': _hasDelivery,
-          'hasGlutenFreeFood': _hasGlutenFreeFood,
-          'hasLactoseFreeFood': _hasLactoseFreeFood,
-          'hasAirConditioning': _hasAirConditioning,
-          'hasBabyChangingRoom': _hasBabyChangingRoom,
+          for (final item in VenueAmenities.all)
+            item.key: _amenities[item.key] == true,
         },
         'hoursJson': _buildHours(),
       });
@@ -694,78 +678,13 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
 
   Widget _amenityGrid() {
     final items = <_AmenityTile>[
-      _AmenityTile(
-        icon: Icons.confirmation_number_outlined,
-        label: 'Vale-refeição',
-        value: _acceptsMealVoucher,
-        onChanged: (value) => setState(() => _acceptsMealVoucher = value),
-      ),
-      _AmenityTile(
-        icon: Icons.pets_outlined,
-        label: 'Pet friendly',
-        value: _isPetFriendly,
-        onChanged: (value) => setState(() => _isPetFriendly = value),
-      ),
-      _AmenityTile(
-        icon: Icons.child_care_outlined,
-        label: 'Espaço kids',
-        value: _hasKidsSpace,
-        onChanged: (value) => setState(() => _hasKidsSpace = value),
-      ),
-      _AmenityTile(
-        icon: Icons.accessible,
-        label: 'Acessível',
-        value: _hasWheelchairAccess,
-        onChanged: (value) => setState(() => _hasWheelchairAccess = value),
-      ),
-      _AmenityTile(
-        icon: Icons.payments_outlined,
-        label: 'Custo de entrada',
-        value: _hasCoverCharge,
-        onChanged: (value) => setState(() => _hasCoverCharge = value),
-      ),
-      _AmenityTile(
-        icon: Icons.music_note_outlined,
-        label: 'Música ao vivo',
-        value: _hasLiveMusic,
-        onChanged: (value) => setState(() => _hasLiveMusic = value),
-      ),
-      _AmenityTile(
-        icon: Icons.cake_outlined,
-        label: 'Brinde aniversariante',
-        value: _hasBirthdayTreat,
-        onChanged: (value) => setState(() => _hasBirthdayTreat = value),
-      ),
-      _AmenityTile(
-        icon: Icons.delivery_dining_outlined,
-        label: 'Delivery',
-        value: _hasDelivery,
-        onChanged: (value) => setState(() => _hasDelivery = value),
-      ),
-      _AmenityTile(
-        icon: Icons.bakery_dining_outlined,
-        label: 'Comida sem glúten',
-        value: _hasGlutenFreeFood,
-        onChanged: (value) => setState(() => _hasGlutenFreeFood = value),
-      ),
-      _AmenityTile(
-        icon: Icons.local_drink_outlined,
-        label: 'Comida sem lactose',
-        value: _hasLactoseFreeFood,
-        onChanged: (value) => setState(() => _hasLactoseFreeFood = value),
-      ),
-      _AmenityTile(
-        icon: Icons.ac_unit_outlined,
-        label: 'Ambiente climatizado',
-        value: _hasAirConditioning,
-        onChanged: (value) => setState(() => _hasAirConditioning = value),
-      ),
-      _AmenityTile(
-        icon: Icons.baby_changing_station,
-        label: 'Fraldário',
-        value: _hasBabyChangingRoom,
-        onChanged: (value) => setState(() => _hasBabyChangingRoom = value),
-      ),
+      for (final item in VenueAmenities.all)
+        _AmenityTile(
+          icon: item.icon,
+          label: item.label,
+          value: _amenities[item.key] == true,
+          onChanged: (value) => setState(() => _amenities[item.key] = value),
+        ),
     ];
     return Column(
       children: [
@@ -823,7 +742,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
               'Selecione a categoria',
               style: _inputTextStyle.copyWith(color: _hint),
             ),
-            items: VenueCategories.all
+            items: VenueCategories.optionsFor(_category)
                 .map(
                   (item) => DropdownMenuItem(
                     value: item,
@@ -835,6 +754,39 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           ),
           const SizedBox(height: 14),
           _amenityGrid(),
+          const SizedBox(height: 14),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Entrada',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: Color(0xFF282829),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _EntryChoice(
+                  label: 'Gratuita',
+                  selected: !_hasCoverCharge,
+                  onTap: () => setState(() => _hasCoverCharge = false),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _EntryChoice(
+                  label: 'Paga',
+                  selected: _hasCoverCharge,
+                  onTap: () => setState(() => _hasCoverCharge = true),
+                ),
+              ),
+            ],
+          ),
           if (_hasCoverCharge) ...[
             const SizedBox(height: 8),
             TextField(
@@ -1032,6 +984,49 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EntryChoice extends StatelessWidget {
+  const _EntryChoice({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFFF58634) : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected ? const Color(0xFFF58634) : const Color(0xFFE8E8EE),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: selected ? Colors.white : const Color(0xFF282829),
+            ),
+          ),
+        ),
       ),
     );
   }

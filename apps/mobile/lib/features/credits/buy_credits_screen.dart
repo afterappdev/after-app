@@ -5,6 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'billing_channel.dart';
 import 'checkout_screen.dart';
+import 'coupon_redeem_section.dart';
 import 'credits_ui.dart';
 import 'pix_checkout.dart';
 import 'pix_pending_reconcile.dart';
@@ -109,6 +110,22 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     return _packages.isEmpty ? null : _packages.last as Map<String, dynamic>;
   }
 
+  Future<int> _redeemCoupon(String code) async {
+    final api = context.read<ApiClient>();
+    try {
+      final body = await api.post('/credits/coupons/redeem', body: {'code': code});
+      final map = Map<String, dynamic>.from(body as Map);
+      final balance = map['balance'];
+      if (balance is num && mounted) {
+        setState(() => _balance = balance.round());
+      }
+      final credits = map['creditAmount'];
+      return credits is num ? credits.round() : 0;
+    } on ApiException catch (e) {
+      throw CouponRedeemException(e.message);
+    }
+  }
+
   Future<void> _continue() async {
     final pack = _selected;
     if (pack == null) return;
@@ -178,6 +195,8 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                   balance: _balance,
                                   onHistory: _purchases.isEmpty ? null : _scrollToPurchases,
                                 ),
+                                const SizedBox(height: 16),
+                                CouponRedeemSection(onRedeem: _redeemCoupon),
                                 const SizedBox(height: 22),
                                 const Text(
                                   'Escolha um pacote',

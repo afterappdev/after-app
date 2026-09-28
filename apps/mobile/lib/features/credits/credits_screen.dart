@@ -9,6 +9,7 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/after_logo.dart';
 import 'buy_credits_screen.dart';
 import 'credits_ui.dart';
+import 'promotion_dialogs.dart';
 
 class CreditsScreen extends StatefulWidget {
   const CreditsScreen({super.key});
@@ -21,6 +22,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
   bool _loading = true;
   bool _uploading = false;
   bool _publishing = false;
+  String? _cancellingId;
+  int _creditPerDay = 1;
   String? _error;
   int _balance = 0;
   List<dynamic> _history = [];
@@ -53,9 +56,18 @@ class _CreditsScreenState extends State<CreditsScreen> {
       final api = context.read<ApiClient>();
       final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
       final history = await api.get('/banners/history') as List<dynamic>;
+      var perDay = 1;
+      try {
+        final pricing = await api.get('/banners/pricing') as Map<String, dynamic>;
+        final parsed = pricing['creditPerDisplayDay'];
+        if (parsed is num && parsed > 0) perDay = parsed.round();
+      } on ApiException {
+        perDay = 1;
+      }
       if (!mounted) return;
       setState(() {
         _balance = wallet['balance'] as int? ?? 0;
+        _creditPerDay = perDay;
         _history = history;
         _loading = false;
       });
@@ -134,6 +146,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   Future<void> _publishBanner() async {
+    if (_publishing) return;
     if (_bannerUrl == null) {
       _snack('Selecione uma imagem da publicação.');
       return;
@@ -152,12 +165,15 @@ class _CreditsScreenState extends State<CreditsScreen> {
       _snack('Selecione ao menos uma data.');
       return;
     }
-    final cost = _selectedDates.length;
+    final cost = _selectedDates.length * _creditPerDay;
     if (_balance < cost) {
       _snack('Saldo insuficiente. É preciso $cost crédito(s).');
       await _openBuy();
       return;
     }
+
+    final confirmed = await showPublishPromotionDialog(context, credits: cost);
+    if (!confirmed || !mounted || _publishing) return;
 
     setState(() => _publishing = true);
     try {
@@ -185,6 +201,30 @@ class _CreditsScreenState extends State<CreditsScreen> {
     }
   }
 
+  Future<void> _cancelBanner(String id) async {
+    if (_cancellingId != null || id.isEmpty) return;
+    final confirmed = await showDeletePromotionDialog(context);
+    if (!confirmed || !mounted || _cancellingId != null) return;
+    setState(() => _cancellingId = id);
+    try {
+      await context.read<ApiClient>().post('/banners/$id/cancel');
+      if (!mounted) return;
+      setState(() {
+        _history = _history.map((item) {
+          final map = Map<String, dynamic>.from(item as Map);
+          if (map['id']?.toString() == id) map['status'] = 'CANCELLED';
+          return map;
+        }).toList();
+      });
+      _snack('Promoção excluída.');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      _snack(e.message);
+    } finally {
+      if (mounted) setState(() => _cancellingId = null);
+    }
+  }
+
   void _onNavTap(int index) {
     if (index == 2) return;
     Navigator.of(context).pop(index);
@@ -193,7 +233,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   @override
   Widget build(BuildContext context) {
     final sortedDates = _selectedDates.toList()..sort();
-    final cost = sortedDates.length;
+    final cost = sortedDates.length * _creditPerDay;
 
     return Scaffold(
       backgroundColor: kCreditsBg,
@@ -517,9 +557,33 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                                       color: kCreditsMuted,
                                                     ),
                                                   ),
+                                                  if (banner['status']?.toString() == 'CANCELLED')
+                                                    const Text(
+                                                      'Cancelada',
+                                                      style: TextStyle(
+                                                        fontFamily: AppTheme.fontFamily,
+                                                        fontWeight: FontWeight.w700,
+                                                        fontSize: 12,
+                                                        color: Color(0xFFB42318),
+                                                      ),
+                                                    ),
                                                 ],
                                               ),
                                             ),
+                                            if (banner['status']?.toString() != 'CANCELLED')
+                                              IconButton(
+                                                tooltip: 'Excluir promoção',
+                                                onPressed: _cancellingId == null
+                                                    ? () => _cancelBanner(banner['id']?.toString() ?? '')
+                                                    : null,
+                                                icon: _cancellingId == banner['id']?.toString()
+                                                    ? const SizedBox(
+                                                        width: 18,
+                                                        height: 18,
+                                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                                      )
+                                                    : const Icon(Icons.delete_outline, color: kCreditsMuted),
+                                              ),
                                           ],
                                         ),
                                       );

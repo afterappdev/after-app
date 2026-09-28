@@ -1,6 +1,7 @@
 import 'package:after_admin/core/network/api_client.dart';
 import 'package:after_admin/core/storage/secure_token_store.dart';
 import 'package:after_admin/data/admin_account.dart';
+import 'package:after_admin/data/admin_coupon.dart';
 import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/data/admin_dashboard.dart';
 import 'package:after_admin/data/admin_report.dart';
@@ -189,6 +190,41 @@ class FakeAdminApi implements AdminApi {
       venueHidden: false,
     );
     return reportDetail!;
+  }
+
+  @override
+  Future<Paginated<AdminCoupon>> coupons({int page = 1, int limit = 20}) async {
+    return const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0);
+  }
+
+  @override
+  Future<AdminCouponDetail> coupon(String id) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AdminCoupon> createCoupon({
+    required String code,
+    required int creditAmount,
+    bool active = true,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int maxRedemptionsPerVenue = 1,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AdminCoupon> updateCoupon(
+    String id, {
+    bool? active,
+    String? startsAt,
+    String? expiresAt,
+    int? maxRedemptions,
+    int? maxRedemptionsPerVenue,
+  }) {
+    throw UnimplementedError();
   }
 }
 

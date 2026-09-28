@@ -158,6 +158,13 @@ export class VenuesController {
     @Query('hasLactoseFreeFood') hasLactoseFreeFood?: string,
     @Query('hasAirConditioning') hasAirConditioning?: string,
     @Query('hasBabyChangingRoom') hasBabyChangingRoom?: string,
+    @Query('hasOwnParking') hasOwnParking?: string,
+    @Query('hasWifi') hasWifi?: string,
+    @Query('acceptsReservations') acceptsReservations?: string,
+    @Query('hasOutdoorArea') hasOutdoorArea?: string,
+    @Query('showsSportsBroadcasts') showsSportsBroadcasts?: string,
+    @Query('hasVegetarianOptions') hasVegetarianOptions?: string,
+    @Query('hasVeganOptions') hasVeganOptions?: string,
   ) {
     const rating = Number(minRating);
     return this.venuesService.searchByName(
@@ -177,6 +184,13 @@ export class VenuesController {
         hasLactoseFreeFood: hasLactoseFreeFood === 'true',
         hasAirConditioning: hasAirConditioning === 'true',
         hasBabyChangingRoom: hasBabyChangingRoom === 'true',
+        hasOwnParking: hasOwnParking === 'true',
+        hasWifi: hasWifi === 'true',
+        acceptsReservations: acceptsReservations === 'true',
+        hasOutdoorArea: hasOutdoorArea === 'true',
+        showsSportsBroadcasts: showsSportsBroadcasts === 'true',
+        hasVegetarianOptions: hasVegetarianOptions === 'true',
+        hasVeganOptions: hasVeganOptions === 'true',
       },
       user,
     );

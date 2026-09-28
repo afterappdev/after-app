@@ -22,8 +22,15 @@ import {
 } from '../common/moderation/audience';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
+import {
+  categoryMatches,
+  isLegacyLiveMusicCategory,
+  LEGACY_LIVE_MUSIC_CATEGORY,
+  shouldPreserveCategory,
+  storedCategory,
+} from './venue-categories';
 
-const AMENITY_BOOL_KEYS = [
+export const AMENITY_BOOL_KEYS = [
   'acceptsMealVoucher',
   'hasKidsSpace',
   'hasCoverCharge',
@@ -36,6 +43,13 @@ const AMENITY_BOOL_KEYS = [
   'hasLactoseFreeFood',
   'hasAirConditioning',
   'hasBabyChangingRoom',
+  'hasOwnParking',
+  'hasWifi',
+  'acceptsReservations',
+  'hasOutdoorArea',
+  'showsSportsBroadcasts',
+  'hasVegetarianOptions',
+  'hasVeganOptions',
 ] as const;
 
 type AmenityBoolKey = (typeof AMENITY_BOOL_KEYS)[number];
@@ -55,6 +69,21 @@ function amenityFlags(contacts: unknown) {
         ? ''
         : String(c.coverCharge),
   };
+}
+
+function mergeVenueContacts(
+  stored: unknown,
+  incoming: unknown,
+): Prisma.InputJsonValue {
+  const base =
+    stored && typeof stored === 'object' && !Array.isArray(stored)
+      ? { ...(stored as Record<string, unknown>) }
+      : {};
+  const next =
+    incoming && typeof incoming === 'object' && !Array.isArray(incoming)
+      ? (incoming as Record<string, unknown>)
+      : {};
+  return { ...base, ...next } as Prisma.InputJsonValue;
 }
 
 function normalize(value: string) {
@@ -166,7 +195,7 @@ export class VenuesService {
 
     const category = filters.category?.trim();
     if (category) {
-      ranked = ranked.filter((venue) => venue.category === category);
+      ranked = ranked.filter((venue) => categoryMatches(venue.category, category));
     }
     for (const key of AMENITY_BOOL_KEYS) {
       if (filters[key]) {
@@ -441,6 +470,26 @@ export class VenuesService {
     const previousLogo = venue.logoUrl;
     const previousCover = venue.coverUrl;
     const { lat: requestedLat, lng: requestedLng, ...rest } = data;
+    if (typeof rest.category === 'string') {
+      const trimmed = rest.category.trim();
+      if (!trimmed) {
+        if (isLegacyLiveMusicCategory(venue.category)) {
+          throw new BadRequestException(
+            'Selecione uma categoria do catálogo atual.',
+          );
+        }
+        if (shouldPreserveCategory(venue.category)) {
+          delete rest.category;
+        }
+      } else if (isLegacyLiveMusicCategory(trimmed)) {
+        rest.category = LEGACY_LIVE_MUSIC_CATEGORY;
+      } else {
+        rest.category = storedCategory(trimmed);
+      }
+    }
+    if (rest.contacts !== undefined) {
+      rest.contacts = mergeVenueContacts(venue.contacts, rest.contacts);
+    }
     const nextCity = data.city ?? venue.city;
     const nextState = data.state ?? venue.state;
     const nextContacts = data.contacts ?? venue.contacts;

@@ -5,6 +5,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
+import '../../core/constants/venue_categories.dart';
+import 'venue_public_amenities.dart';
 import '../../core/location/device_position.dart';
 import '../../core/location/open_url.dart';
 import '../../core/media/gallery_media.dart';
@@ -371,7 +373,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     final cover = ApiConfig.resolveMediaUrl(_venue?['coverUrl']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
     final name = _venue?['name']?.toString() ?? 'Local';
-    final category = _venue?['category']?.toString() ?? '';
+    final category = VenueCategories.present(_venue?['category']?.toString());
     final description = _venue?['description']?.toString() ?? '';
     final city = _venue?['city']?.toString() ?? '';
     final state = _venue?['state']?.toString() ?? '';
@@ -964,19 +966,6 @@ class _AboutTab extends StatelessWidget {
       if (state.isNotEmpty) state,
     ].join(', ');
     final contactMap = contacts is Map ? Map<String, dynamic>.from(contacts as Map) : <String, dynamic>{};
-    final acceptsMealVoucher = contactMap['acceptsMealVoucher'] == true;
-    final hasKidsSpace = contactMap['hasKidsSpace'] == true;
-    final hasCoverCharge = contactMap['hasCoverCharge'] == true;
-    final coverCharge = contactMap['coverCharge']?.toString().trim() ?? '';
-    final hasWheelchairAccess = contactMap['hasWheelchairAccess'] == true;
-    final isPetFriendly = contactMap['isPetFriendly'] == true;
-    final hasLiveMusic = contactMap['hasLiveMusic'] == true;
-    final hasBirthdayTreat = contactMap['hasBirthdayTreat'] == true;
-    final hasDelivery = contactMap['hasDelivery'] == true;
-    final hasGlutenFreeFood = contactMap['hasGlutenFreeFood'] == true;
-    final hasLactoseFreeFood = contactMap['hasLactoseFreeFood'] == true;
-    final hasAirConditioning = contactMap['hasAirConditioning'] == true;
-    final hasBabyChangingRoom = contactMap['hasBabyChangingRoom'] == true;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1020,86 +1009,11 @@ class _AboutTab extends StatelessWidget {
         const _SectionDivider(),
         const _SectionHeader(title: 'Comodidades'),
         const SizedBox(height: 12),
-        _PublicAmenityGrid(
-          items: [
-            (
-              Icons.confirmation_number_outlined,
-              'Vale-refeição',
-              acceptsMealVoucher,
-              null,
-            ),
-            (
-              Icons.pets_outlined,
-              'Pet friendly',
-              isPetFriendly,
-              null,
-            ),
-            (
-              Icons.child_care_outlined,
-              'Espaço kids',
-              hasKidsSpace,
-              null,
-            ),
-            (
-              Icons.accessible,
-              'Acessível',
-              hasWheelchairAccess,
-              null,
-            ),
-            (
-              Icons.payments_outlined,
-              'Custo de entrada',
-              hasCoverCharge,
-              hasCoverCharge && coverCharge.isNotEmpty
-                  ? (coverCharge.toLowerCase().startsWith('r\$')
-                      ? coverCharge
-                      : 'R\$ $coverCharge')
-                  : null,
-            ),
-            (
-              Icons.music_note_outlined,
-              'Música ao vivo',
-              hasLiveMusic,
-              null,
-            ),
-            (
-              Icons.cake_outlined,
-              'Brinde aniversariante',
-              hasBirthdayTreat,
-              null,
-            ),
-            (
-              Icons.delivery_dining_outlined,
-              'Delivery',
-              hasDelivery,
-              null,
-            ),
-            (
-              Icons.bakery_dining_outlined,
-              'Comida sem glúten',
-              hasGlutenFreeFood,
-              null,
-            ),
-            (
-              Icons.local_drink_outlined,
-              'Comida sem lactose',
-              hasLactoseFreeFood,
-              null,
-            ),
-            (
-              Icons.ac_unit_outlined,
-              'Ambiente climatizado',
-              hasAirConditioning,
-              null,
-            ),
-            (
-              Icons.baby_changing_station,
-              'Fraldário',
-              hasBabyChangingRoom,
-              null,
-            ),
-          ],
-        ),
+        VenueOwnedAmenities(contacts: contactMap),
+        const _SectionDivider(),
+        const _SectionHeader(title: 'Entrada'),
+        const SizedBox(height: 12),
+        VenueEntryLine(contacts: contactMap),
         const _SectionDivider(),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1189,120 +1103,6 @@ class _AboutTab extends StatelessWidget {
   }
 }
 
-class _PublicAmenityGrid extends StatelessWidget {
-  const _PublicAmenityGrid({required this.items});
-
-  final List<(IconData, String, bool, String?)> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (var i = 0; i < items.length; i += 2)
-          Padding(
-            padding: EdgeInsets.only(bottom: i + 2 < items.length ? 8 : 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _PublicAmenityTile.fromRecord(items[i])),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: i + 1 < items.length
-                      ? _PublicAmenityTile.fromRecord(items[i + 1])
-                      : const SizedBox(),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _PublicAmenityTile extends StatelessWidget {
-  const _PublicAmenityTile({
-    required this.icon,
-    required this.label,
-    required this.enabled,
-    this.detail,
-  });
-
-  factory _PublicAmenityTile.fromRecord(
-    (IconData, String, bool, String?) item,
-  ) {
-    return _PublicAmenityTile(
-      icon: item.$1,
-      label: item.$2,
-      enabled: item.$3,
-      detail: item.$4,
-    );
-  }
-
-  final IconData icon;
-  final String label;
-  final bool enabled;
-  final String? detail;
-
-  static const _accent = Color(0xFFF58634);
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: _accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 12,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF282829),
-                  ),
-                ),
-                if (detail != null && detail!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    detail!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 11,
-                      color: Color(0xFF8B8B96),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 4),
-          if (enabled)
-            Container(
-              width: 22,
-              height: 22,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: _accent,
-              ),
-              child: const Icon(Icons.check, size: 13, color: Colors.white),
-            )
-          else
-            const Icon(Icons.close, size: 20, color: _accent),
-        ],
-      ),
-    );
-  }
-}
 
 class _SectionDivider extends StatelessWidget {
   const _SectionDivider();
