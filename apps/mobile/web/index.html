@@ -42,6 +42,47 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    (function () {
+      function normalize(path) {
+        var value = path || '/';
+        value = value.replace(/\/index\.html$/i, '');
+        if (value.length > 1 && value.charAt(value.length - 1) === '/') {
+          value = value.slice(0, -1);
+        }
+        return value || '/';
+      }
+
+      function loadApp() {
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+
+      if (normalize(location.pathname) !== '/baixar') {
+        loadApp();
+        return;
+      }
+
+      fetch('/baixar/index.html', { credentials: 'same-origin' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('missing');
+          return response.text();
+        })
+        .then(function (html) {
+          if (html.indexOf('name="after-download-page"') === -1) {
+            loadApp();
+            return;
+          }
+          document.open();
+          document.write(html);
+          document.close();
+        })
+        .catch(function () {
+          loadApp();
+        });
+    })();
+  </script>
 </body>
 </html>
