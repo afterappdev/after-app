@@ -6,32 +6,59 @@ class VenueCategories {
     'Cafeterias e Docerias': '☕ Cafeterias e Padarias',
     '🍣 Culinária Internacional': '🍣 Culinária Asiática',
     'Culinária Internacional': '🍣 Culinária Asiática',
-    '🎯 Lazer e Diversão': '🎯 Jogos, Lazer e Diversão',
-    'Lazer e Diversão': '🎯 Jogos, Lazer e Diversão',
+    '🎯 Lazer e Diversão': '⚽ Esportes, Lazer e Jogos',
+    'Lazer e Diversão': '⚽ Esportes, Lazer e Jogos',
+    '🎯 Jogos, Lazer e Diversão': '⚽ Esportes, Lazer e Jogos',
+    'Jogos, Lazer e Diversão': '⚽ Esportes, Lazer e Jogos',
+    '🍔 Hamburguerias': '🍔 Hamburguerias e Lanchonetes',
+    'Hamburguerias': '🍔 Hamburguerias e Lanchonetes',
+    '🎡 Food Park': '🍴 Food Park',
+    'Food Park': '🍴 Food Park',
+    '🎶 Karaokê': '🎤 Karaokê',
+    'Karaokê': '🎤 Karaokê',
+    '🍨 Sorveterias e Açaí': '🍦 Sorveterias e Açaí',
+    'Sorveterias e Açaí': '🍦 Sorveterias e Açaí',
   };
 
-  /// Options offered for new registrations. The emoji prefix is part of the stored value.
-  static const all = [
-    '🍽️ Restaurantes',
-    '🍕 Pizzarias',
-    '🍔 Hamburguerias',
-    '🍻 Bares e Botecos',
-    '🍺 Cervejarias e Choperias',
-    '🎤 Casas de Show',
+  static const _catalog = [
+    '🍷 Adegas e Wine Bars',
     '💃 Baladas e Boates',
-    '🎸 Pubs',
-    '🍸 Lounges e Rooftops',
+    '🍻 Bares e Botecos',
     '☕ Cafeterias e Padarias',
+    '🎤 Casas de Show',
+    '🍺 Cervejarias e Choperias',
     '🥩 Churrascarias e Steakhouses',
     '🍣 Culinária Asiática',
     '🎭 Entretenimento e Eventos',
-    '🎯 Jogos, Lazer e Diversão',
-    '🍨 Sorveterias e Açaí',
-    '🎡 Food Park',
+    '🍢 Espetaria',
+    '⚽ Esportes, Lazer e Jogos',
+    '🍴 Food Park',
+    '🍔 Hamburguerias e Lanchonetes',
+    '🎤 Karaokê',
+    '🍸 Lounges e Rooftops',
     '🥟 Pastelaria',
-    '🎶 Karaokê',
-    '🍷 Adegas e Wine Bars',
+    '🍕 Pizzarias',
+    '🎸 Pubs',
+    '🍽️ Restaurantes',
+    '🥟 Salgaderia',
+    '🎉 Serv-Festas',
+    '🍦 Sorveterias e Açaí',
   ];
+
+  /// Name used for ordering. The leading emoji is not part of the sort key.
+  static String labelName(String value) {
+    final trimmed = value.trim();
+    final space = trimmed.indexOf(' ');
+    if (space < 0) return trimmed;
+    return trimmed.substring(space + 1);
+  }
+
+  /// Options offered for selection. Alphabetical by [labelName].
+  static final List<String> all = List<String>.unmodifiable(() {
+    final items = [..._catalog];
+    items.sort((a, b) => labelName(a).compareTo(labelName(b)));
+    return items;
+  }());
 
   /// Label shown by this app. Legacy live music stays readable and is not renamed.
   static String present(String? value) {

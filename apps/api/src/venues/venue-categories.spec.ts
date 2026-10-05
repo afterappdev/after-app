@@ -28,6 +28,24 @@ describe('venue categories', () => {
     expect(storedCategory('🎯 Jogos, Lazer e Diversão')).toBe(
       '🎯 Lazer e Diversão',
     );
+    expect(storedCategory('⚽ Esportes, Lazer e Jogos')).toBe(
+      '🎯 Lazer e Diversão',
+    );
+    expect(storedCategory('Esportes, Lazer e Jogos')).toBe(
+      '🎯 Lazer e Diversão',
+    );
+    expect(storedCategory('🍔 Hamburguerias e Lanchonetes')).toBe(
+      '🍔 Hamburguerias',
+    );
+    expect(storedCategory('🍔 Hamburguerias')).toBe('🍔 Hamburguerias');
+    expect(storedCategory('🍴 Food Park')).toBe('🎡 Food Park');
+    expect(storedCategory('🎤 Karaokê')).toBe('🎶 Karaokê');
+    expect(storedCategory('🍦 Sorveterias e Açaí')).toBe(
+      '🍨 Sorveterias e Açaí',
+    );
+    expect(storedCategory('🍢 Espetaria')).toBe('🍢 Espetaria');
+    expect(storedCategory('🥟 Salgaderia')).toBe('🥟 Salgaderia');
+    expect(storedCategory('🎉 Serv-Festas')).toBe('🎉 Serv-Festas');
     expect(storedCategory(LEGACY_LIVE_MUSIC_CATEGORY)).toBe(
       LEGACY_LIVE_MUSIC_CATEGORY,
     );
@@ -46,9 +64,27 @@ describe('venue categories', () => {
       categoryMatches('🍣 Culinária Internacional', '🍣 Culinária Asiática'),
     ).toBe(true);
     expect(categoryMatches('🎡 Food Park', '🎡 Food Park')).toBe(true);
+    expect(categoryMatches('🎡 Food Park', '🍴 Food Park')).toBe(true);
+    expect(categoryMatches('🎶 Karaokê', '🎤 Karaokê')).toBe(true);
+    expect(
+      categoryMatches('🍨 Sorveterias e Açaí', '🍦 Sorveterias e Açaí'),
+    ).toBe(true);
+    expect(
+      categoryMatches('🎯 Lazer e Diversão', '⚽ Esportes, Lazer e Jogos'),
+    ).toBe(true);
+    expect(
+      categoryMatches('🎯 Jogos, Lazer e Diversão', '⚽ Esportes, Lazer e Jogos'),
+    ).toBe(true);
+    expect(
+      categoryMatches('🍔 Hamburguerias', '🍔 Hamburguerias e Lanchonetes'),
+    ).toBe(true);
+    expect(categoryMatches('🍢 Espetaria', '🍢 Espetaria')).toBe(true);
     expect(
       categoryMatches(LEGACY_LIVE_MUSIC_CATEGORY, '🎤 Casas de Show'),
     ).toBe(false);
+    expect(categoryMatches(LEGACY_LIVE_MUSIC_CATEGORY, '🎤 Karaokê')).toBe(
+      false,
+    );
   });
 });
 
@@ -124,6 +160,58 @@ describe('VenuesService search amenities and categories', () => {
       category: '🍣 Culinária Asiática',
     });
     expect(legacy.map((item) => item.id)).toEqual(['c']);
+
+    prisma.venue.findMany.mockResolvedValue([
+      {
+        id: 'd',
+        name: 'Quadra',
+        description: null,
+        category: '🎯 Lazer e Diversão',
+        logoUrl: null,
+        coverUrl: null,
+        city: 'São Paulo',
+        state: 'SP',
+        hoursJson: null,
+        contacts: {},
+      },
+      {
+        id: 'e',
+        name: 'Lanche',
+        description: null,
+        category: '🍔 Hamburguerias',
+        logoUrl: null,
+        coverUrl: null,
+        city: 'São Paulo',
+        state: 'SP',
+        hoursJson: null,
+        contacts: {},
+      },
+      {
+        id: 'f',
+        name: 'Espeto',
+        description: null,
+        category: '🍢 Espetaria',
+        logoUrl: null,
+        coverUrl: null,
+        city: 'São Paulo',
+        state: 'SP',
+        hoursJson: null,
+        contacts: {},
+      },
+    ]);
+
+    const sports = await service.searchByName('', {
+      category: '⚽ Esportes, Lazer e Jogos',
+    });
+    expect(sports.map((item) => item.id)).toEqual(['d']);
+    const burgers = await service.searchByName('', {
+      category: '🍔 Hamburguerias',
+    });
+    expect(burgers.map((item) => item.id)).toEqual(['e']);
+    const skewers = await service.searchByName('', {
+      category: '🍢 Espetaria',
+    });
+    expect(skewers.map((item) => item.id)).toEqual(['f']);
   });
 
   it('não apaga categoria de catálogo quando o cliente envia string vazia', async () => {
@@ -189,6 +277,86 @@ describe('VenuesService search amenities and categories', () => {
     expect(data.contacts).toEqual(
       expect.objectContaining({ hasWifi: true, phone: '119999' }),
     );
+  });
+
+  it('labels novos de esportes e hamburguerias continuam gravados no texto do 1.0.1+11', async () => {
+    async function save(current: string, incoming: string) {
+      const prisma = {
+        venue: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'venue-1',
+            ownerUserId: 'owner-1',
+            category: current,
+            city: 'São Paulo',
+            state: 'SP',
+            contacts: {},
+            logoUrl: null,
+            coverUrl: null,
+          }),
+          update: jest.fn().mockImplementation(async ({ data }) => data),
+        },
+      };
+      const service = new VenuesService(
+        prisma as never,
+        { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
+      );
+      await service.updateOwned('owner-1', 'venue-1', { category: incoming });
+      return prisma.venue.update.mock.calls[0][0].data.category as string;
+    }
+
+    expect(
+      await save('🎯 Lazer e Diversão', '⚽ Esportes, Lazer e Jogos'),
+    ).toBe('🎯 Lazer e Diversão');
+    expect(
+      await save('🎯 Lazer e Diversão', '🎯 Jogos, Lazer e Diversão'),
+    ).toBe('🎯 Lazer e Diversão');
+    expect(
+      await save('🍔 Hamburguerias', '🍔 Hamburguerias e Lanchonetes'),
+    ).toBe('🍔 Hamburguerias');
+    expect(await save('🍔 Hamburguerias', '🍔 Hamburguerias')).toBe(
+      '🍔 Hamburguerias',
+    );
+    expect(await save('🎡 Food Park', '🍴 Food Park')).toBe('🎡 Food Park');
+    expect(await save('🎶 Karaokê', '🎤 Karaokê')).toBe('🎶 Karaokê');
+    expect(await save('🍨 Sorveterias e Açaí', '🍦 Sorveterias e Açaí')).toBe(
+      '🍨 Sorveterias e Açaí',
+    );
+  });
+
+  it('app 1.0.1+11 não apaga categoria nova que não reconhece', async () => {
+    for (const category of ['🍢 Espetaria', '🥟 Salgaderia', '🎉 Serv-Festas']) {
+      const prisma = {
+        venue: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'venue-1',
+            ownerUserId: 'owner-1',
+            category,
+            city: 'São Paulo',
+            state: 'SP',
+            contacts: { hasWifi: true },
+            logoUrl: null,
+            coverUrl: null,
+          }),
+          update: jest.fn().mockImplementation(async ({ data }) => data),
+        },
+      };
+      const service = new VenuesService(
+        prisma as never,
+        { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
+      );
+
+      await service.updateOwned('owner-1', 'venue-1', {
+        name: 'Local',
+        category: '',
+        contacts: { phone: '119999' },
+      });
+
+      const data = prisma.venue.update.mock.calls[0][0].data;
+      expect(data.category).toBeUndefined();
+      expect(data.contacts).toEqual(
+        expect.objectContaining({ hasWifi: true, phone: '119999' }),
+      );
+    }
   });
 
   it('Música ao Vivo legado exige uma categoria atual e não é convertida sozinha', async () => {
