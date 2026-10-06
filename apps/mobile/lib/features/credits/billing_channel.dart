@@ -12,6 +12,14 @@ bool billingUsesStore({bool? isWeb, TargetPlatform? platform}) {
 bool billingUsesPix({bool? isWeb, TargetPlatform? platform}) =>
     !billingUsesStore(isWeb: isWeb, platform: platform);
 
+/// Own credit coupons stay available on Web and Android.
+/// iOS hides them because the same credits are sold with In-App Purchase.
+bool creditsCouponAvailable({bool? isWeb, TargetPlatform? platform}) {
+  if (isWeb ?? kIsWeb) return true;
+  final p = platform ?? defaultTargetPlatform;
+  return p != TargetPlatform.iOS;
+}
+
 Map<String, dynamic> pixCreateBody(
   String packageKey, [
   Map<String, dynamic>? fiscal,

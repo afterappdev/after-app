@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
@@ -65,6 +67,58 @@ void main() {
     final size = tester.getSize(find.byKey(const Key('google-logo')));
     expect(size.width, 20);
     expect(size.height, 20);
+  });
+
+  testWidgets('iOS usa o botão oficial Sign in with Apple', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(client: MockClient((_) async => http.Response('{}', 404)));
+    final auth = AuthController(api: api, storage: AuthStorage())
+      ..bootstrapping = false;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: auth),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('sign-in-with-apple')), findsOneWidget);
+    expect(find.byType(SignInWithAppleButton), findsOneWidget);
+    expect(find.text('Sign in with Apple'), findsOneWidget);
+    expect(find.text('Apple'), findsNothing);
+    expect(find.byKey(const Key('google-logo')), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android mantém o botão Apple atual', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(client: MockClient((_) async => http.Response('{}', 404)));
+    final auth = AuthController(api: api, storage: AuthStorage())
+      ..bootstrapping = false;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: auth),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInWithAppleButton), findsNothing);
+    expect(find.text('Apple'), findsOneWidget);
+    expect(find.byKey(const Key('google-logo')), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('callback nativo com erro volta mensagem ao app, sem JSON cru', () {

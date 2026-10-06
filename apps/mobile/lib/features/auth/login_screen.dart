@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/router/app_router.dart';
@@ -386,47 +388,59 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 22),
                       const _OrDivider(),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SocialButton(
-                              label: 'Google',
-                              icon: const SizedBox(
-                                key: Key('google-logo'),
-                                width: 20,
-                                height: 20,
-                                child: CustomPaint(
-                                  painter: _GoogleLogoPainter(),
-                                  child: SizedBox.expand(),
+                      if (!kIsWeb &&
+                          defaultTargetPlatform == TargetPlatform.iOS)
+                        _IosSocialLogins(
+                          loading: _loading,
+                          onGoogle: () => _socialLogin(
+                            () => _socialAuth(context).signInWithGoogle(),
+                          ),
+                          onApple: () => _socialLogin(
+                            () => _socialAuth(context).signInWithApple(),
+                          ),
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _SocialButton(
+                                label: 'Google',
+                                icon: const SizedBox(
+                                  key: Key('google-logo'),
+                                  width: 20,
+                                  height: 20,
+                                  child: CustomPaint(
+                                    painter: _GoogleLogoPainter(),
+                                    child: SizedBox.expand(),
+                                  ),
                                 ),
+                                onTap: _loading
+                                    ? null
+                                    : () => _socialLogin(
+                                          () => _socialAuth(context)
+                                              .signInWithGoogle(),
+                                        ),
                               ),
-                              onTap: _loading
-                                  ? null
-                                  : () => _socialLogin(
-                                        () => _socialAuth(context)
-                                            .signInWithGoogle(),
-                                      ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _SocialButton(
-                              label: 'Apple',
-                              icon: const Icon(
-                                Icons.apple,
-                                size: 22,
-                                color: Colors.black,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _SocialButton(
+                                label: 'Apple',
+                                icon: const Icon(
+                                  Icons.apple,
+                                  size: 22,
+                                  color: Colors.black,
+                                ),
+                                onTap: _loading
+                                    ? null
+                                    : () => _socialLogin(
+                                          () => _socialAuth(context)
+                                              .signInWithApple(),
+                                        ),
                               ),
-                              onTap: _loading
-                                  ? null
-                                  : () => _socialLogin(
-                                        () => _socialAuth(context)
-                                            .signInWithApple(),
-                                      ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
                       const SizedBox(height: 22),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -462,6 +476,50 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _IosSocialLogins extends StatelessWidget {
+  const _IosSocialLogins({
+    required this.loading,
+    required this.onGoogle,
+    required this.onApple,
+  });
+
+  final bool loading;
+  final VoidCallback onGoogle;
+  final VoidCallback onApple;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _SocialButton(
+          label: 'Google',
+          icon: const SizedBox(
+            key: Key('google-logo'),
+            width: 20,
+            height: 20,
+            child: CustomPaint(
+              painter: _GoogleLogoPainter(),
+              child: SizedBox.expand(),
+            ),
+          ),
+          onTap: loading ? null : onGoogle,
+        ),
+        const SizedBox(height: 12),
+        SignInWithAppleButton(
+          key: const Key('sign-in-with-apple'),
+          onPressed: () {
+            if (loading) return;
+            onApple();
+          },
+          height: 44,
+          borderRadius: const BorderRadius.all(Radius.circular(8)),
+          style: SignInWithAppleButtonStyle.black,
+        ),
+      ],
     );
   }
 }

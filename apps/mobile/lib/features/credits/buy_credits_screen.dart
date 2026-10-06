@@ -195,8 +195,10 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                   balance: _balance,
                                   onHistory: _purchases.isEmpty ? null : _scrollToPurchases,
                                 ),
-                                const SizedBox(height: 16),
-                                CouponRedeemSection(onRedeem: _redeemCoupon),
+                                if (creditsCouponAvailable()) ...[
+                                  const SizedBox(height: 16),
+                                  CouponRedeemSection(onRedeem: _redeemCoupon),
+                                ],
                                 const SizedBox(height: 22),
                                 const Text(
                                   'Escolha um pacote',

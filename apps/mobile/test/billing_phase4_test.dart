@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -89,6 +90,21 @@ void main() {
     );
     expect(
       billingUsesStore(isWeb: false, platform: TargetPlatform.iOS),
+      isTrue,
+    );
+  });
+
+  test('cupom de créditos fica oculto só no iOS', () {
+    expect(
+      creditsCouponAvailable(isWeb: false, platform: TargetPlatform.iOS),
+      isFalse,
+    );
+    expect(
+      creditsCouponAvailable(isWeb: false, platform: TargetPlatform.android),
+      isTrue,
+    );
+    expect(
+      creditsCouponAvailable(isWeb: true, platform: TargetPlatform.iOS),
       isTrue,
     );
   });
@@ -623,6 +639,61 @@ void main() {
     await tester.tap(find.text('5 créditos'));
     await tester.pump();
     expect(find.text('Total: R\$ 149,90'), findsOneWidget);
+  });
+
+  testWidgets('iOS oculta o resgate de cupom na compra de créditos',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/credits/wallet')) {
+        return http.Response(
+          jsonEncode({'venueId': 'v1', 'balance': 0}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path.endsWith('/credits/packages')) {
+        return http.Response(
+          jsonEncode(_officialPackages),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (path == '/credits/purchases') {
+        return http.Response(
+          jsonEncode(<dynamic>[]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      Provider.value(
+        value: ApiClient(client: client),
+        child: const MaterialApp(
+          home: BuyCreditsScreen(
+            reconcilePendingPix: false,
+            usePixCheckout: false,
+          ),
+        ),
+      ),
+    );
+    await _pumpCredits(tester);
+
+    expect(find.text('Possui um cupom?'), findsNothing);
+    expect(find.text('Digite seu cupom'), findsNothing);
+    expect(find.text('PIX'), findsNothing);
+    expect(find.text('Pagar com PIX'), findsNothing);
+    expect(find.text('after.credits.1'), findsNothing);
+    expect(find.text('1 crédito'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('lista PIX PENDING chama GET :id, ignora finais e lojas, recarrega wallet',
