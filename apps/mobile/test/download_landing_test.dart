@@ -29,10 +29,14 @@ void main() {
     expect(page, contains('Google Play'));
     expect(page, contains('BAIXE PELA'));
     expect(page, contains('App Store'));
-    expect(page, contains('Acessar pelo'));
-    expect(page, contains('navegador'));
-    expect(page, contains('Falar conosco'));
-    expect(page, contains('pelo WhatsApp'));
+    expect(page, contains('Acesse nosso site'));
+    expect(page, contains('WhatsApp'));
+    expect(page, contains('icon_after.png'));
+    expect(page.contains('chrome.svg'), isFalse);
+    expect(page.contains('Acessar pelo'), isFalse);
+    expect(page.contains('navegador'), isFalse);
+    expect(page.contains('Falar conosco'), isFalse);
+    expect(page.contains('pelo WhatsApp'), isFalse);
     expect(page, contains('© 2026 After. Todos os direitos reservados.'));
     expect(page, contains('logo_after.png'));
     expect(page, contains('name="after-download-page"'));
