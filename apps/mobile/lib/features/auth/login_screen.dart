@@ -16,11 +16,16 @@ class LoginScreen extends StatefulWidget {
     super.key,
     this.showPublicHomeLink = false,
     this.appleWebStatus,
+    this.oauthError,
+    this.socialAuthFactory,
   });
 
   /// Web named `/login` only. Native [AppStartup] leaves this false.
   final bool showPublicHomeLink;
   final String? appleWebStatus;
+  final String? oauthError;
+  final SocialAuth Function(ApiClient api, AuthController auth)?
+      socialAuthFactory;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -43,28 +48,52 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordFocus = FocusNode();
   bool _loading = false;
   bool _obscurePassword = true;
+  AuthController? _auth;
 
   @override
   void initState() {
     super.initState();
     final status = widget.appleWebStatus?.trim();
-    if (status == null || status.isEmpty) return;
+    final oauthError = widget.oauthError?.trim();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (status == 'canceled') {
         _showErrorSnackBar('Login com Apple cancelado.');
-      } else {
+      } else if (status != null && status.isNotEmpty) {
         _showErrorSnackBar('Não foi possível concluir o login com Apple.');
       }
+      if (oauthError != null && oauthError.isNotEmpty) {
+        _showErrorSnackBar(oauthError);
+      }
+      _flushOAuthError();
     });
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.read<AuthController>();
+    if (!identical(_auth, auth)) {
+      _auth?.removeListener(_flushOAuthError);
+      _auth = auth;
+      _auth!.addListener(_flushOAuthError);
+    }
+  }
+
+  @override
   void dispose() {
+    _auth?.removeListener(_flushOAuthError);
     _email.dispose();
     _password.dispose();
     _passwordFocus.dispose();
     super.dispose();
+  }
+
+  void _flushOAuthError() {
+    if (!mounted) return;
+    final message = _auth?.takeOAuthError();
+    if (message == null || message.isEmpty) return;
+    _showErrorSnackBar(message);
   }
 
   void _showErrorSnackBar(String message) {
@@ -139,10 +168,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   SocialAuth _socialAuth(BuildContext context) {
-    return SocialAuth(
-      api: context.read<ApiClient>(),
-      auth: context.read<AuthController>(),
-    );
+    final api = context.read<ApiClient>();
+    final auth = context.read<AuthController>();
+    final factory = widget.socialAuthFactory;
+    if (factory != null) return factory(api, auth);
+    return SocialAuth(api: api, auth: auth);
   }
 
   InputDecoration _fieldDecoration({
@@ -361,9 +391,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           Expanded(
                             child: _SocialButton(
                               label: 'Google',
-                              icon: const CustomPaint(
-                                size: Size(18, 18),
-                                painter: _GoogleLogoPainter(),
+                              icon: const SizedBox(
+                                key: Key('google-logo'),
+                                width: 20,
+                                height: 20,
+                                child: CustomPaint(
+                                  painter: _GoogleLogoPainter(),
+                                  child: SizedBox.expand(),
+                                ),
                               ),
                               onTap: _loading
                                   ? null
@@ -511,41 +546,191 @@ class _SocialButton extends StatelessWidget {
 class _GoogleLogoPainter extends CustomPainter {
   const _GoogleLogoPainter();
 
+  static final List<({Color color, Path path})> _parts = [
+    (
+      color: const Color(0xFFEA4335),
+      path: _parseSvgPath(
+        'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z',
+      ),
+    ),
+    (
+      color: const Color(0xFF4285F4),
+      path: _parseSvgPath(
+        'M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z',
+      ),
+    ),
+    (
+      color: const Color(0xFFFBBC05),
+      path: _parseSvgPath(
+        'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z',
+      ),
+    ),
+    (
+      color: const Color(0xFF34A853),
+      path: _parseSvgPath(
+        'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z',
+      ),
+    ),
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = size.width * 0.18;
-    final rect = Rect.fromLTWH(
-      stroke / 2,
-      stroke / 2,
-      size.width - stroke,
-      size.height - stroke,
-    );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.square;
-
-    paint.color = const Color(0xFF4285F4);
-    canvas.drawArc(rect, -math.pi * 0.22, math.pi * 0.55, false, paint);
-    paint.color = const Color(0xFF34A853);
-    canvas.drawArc(rect, math.pi * 0.28, math.pi * 0.5, false, paint);
-    paint.color = const Color(0xFFFBBC05);
-    canvas.drawArc(rect, math.pi * 0.78, math.pi * 0.45, false, paint);
-    paint.color = const Color(0xFFEA4335);
-    canvas.drawArc(rect, math.pi * 1.18, math.pi * 0.5, false, paint);
-
-    final bar = Paint()..color = const Color(0xFF4285F4);
-    canvas.drawRect(
-      Rect.fromLTWH(
-        size.width * 0.48,
-        size.height * 0.42,
-        size.width * 0.42,
-        stroke,
-      ),
-      bar,
-    );
+    final side = math.min(size.width, size.height);
+    if (side <= 0) return;
+    canvas.save();
+    canvas.translate((size.width - side) / 2, (size.height - side) / 2);
+    canvas.scale(side / 48, side / 48);
+    for (final part in _parts) {
+      canvas.drawPath(part.path, Paint()..color = part.color);
+    }
+    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+@visibleForTesting
+Rect debugGoogleLogoBounds() {
+  var bounds = Rect.zero;
+  var first = true;
+  for (final part in _GoogleLogoPainter._parts) {
+    final next = part.path.getBounds();
+    bounds = first ? next : bounds.expandToInclude(next);
+    first = false;
+  }
+  return bounds;
+}
+
+Path _parseSvgPath(String source) {
+  final path = Path();
+  final tokens = RegExp(r'[MmLlHhVvCcSsZz]|-?\d*\.?\d+')
+      .allMatches(source)
+      .map((match) => match.group(0)!)
+      .toList();
+  var i = 0;
+  String? command;
+  double cx = 0;
+  double cy = 0;
+  double sx = 0;
+  double sy = 0;
+  double? prevX;
+  double? prevY;
+
+  bool isCommand(String token) => RegExp(r'^[A-Za-z]$').hasMatch(token);
+
+  double take() {
+    if (i >= tokens.length || isCommand(tokens[i])) {
+      throw FormatException('Logo Google inválido');
+    }
+    return double.parse(tokens[i++]);
+  }
+
+  while (i < tokens.length) {
+    if (isCommand(tokens[i])) {
+      command = tokens[i];
+      i++;
+    }
+    switch (command) {
+      case 'M':
+        cx = take();
+        cy = take();
+        path.moveTo(cx, cy);
+        sx = cx;
+        sy = cy;
+        command = 'L';
+        prevX = null;
+        prevY = null;
+        break;
+      case 'L':
+        cx = take();
+        cy = take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'l':
+        cx += take();
+        cy += take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'H':
+        cx = take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'h':
+        cx += take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'V':
+        cy = take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'v':
+        cy += take();
+        path.lineTo(cx, cy);
+        prevX = null;
+        prevY = null;
+        break;
+      case 'C':
+        final x1 = take();
+        final y1 = take();
+        final x2 = take();
+        final y2 = take();
+        final x = take();
+        final y = take();
+        path.cubicTo(x1, y1, x2, y2, x, y);
+        prevX = x2;
+        prevY = y2;
+        cx = x;
+        cy = y;
+        break;
+      case 'c':
+        final x1 = cx + take();
+        final y1 = cy + take();
+        final x2 = cx + take();
+        final y2 = cy + take();
+        final x = cx + take();
+        final y = cy + take();
+        path.cubicTo(x1, y1, x2, y2, x, y);
+        prevX = x2;
+        prevY = y2;
+        cx = x;
+        cy = y;
+        break;
+      case 's':
+        final x2 = cx + take();
+        final y2 = cy + take();
+        final x = cx + take();
+        final y = cy + take();
+        final x1 = prevX == null ? cx : 2 * cx - prevX;
+        final y1 = prevY == null ? cy : 2 * cy - prevY;
+        path.cubicTo(x1, y1, x2, y2, x, y);
+        prevX = x2;
+        prevY = y2;
+        cx = x;
+        cy = y;
+        break;
+      case 'Z':
+      case 'z':
+        path.close();
+        cx = sx;
+        cy = sy;
+        prevX = null;
+        prevY = null;
+        command = null;
+        break;
+      default:
+        throw FormatException('Logo Google inválido');
+    }
+  }
+  return path;
 }

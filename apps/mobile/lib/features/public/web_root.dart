@@ -31,9 +31,10 @@ class WebRoot extends StatelessWidget {
 /// Garante que o `/login` nomeado volte ao app após autenticar.
 /// O [LoginScreen] em si não navega: no nativo isso fica a cargo do [AppStartup].
 class LoginScreenRoute extends StatelessWidget {
-  const LoginScreenRoute({super.key, this.appleWebStatus});
+  const LoginScreenRoute({super.key, this.appleWebStatus, this.oauthError});
 
   final String? appleWebStatus;
+  final String? oauthError;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +62,7 @@ class LoginScreenRoute extends StatelessWidget {
     return LoginScreen(
       showPublicHomeLink: true,
       appleWebStatus: appleWebStatus,
+      oauthError: oauthError,
     );
   }
 }

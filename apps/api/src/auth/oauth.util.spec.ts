@@ -1,6 +1,7 @@
 import {
   attachAppleWebExchangeCode,
   attachAppleWebOutcome,
+  attachOAuthError,
   attachOAuthOnboarding,
   attachOAuthToken,
   isAllowedOAuthRedirect,
@@ -103,6 +104,23 @@ describe('isAllowedOAuthRedirect', () => {
   it('attachOAuthToken no web usa hash routing', () => {
     expect(attachOAuthToken(`${APP}/`, 'jwt-token')).toBe(
       `${APP}/#/oauth?token=jwt-token`,
+    );
+  });
+
+  it('attachOAuthError devolve a mensagem ao app, sem JSON da API', () => {
+    expect(
+      attachOAuthError(
+        'after://auth/callback',
+        'Esta conta já está vinculada a outro Google. Entre com e-mail e senha.',
+      ),
+    ).toBe(
+      'after://auth/callback?error=Esta+conta+j%C3%A1+est%C3%A1+vinculada+a+outro+Google.+Entre+com+e-mail+e+senha.',
+    );
+    expect(attachOAuthError(`${APP}/`, 'Não foi possível concluir o login com Google.')).toBe(
+      `${APP}/#/login?error=${encodeURIComponent('Não foi possível concluir o login com Google.')}`,
+    );
+    expect(attachOAuthError('after://auth/callback', 'falha')).not.toContain(
+      'statusCode',
     );
   });
 

@@ -85,17 +85,26 @@ Future<void> _consumePendingOAuthToken(AuthController auth) async {
     }
     final initial = await AppLinks().getInitialLink();
     if (initial == null) return;
-    final onboarding = oauthOnboardingFromUri(initial);
-    if (onboarding != null) {
-      auth.beginSocialOnboardingFromToken(onboarding);
-      return;
-    }
-    final token = oauthTokenFromUri(initial);
-    if (token != null) {
-      await auth.loginWithAccessToken(token);
-    }
+    await _consumeOAuthUri(auth, initial);
   } catch (_) {
     // Mantém o fluxo normal de login se o callback OAuth falhar.
+  }
+}
+
+Future<void> _consumeOAuthUri(AuthController auth, Uri uri) async {
+  final oauthError = oauthErrorFromUri(uri);
+  if (oauthError != null) {
+    auth.presentOAuthError(oauthError);
+    return;
+  }
+  final onboarding = oauthOnboardingFromUri(uri);
+  if (onboarding != null) {
+    auth.beginSocialOnboardingFromToken(onboarding);
+    return;
+  }
+  final token = oauthTokenFromUri(uri);
+  if (token != null) {
+    await auth.loginWithAccessToken(token);
   }
 }
 
@@ -114,15 +123,8 @@ class _AfterAppState extends State<AfterApp> {
     super.initState();
     if (!kIsWeb) {
       AppLinks().uriLinkStream.listen((uri) async {
-        final onboarding = oauthOnboardingFromUri(uri);
-        if (onboarding != null) {
-          widget.auth.beginSocialOnboardingFromToken(onboarding);
-          return;
-        }
-        final token = oauthTokenFromUri(uri);
-        if (token == null) return;
         try {
-          await widget.auth.loginWithAccessToken(token);
+          await _consumeOAuthUri(widget.auth, uri);
         } catch (_) {}
       });
     }
@@ -183,6 +185,7 @@ class _AfterAppState extends State<AfterApp> {
           return MaterialPageRoute(
             builder: (_) => LoginScreenRoute(
               appleWebStatus: appleWebStatusFromRouteName(settings.name),
+              oauthError: oauthErrorFromRouteName(settings.name),
             ),
             settings: settings,
           );

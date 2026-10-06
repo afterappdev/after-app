@@ -25,6 +25,20 @@ class AuthController extends ChangeNotifier {
   SocialOnboarding? pendingSocialOnboarding;
   bool bootstrapping = true;
   String? error;
+  String? _oauthError;
+
+  void presentOAuthError(String message) {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return;
+    _oauthError = trimmed.length > 180 ? trimmed.substring(0, 180) : trimmed;
+    notifyListeners();
+  }
+
+  String? takeOAuthError() {
+    final message = _oauthError;
+    _oauthError = null;
+    return message;
+  }
 
   Future<void> bootstrap() async {
     bootstrapping = true;

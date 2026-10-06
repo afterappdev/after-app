@@ -24,6 +24,7 @@ import { CompleteSocialRegistrationDto } from './dto/complete-social-registratio
 import {
   attachAppleWebExchangeCode,
   attachAppleWebOutcome,
+  attachOAuthError,
   attachOAuthOnboarding,
   attachOAuthToken,
   isAllowedOAuthRedirect,
@@ -46,6 +47,8 @@ import {
 import { AppleAuthTokensService, AppleRevocableAuth } from './apple-auth-tokens.service';
 import {
   SOCIAL_EMAIL_TAKEN_MESSAGE,
+  SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
+  SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE,
   SOCIAL_ONBOARDING_EXPIRED_MESSAGE,
   SOCIAL_ONBOARDING_INVALID_MESSAGE,
   SOCIAL_ONBOARDING_TTL_SECONDS,
@@ -79,6 +82,7 @@ type SocialProfileInput = {
   email?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
+  emailVerified?: boolean;
   appleRevocable?: AppleRevocableAuth;
 };
 
@@ -214,6 +218,7 @@ export class AuthService {
       email: payload.email,
       name: payload.name,
       avatarUrl: payload.picture,
+      emailVerified: payload.emailVerified === true,
     });
   }
 
@@ -348,52 +353,63 @@ export class AuthService {
   }
 
   async googleCallback(code: string | undefined, state: string | undefined) {
-    if (!code || !state) {
-      throw new BadRequestException('Callback do Google inválido.');
+    let redirect: string | undefined;
+    try {
+      if (!state) {
+        throw new BadRequestException('Callback do Google inválido.');
+      }
+      redirect = this.readOAuthState(state, 'google').redirect;
+      if (!code) {
+        throw new BadRequestException('Callback do Google inválido.');
+      }
+
+      const clientId = this.googleWebClientId();
+      const secret = this.googleClientSecret();
+      if (!clientId || !secret) {
+        throw new ServiceUnavailableException(
+          'Login com Google não configurado.',
+        );
+      }
+
+      const body = new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: secret,
+        redirect_uri: this.googleCallbackUrl(),
+        grant_type: 'authorization_code',
+      });
+
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      const tokenJson = (await tokenRes.json()) as {
+        id_token?: string;
+        error?: string;
+      };
+      if (!tokenRes.ok || !tokenJson.id_token) {
+        throw new UnauthorizedException(
+          'Não foi possível concluir o login com Google.',
+        );
+      }
+
+      const payload = await this.verifyGoogleIdToken(tokenJson.id_token);
+      const result = await this.resolveSocialLogin({
+        provider: 'google',
+        providerId: payload.sub,
+        email: payload.email,
+        name: payload.name,
+        avatarUrl: payload.picture,
+        emailVerified: payload.emailVerified === true,
+      });
+
+      return this.attachSocialRedirect(redirect, result);
+    } catch (error) {
+      this.logger.warn('Google callback failed');
+      const target = redirect ?? this.fallbackOAuthRedirect(state);
+      return attachOAuthError(target, this.publicGoogleOAuthError(error));
     }
-
-    const { redirect } = this.readOAuthState(state, 'google');
-    const clientId = this.googleWebClientId();
-    const secret = this.googleClientSecret();
-    if (!clientId || !secret) {
-      throw new ServiceUnavailableException(
-        'Login com Google não configurado.',
-      );
-    }
-
-    const body = new URLSearchParams({
-      code,
-      client_id: clientId,
-      client_secret: secret,
-      redirect_uri: this.googleCallbackUrl(),
-      grant_type: 'authorization_code',
-    });
-
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-    });
-    const tokenJson = (await tokenRes.json()) as {
-      id_token?: string;
-      error?: string;
-    };
-    if (!tokenRes.ok || !tokenJson.id_token) {
-      throw new UnauthorizedException(
-        'Não foi possível concluir o login com Google.',
-      );
-    }
-
-    const payload = await this.verifyGoogleIdToken(tokenJson.id_token);
-    const result = await this.resolveSocialLogin({
-      provider: 'google',
-      providerId: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      avatarUrl: payload.picture,
-    });
-
-    return this.attachSocialRedirect(redirect, result);
   }
 
   oauthCancelRedirect(state: string | undefined) {
@@ -500,7 +516,8 @@ export class AuthService {
       if (!payload?.sub) {
         throw new UnauthorizedException('Token do Google inválido.');
       }
-      if (!payload.email || payload.email_verified === false) {
+      const emailVerified = payload.email_verified === true;
+      if (!payload.email || !emailVerified) {
         throw new UnauthorizedException(
           'A conta Google não possui e-mail verificado.',
         );
@@ -510,6 +527,7 @@ export class AuthService {
         email: payload.email,
         name: payload.name,
         picture: payload.picture,
+        emailVerified,
       };
     } catch (error) {
       if (
@@ -729,12 +747,17 @@ export class AuthService {
       );
     }
 
-    const existingByEmail = await this.prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    });
-    if (existingByEmail) {
-      throw new ConflictException(SOCIAL_EMAIL_TAKEN_MESSAGE);
+    if (input.provider === 'google') {
+      const linked = await this.loginOrLinkVerifiedGoogle(email, input);
+      if (linked) return linked;
+    } else {
+      const existingByEmail = await this.prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (existingByEmail) {
+        throw new ConflictException(SOCIAL_EMAIL_TAKEN_MESSAGE);
+      }
     }
 
     const displayName = name || email.split('@')[0];
@@ -770,6 +793,114 @@ export class AuthService {
       where: { id: userId },
       data: stored,
     });
+  }
+
+  private async loginOrLinkVerifiedGoogle(
+    email: string,
+    input: SocialProfileInput,
+  ): Promise<SocialAuthResult | null> {
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      include: { venue: true },
+    });
+    if (!existing) return null;
+
+    if (input.emailVerified !== true) {
+      throw new ConflictException(SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE);
+    }
+    if (existing.role === Role.ADMIN) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+    if (existing.googleId && existing.googleId !== input.providerId) {
+      throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+    }
+    if (existing.googleId === input.providerId) {
+      return this.buildAuthResponse(existing);
+    }
+
+    try {
+      const updated = await this.prisma.user.updateMany({
+        where: { id: existing.id, email, googleId: null },
+        data: { googleId: input.providerId },
+      });
+      if (updated.count !== 1) {
+        const again = await this.prisma.user.findUnique({
+          where: { id: existing.id },
+          include: { venue: true },
+        });
+        if (
+          again &&
+          again.id === existing.id &&
+          again.email === email &&
+          again.googleId === input.providerId &&
+          again.role !== Role.ADMIN
+        ) {
+          return this.buildAuthResponse(again);
+        }
+        throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+      }
+    } catch (error) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof UnauthorizedException
+      ) {
+        throw error;
+      }
+      const code = (error as { code?: string }).code;
+      if (code === 'P2002') {
+        throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+      }
+      throw error;
+    }
+
+    const linked = await this.prisma.user.findUnique({
+      where: { id: existing.id },
+      include: { venue: true },
+    });
+    if (
+      !linked ||
+      linked.id !== existing.id ||
+      linked.email !== email ||
+      linked.googleId !== input.providerId ||
+      linked.role === Role.ADMIN
+    ) {
+      throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+    }
+    return this.buildAuthResponse(linked);
+  }
+
+  private fallbackOAuthRedirect(state: string | undefined) {
+    try {
+      return this.oauthCancelRedirect(state);
+    } catch {
+      return this.defaultAppRedirect();
+    }
+  }
+
+  private publicGoogleOAuthError(error: unknown): string {
+    const fallback = 'Não foi possível concluir o login com Google.';
+    if (
+      error instanceof ConflictException ||
+      error instanceof UnauthorizedException ||
+      error instanceof BadRequestException ||
+      error instanceof ServiceUnavailableException
+    ) {
+      const response = error.getResponse();
+      const message =
+        typeof response === 'string'
+          ? response
+          : response &&
+              typeof response === 'object' &&
+              'message' in response &&
+              typeof (response as { message?: unknown }).message === 'string'
+            ? (response as { message: string }).message
+            : '';
+      const cleaned = message.replace(/[\r\n]/g, ' ').trim();
+      if (cleaned && cleaned.length <= 180 && !cleaned.includes('eyJ')) {
+        return cleaned;
+      }
+    }
+    return fallback;
   }
 
   private async findUserByProvider(

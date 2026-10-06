@@ -16,6 +16,12 @@ export const SOCIAL_ONBOARDING_USED_MESSAGE =
 export const SOCIAL_EMAIL_TAKEN_MESSAGE =
   'Já existe uma conta com este e-mail. Entre com e-mail e senha.';
 
+export const SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE =
+  'Não foi possível entrar com Google porque o e-mail não está verificado.';
+
+export const SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE =
+  'Esta conta já está vinculada a outro Google. Entre com e-mail e senha.';
+
 export type SocialProvider = 'google' | 'apple';
 
 export type SocialOnboardingJwtPayload = {

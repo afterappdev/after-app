@@ -19,6 +19,7 @@ class SocialAuth {
     bool? isWeb,
     this.launchUrlFn,
     this.nativeAppleSignIn,
+    this.nativeGoogleIdToken,
     Uri? pageUri,
   }) : isWeb = isWeb ?? kIsWeb,
        pageUri = pageUri ?? Uri.base;
@@ -33,17 +34,20 @@ class SocialAuth {
     String? webOnlyWindowName,
   })? launchUrlFn;
   final Future<void> Function(AuthController auth)? nativeAppleSignIn;
+  final Future<String?> Function()? nativeGoogleIdToken;
 
   Future<void> signInWithGoogle() async {
-    if (!kIsWeb) {
+    if (!isWeb) {
       try {
         final idToken = await _nativeGoogleIdToken();
-        if (idToken != null) {
+        if (idToken != null && idToken.isNotEmpty) {
           await auth.loginWithGoogle(idToken: idToken);
           return;
         }
       } on SocialAuthCanceled {
         return;
+      } on ApiException {
+        rethrow;
       } catch (_) {
         // Cai no fluxo do navegador se o SDK nativo não estiver configurado.
       }
@@ -95,6 +99,9 @@ class SocialAuth {
   }
 
   Future<String?> _nativeGoogleIdToken() async {
+    if (nativeGoogleIdToken != null) {
+      return nativeGoogleIdToken!();
+    }
     final serverClientId = OauthConfig.googleNativeServerClientId;
     final clientId = OauthConfig.googleClientId;
     if (serverClientId.isEmpty && clientId.isEmpty) {

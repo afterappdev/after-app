@@ -1,8 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
+import {
+  SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
+  SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE,
+} from './social-onboarding';
 
 function config(map: Record<string, string | undefined>): ConfigService {
   return {
@@ -14,7 +19,12 @@ describe('AuthService Google web OAuth', () => {
   const originalEnv = { ...process.env };
   let service: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    user: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+    };
   };
 
   beforeEach(() => {
@@ -24,6 +34,7 @@ describe('AuthService Google web OAuth', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
     };
     service = new AuthService(
@@ -99,20 +110,110 @@ describe('AuthService Google web OAuth', () => {
     expect(result.accessToken).toBeTruthy();
   });
 
-  it('Google com e-mail já cadastrado não vincula silenciosamente', async () => {
+  const localUser = {
+    id: 'u1',
+    name: 'Ana',
+    email: 'ana@after.local',
+    role: 'USER',
+    state: 'SP',
+    city: 'São Paulo',
+    avatarUrl: null,
+    googleId: null as string | null,
+    venue: null as { id: string } | null,
+  };
+
+  function mockVerifiedGoogle(sub = 'gid-1', email = 'ana@after.local') {
+    jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
+      sub,
+      email,
+      name: 'Ana',
+      picture: null,
+      emailVerified: true,
+    } as never);
+  }
+
+  it('Google sem e-mail verificado não vincula conta existente', async () => {
     jest.spyOn(service as any, 'verifyGoogleIdToken').mockResolvedValue({
       sub: 'gid-1',
       email: 'ana@after.local',
       name: 'Ana',
       picture: null,
+      emailVerified: false,
     } as never);
     prisma.user.findUnique
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ id: 'u1' });
     await expect(
-      service.loginWithGoogle({ idToken: 'id-token' }),
-    ).rejects.toThrow('Já existe uma conta com este e-mail');
+      service.loginWithGoogle({ idToken: 'id-token-value-ok' }),
+    ).rejects.toThrow(SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE);
     expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
     expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita ID token Google inválido antes de procurar usuário', async () => {
+    await expect(
+      service.loginWithGoogle({ idToken: 'not-a-valid-google-id-token' }),
+    ).rejects.toThrow('Token do Google inválido');
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejeita token Google com email_verified false', async () => {
+    const spy = jest
+      .spyOn(OAuth2Client.prototype, 'verifyIdToken')
+      .mockResolvedValue({
+        getPayload: () => ({
+          sub: 'gid-unverified',
+          email: 'ana@after.local',
+          email_verified: false,
+        }),
+      } as never);
+    try {
+      await expect(
+        service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+      ).rejects.toThrow('A conta Google não possui e-mail verificado');
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('callback com conflito redireciona ao app em vez de JSON', async () => {
+    const start = service.googleStartUrl('after://auth/callback');
+    const state = new URL(start).searchParams.get('state');
+    expect(state).toBeTruthy();
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id_token: 'google-id-token-value-ok' }),
+    }) as unknown as typeof fetch;
+    try {
+      mockVerifiedGoogle('gid-new');
+      prisma.user.findUnique.mockImplementation(
+        async (args: { where: { googleId?: string; email?: string } }) => {
+          if (args.where.googleId) return null;
+          if (args.where.email) {
+            return { ...localUser, googleId: 'outro-google' };
+          }
+          return null;
+        },
+      );
+
+      const target = await service.googleCallback('auth-code', state!);
+      const url = new URL(target);
+      expect(url.protocol).toBe('after:');
+      expect(url.searchParams.get('error')).toBe(
+        SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE,
+      );
+      expect(url.searchParams.get('token')).toBeNull();
+      expect(target).not.toContain('statusCode');
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

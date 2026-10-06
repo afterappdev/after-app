@@ -80,6 +80,19 @@ export function attachOAuthToken(redirect: string, token: string): string {
   return url.toString();
 }
 
+export function attachOAuthError(redirect: string, message: string): string {
+  const safe = message.replace(/[\r\n]/g, ' ').trim().slice(0, 180);
+  if (redirect.startsWith('after:')) {
+    const url = new URL(redirect);
+    url.searchParams.set('error', safe);
+    return url.toString();
+  }
+
+  const url = new URL(redirect);
+  url.hash = `/login?error=${encodeURIComponent(safe)}`;
+  return url.toString();
+}
+
 export function attachOAuthOnboarding(
   redirect: string,
   onboardingToken: string,

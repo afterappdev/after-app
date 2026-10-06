@@ -25,6 +25,28 @@ String? oauthTokenFromUri(Uri uri) => _oauthQueryValue(uri, 'token');
 
 String? oauthOnboardingFromUri(Uri uri) => _oauthQueryValue(uri, 'onboarding');
 
+String? sanitizeOAuthErrorMessage(String? value) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty || trimmed.length > 180) return null;
+  if (trimmed.contains('{') || trimmed.contains('statusCode')) {
+    return 'Não foi possível concluir o login com Google.';
+  }
+  return trimmed;
+}
+
+String? oauthErrorFromUri(Uri uri) {
+  if (uri.scheme != 'after') return null;
+  if (uri.host != 'auth' && !uri.path.contains('callback')) return null;
+  return sanitizeOAuthErrorMessage(_oauthQueryValue(uri, 'error'));
+}
+
+String? oauthErrorFromRouteName(String? name) {
+  final raw = (name ?? '').trim();
+  if (raw.isEmpty) return null;
+  final uri = Uri.tryParse(raw.startsWith('/') ? 'https://after.local$raw' : raw);
+  return sanitizeOAuthErrorMessage(uri?.queryParameters['error']);
+}
+
 String? appleExchangeCodeFromUri(Uri uri) {
   if (!_looksLikeAppleWebCallback(uri)) return null;
   return _oauthQueryValue(uri, 'code');

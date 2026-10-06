@@ -12,6 +12,9 @@ import { AuthService } from './auth.service';
 import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import { JwtStrategy } from './jwt.strategy';
 import {
+  SOCIAL_EMAIL_TAKEN_MESSAGE,
+  SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
+  SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE,
   SOCIAL_ONBOARDING_EXPIRED_MESSAGE,
   SOCIAL_ONBOARDING_INVALID_MESSAGE,
   SOCIAL_ONBOARDING_TYP,
@@ -30,6 +33,7 @@ function createPrisma() {
       findUnique: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     socialOnboardingToken: {
       findUnique: jest.Mock;
@@ -43,6 +47,7 @@ function createPrisma() {
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     socialOnboardingToken: {
       findUnique: jest.fn(),
@@ -643,5 +648,218 @@ describe('AuthService social onboarding', () => {
     });
     const errors = await validate(dto);
     expect(errors.some((error) => error.property === 'accountType')).toBe(true);
+  });
+
+  function localAccount(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'u-existing',
+      name: 'Ana',
+      email: 'ana@after.local',
+      role: Role.USER,
+      state: 'SP',
+      city: 'São Paulo',
+      avatarUrl: null,
+      googleId: null as string | null,
+      passwordHash: 'hash-local',
+      venue: null as { id: string } | null,
+      ...overrides,
+    };
+  }
+
+  function mockGoogleIdentity(sub: string, emailVerified = true) {
+    jest.spyOn(service as never, 'verifyGoogleIdToken').mockResolvedValue({
+      sub,
+      email: 'ana@after.local',
+      name: 'Ana',
+      picture: null,
+      emailVerified,
+    } as never);
+  }
+
+  it('vincula Google verificado à conta local e mantém o mesmo User', async () => {
+    const account = localAccount();
+    mockGoogleIdentity('gid-link');
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string; id?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) return account;
+        if (args.where.id) return { ...account, googleId: 'gid-link' };
+        return null;
+      },
+    );
+    prisma.user.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await service.loginWithGoogle({
+      idToken: 'google-id-token-value-ok',
+    });
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.socialOnboardingToken.create).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'u-existing', email: 'ana@after.local', googleId: null },
+      data: { googleId: 'gid-link' },
+    });
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      user: { id: 'u-existing', email: 'ana@after.local', role: Role.USER },
+    });
+    expect('accessToken' in result && result.accessToken).toBeTruthy();
+    expect('needsRegistration' in result).toBe(false);
+  });
+
+  it('venue existente permanece no mesmo User e Venue após vínculo Google', async () => {
+    const account = localAccount({
+      id: 'u-venue',
+      name: 'Bar do After',
+      email: 'bar@after.local',
+      role: Role.VENUE,
+      venue: { id: 'venue-1' },
+    });
+    jest.spyOn(service as never, 'verifyGoogleIdToken').mockResolvedValue({
+      sub: 'gid-venue',
+      email: 'bar@after.local',
+      name: 'Bar do After',
+      picture: null,
+      emailVerified: true,
+    } as never);
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string; id?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) return account;
+        if (args.where.id) return { ...account, googleId: 'gid-venue' };
+        return null;
+      },
+    );
+    prisma.user.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await service.loginWithGoogle({
+      idToken: 'google-id-token-value-ok',
+    });
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany.mock.calls[0][0].data).toEqual({
+      googleId: 'gid-venue',
+    });
+    expect(result).toMatchObject({
+      user: { id: 'u-venue', role: Role.VENUE, venueId: 'venue-1' },
+    });
+  });
+
+  it('não vincula quando o e-mail do token Google não está verificado', async () => {
+    mockGoogleIdentity('gid-link', false);
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) return localAccount();
+        return null;
+      },
+    );
+
+    await expect(
+      service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+    ).rejects.toThrow(SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE);
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita conflito quando a conta já tem outro Google', async () => {
+    mockGoogleIdentity('gid-novo');
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) return localAccount({ googleId: 'gid-antigo' });
+        return null;
+      },
+    );
+
+    await expect(
+      service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+    ).rejects.toThrow(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita sub Google já usado por outro usuário', async () => {
+    mockGoogleIdentity('gid-ocupado');
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) return localAccount();
+        return null;
+      },
+    );
+    prisma.user.updateMany.mockRejectedValue({ code: 'P2002' });
+
+    await expect(
+      service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+    ).rejects.toThrow(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('repetir login Google depois do vínculo é idempotente', async () => {
+    const linked = localAccount({ googleId: 'gid-link' });
+    mockGoogleIdentity('gid-link');
+    prisma.user.findUnique.mockResolvedValue(linked);
+
+    const first = await service.loginWithGoogle({
+      idToken: 'google-id-token-value-ok',
+    });
+    const second = await service.loginWithGoogle({
+      idToken: 'google-id-token-value-ok',
+    });
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.socialOnboardingToken.create).not.toHaveBeenCalled();
+    expect(first).toMatchObject({ user: { id: 'u-existing' } });
+    expect(second).toMatchObject({ user: { id: 'u-existing' } });
+  });
+
+  it('conta ADMIN com o mesmo e-mail não recebe vínculo Google', async () => {
+    mockGoogleIdentity('gid-admin');
+    prisma.user.findUnique.mockImplementation(
+      async (args: { where: { googleId?: string; email?: string } }) => {
+        if (args.where.googleId) return null;
+        if (args.where.email) {
+          return localAccount({ role: Role.ADMIN, email: 'admin@after.local' });
+        }
+        return null;
+      },
+    );
+    jest.spyOn(service as never, 'verifyGoogleIdToken').mockResolvedValue({
+      sub: 'gid-admin',
+      email: 'admin@after.local',
+      name: 'Admin',
+      picture: null,
+      emailVerified: true,
+    } as never);
+
+    await expect(
+      service.loginWithGoogle({ idToken: 'google-id-token-value-ok' }),
+    ).rejects.toThrow('Credenciais inválidas');
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('Apple com e-mail existente continua sem vínculo automático', async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'u-existing' });
+    jest.spyOn(service as never, 'verifyAppleIdToken').mockResolvedValue({
+      sub: 'aid-new',
+      email: 'ana@after.local',
+    } as never);
+
+    await expect(
+      service.loginWithApple({
+        identityToken: 'apple-identity-token-value-ok',
+      }),
+    ).rejects.toThrow(SOCIAL_EMAIL_TAKEN_MESSAGE);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 });
