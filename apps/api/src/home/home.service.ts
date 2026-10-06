@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { BUSINESS_TIME_ZONE } from '../common/constants/timezone';
 import { PrismaService } from '../prisma/prisma.service';
 import { geocodeCity, haversineKm, parseCoord } from '../common/utils/geo';
 import { computeIsOpen } from '../common/utils/hours';
@@ -24,6 +25,20 @@ function sortOpenThenDistance<T extends { isOpen?: boolean | null; distanceKm?: 
   });
 }
 
+/** Civil calendar day in America/Sao_Paulo, stored as UTC midnight. Independent of the process timezone. */
+export function businessCalendarDate(now = new Date()): Date {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const day = Number(parts.find((part) => part.type === 'day')?.value);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
 @Injectable()
 export class HomeService {
   constructor(private readonly prisma: PrismaService) {}
@@ -34,20 +49,12 @@ export class HomeService {
     lat?: string,
     lng?: string,
     user?: AuthUser | null,
+    now: Date = new Date(),
   ) {
     const match = date ? /^(\d{4})-(\d{2})-(\d{2})/.exec(date.trim()) : null;
-    const displayDate = match
-      ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-      : new Date();
     const day = match
-      ? displayDate
-      : new Date(
-          Date.UTC(
-            displayDate.getFullYear(),
-            displayDate.getMonth(),
-            displayDate.getDate(),
-          ),
-        );
+      ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+      : businessCalendarDate(now);
 
     const userLat = parseCoord(lat);
     const userLng = parseCoord(lng);

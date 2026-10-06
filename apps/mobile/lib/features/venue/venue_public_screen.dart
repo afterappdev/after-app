@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/constants/venue_categories.dart';
+import 'promo_validity.dart';
 import 'venue_public_amenities.dart';
 import '../../core/location/device_position.dart';
 import '../../core/location/open_url.dart';
@@ -985,9 +986,10 @@ class _AboutTab extends StatelessWidget {
           ...visiblePromos.map((item) {
             final banner = item as Map<String, dynamic>;
             final schedules = (banner['schedules'] as List<dynamic>?) ?? [];
-            final date = schedules.isNotEmpty
-                ? (schedules.first as Map)['displayDate']
-                : null;
+            final cardDate = promotionCardDate(
+              status: banner['status']?.toString(),
+              displayDates: schedules.map((item) => (item as Map)['displayDate']),
+            );
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _PromoRow(
@@ -996,7 +998,8 @@ class _AboutTab extends StatelessWidget {
                     ? banner['title'].toString()
                     : 'Promoção do dia',
                 detail: banner['description']?.toString() ?? '',
-                validUntil: _formatDate(date),
+                validUntil: cardDate.dayLabel,
+                expired: cardDate.expired,
                 bannerId: banner['id']?.toString() ?? '',
                 showReport: showReport,
                 onImageTap: () {
@@ -1162,6 +1165,7 @@ class _PromoRow extends StatelessWidget {
     required this.detail,
     required this.validUntil,
     required this.onImageTap,
+    this.expired = false,
     this.bannerId = '',
     this.showReport = false,
   });
@@ -1171,6 +1175,7 @@ class _PromoRow extends StatelessWidget {
   final String detail;
   final String validUntil;
   final VoidCallback onImageTap;
+  final bool expired;
   final String bannerId;
   final bool showReport;
 
@@ -1227,18 +1232,43 @@ class _PromoRow extends StatelessWidget {
                       color: Color(0xFF8B8B96),
                     ),
                   ),
-                if (validUntil.isNotEmpty) ...[
+                if (expired) ...[
+                  const SizedBox(height: 4),
+                  const Row(
+                    children: [
+                      Icon(Icons.event_busy_outlined, size: 12, color: Color(0xFF6E6E78)),
+                      SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          'Promoção vencida',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF6E6E78),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else if (validUntil.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       const Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF9A9AA3)),
                       const SizedBox(width: 4),
-                      Text(
-                        'Válido para o dia $validUntil',
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 10,
-                          color: Color(0xFF9A9AA3),
+                      Expanded(
+                        child: Text(
+                          'Válido para o dia $validUntil',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 10,
+                            color: Color(0xFF9A9AA3),
+                          ),
                         ),
                       ),
                     ],
@@ -2274,12 +2304,3 @@ String? _formatDistanceKm(dynamic value) {
   return '~${text.replaceAll('.', ',')} km';
 }
 
-String _formatDate(dynamic value) {
-  if (value == null) return '';
-  final parsed = DateTime.tryParse(value.toString());
-  if (parsed == null) return '';
-  final d = parsed.toLocal();
-  final day = d.day.toString().padLeft(2, '0');
-  final month = d.month.toString().padLeft(2, '0');
-  return '$day/$month/${d.year}';
-}

@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -153,5 +153,73 @@ describe('BannersService cancel', () => {
     );
     expect(prisma.creditWallet.update).not.toHaveBeenCalled();
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
+  });
+
+  it('nova publicação reutiliza a imageUrl e não altera a publicação modelo', async () => {
+    const { prisma, service } = setup();
+    prisma.creditWallet.findUnique.mockResolvedValue({ balance: 5 });
+    prisma.creditWallet.updateMany.mockResolvedValue({ count: 1 });
+    prisma.banner.create.mockResolvedValue({ id: 'banner-new', schedules: [] });
+
+    await service.create(
+      'owner-1',
+      'https://cdn.example/promo-x.jpg',
+      ['2026-10-20'],
+      'Chopp novo',
+      'Descrição nova',
+    );
+
+    expect(prisma.banner.update).not.toHaveBeenCalled();
+    expect(prisma.banner.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          venueId: 'venue-1',
+          imageUrl: 'https://cdn.example/promo-x.jpg',
+          title: 'Chopp novo',
+          description: 'Descrição nova',
+          creditsCost: 1,
+          status: 'ACTIVE',
+        }),
+      }),
+    );
+    const created = prisma.banner.create.mock.calls[0][0].data;
+    expect(created.id).toBeUndefined();
+    expect(created.schedules.create).toEqual([
+      expect.objectContaining({
+        displayDate: new Date(Date.UTC(2026, 9, 20)),
+      }),
+    ]);
+  });
+
+  it('saldo insuficiente não cria publicação nem mexe na anterior', async () => {
+    const { prisma, service } = setup();
+    prisma.creditWallet.findUnique.mockResolvedValue({ balance: 0 });
+
+    await expect(
+      service.create('owner-1', 'https://cdn.example/promo-x.jpg', ['2026-10-20'], 'Título', 'Texto'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.banner.create).not.toHaveBeenCalled();
+    expect(prisma.banner.update).not.toHaveBeenCalled();
+  });
+
+  it('histórico de outro estabelecimento não inclui a publicação alheia', async () => {
+    const { prisma, service } = setup();
+    prisma.venue.findUnique.mockImplementation(async ({ where }) => {
+      if (where.ownerUserId === 'other') {
+        return { id: 'venue-2', ownerUserId: 'other', name: 'Outro', city: 'São Paulo' };
+      }
+      return { id: 'venue-1', ownerUserId: 'owner-1', name: 'Bar', city: 'São Paulo' };
+    });
+    prisma.banner.findMany.mockResolvedValue([]);
+
+    await service.history('other');
+
+    expect(prisma.banner.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { venueId: 'venue-2' },
+      }),
+    );
   });
 });

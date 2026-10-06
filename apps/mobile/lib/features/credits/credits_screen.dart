@@ -10,6 +10,7 @@ import '../../core/widgets/after_logo.dart';
 import 'buy_credits_screen.dart';
 import 'credits_ui.dart';
 import 'promotion_dialogs.dart';
+import 'publication_draft.dart';
 
 class CreditsScreen extends StatefulWidget {
   const CreditsScreen({super.key});
@@ -33,6 +34,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   final _picker = ImagePicker();
   final _title = TextEditingController();
   final _description = TextEditingController();
+  final _scroll = ScrollController();
 
   @override
   void initState() {
@@ -44,7 +46,26 @@ class _CreditsScreenState extends State<CreditsScreen> {
   void dispose() {
     _title.dispose();
     _description.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _fillFromHistory(Map<String, dynamic> banner) {
+    final draft = PublicationDraft.fromHistory(banner);
+    setState(() {
+      _bannerUrl = draft.imageUrl;
+      _title.text = draft.title;
+      _description.text = draft.description;
+      _selectedDates.clear();
+    });
+    if (_scroll.hasClients) {
+      _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+    _snack('Revise os dados e escolha as novas datas.');
   }
 
   Future<void> _load() async {
@@ -261,6 +282,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
                               color: kCreditsAccent,
                               onRefresh: _load,
                               child: ListView(
+                                controller: _scroll,
                                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                                 children: [
                                   Row(
@@ -520,12 +542,16 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                           children: [
                                             ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
-                                              child: image.isEmpty
-                                                  ? const ColoredBox(
-                                                      color: kCreditsSoft,
-                                                      child: SizedBox(width: 52, height: 52, child: Icon(Icons.image_outlined)),
-                                                    )
-                                                  : Image.network(image, width: 52, height: 52, fit: BoxFit.cover),
+                                              child: SizedBox(
+                                                width: 52,
+                                                height: 52,
+                                                child: image.isEmpty
+                                                    ? const ColoredBox(
+                                                        color: kCreditsSoft,
+                                                        child: Icon(Icons.image_outlined),
+                                                      )
+                                                    : Image.network(image, fit: BoxFit.cover),
+                                              ),
                                             ),
                                             const SizedBox(width: 12),
                                             Expanded(
@@ -570,19 +596,35 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                                 ],
                                               ),
                                             ),
-                                            if (banner['status']?.toString() != 'CANCELLED')
-                                              IconButton(
-                                                tooltip: 'Excluir promoção',
-                                                onPressed: _cancellingId == null
-                                                    ? () => _cancelBanner(banner['id']?.toString() ?? '')
-                                                    : null,
-                                                icon: _cancellingId == banner['id']?.toString()
-                                                    ? const SizedBox(
-                                                        width: 18,
-                                                        height: 18,
-                                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                                      )
-                                                    : const Icon(Icons.delete_outline, color: kCreditsMuted),
+                                            if (_cancellingId == banner['id']?.toString())
+                                              const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                              )
+                                            else
+                                              PopupMenuButton<String>(
+                                                key: ValueKey('publication-actions-${banner['id']}'),
+                                                tooltip: 'Ações da publicação',
+                                                icon: const Icon(Icons.more_vert, color: kCreditsMuted),
+                                                onSelected: (value) {
+                                                  if (value == 'republish') {
+                                                    _fillFromHistory(banner);
+                                                  } else if (value == 'cancel') {
+                                                    _cancelBanner(banner['id']?.toString() ?? '');
+                                                  }
+                                                },
+                                                itemBuilder: (context) => [
+                                                  const PopupMenuItem(
+                                                    value: 'republish',
+                                                    child: Text('Publicar novamente'),
+                                                  ),
+                                                  if (banner['status']?.toString() != 'CANCELLED')
+                                                    const PopupMenuItem(
+                                                      value: 'cancel',
+                                                      child: Text('Excluir promoção'),
+                                                    ),
+                                                ],
                                               ),
                                           ],
                                         ),

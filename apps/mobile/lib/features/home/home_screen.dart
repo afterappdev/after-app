@@ -20,6 +20,7 @@ import '../../core/widgets/after_logo.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
+import '../venue/promo_validity.dart';
 import 'venue_filter_sheet_layout.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -1355,7 +1356,7 @@ class _PromotionCards extends StatelessWidget {
                 ? item['title'].toString()
                 : 'Promoção do dia',
             dealDetail: item['description']?.toString() ?? '',
-            validUntil: _formatDate(item['displayDate']),
+            validUntil: formatStoredCalendarDate(item['displayDate']),
             onTap: () {
               final id = venue['id']?.toString();
               if (id != null && id.isNotEmpty) {
@@ -1702,16 +1703,6 @@ String? _formatDistanceKm(dynamic value) {
   if (km < 1) return '~${(km * 1000).round()} m';
   final text = km < 10 ? km.toStringAsFixed(1) : km.round().toString();
   return '~${text.replaceAll('.', ',')} km';
-}
-
-String _formatDate(dynamic value) {
-  if (value == null) return '';
-  final parsed = DateTime.tryParse(value.toString());
-  if (parsed == null) return '';
-  final d = parsed.toLocal();
-  final day = d.day.toString().padLeft(2, '0');
-  final month = d.month.toString().padLeft(2, '0');
-  return '$day/$month/${d.year}';
 }
 
 class _VenueSearchFilters {

@@ -1,5 +1,5 @@
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
-import { HomeService } from './home.service';
+import { HomeService, businessCalendarDate } from './home.service';
 
 jest.mock('../common/utils/geo', () => {
   const actual = jest.requireActual('../common/utils/geo');
@@ -193,6 +193,44 @@ describe('HomeService geolocation', () => {
               id: { notIn: ['blocked-1'] },
             }),
           }),
+        }),
+      }),
+    );
+  });
+
+  it('sem date usa o dia civil de America/Sao_Paulo', async () => {
+    const stillTheSixth = new Date('2026-10-07T02:30:00.000Z');
+    const alreadyTheSeventh = new Date('2026-10-07T03:00:00.000Z');
+    expect(businessCalendarDate(stillTheSixth)).toEqual(new Date(Date.UTC(2026, 9, 6)));
+    expect(businessCalendarDate(alreadyTheSeventh)).toEqual(new Date(Date.UTC(2026, 9, 7)));
+
+    prisma.bannerSchedule.findMany.mockResolvedValue([]);
+    await service.promotions('São Paulo', undefined, undefined, undefined, null, stillTheSixth);
+
+    expect(prisma.bannerSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          displayDate: new Date(Date.UTC(2026, 9, 6)),
+        }),
+      }),
+    );
+  });
+
+  it('com date mantém exatamente a data solicitada', async () => {
+    prisma.bannerSchedule.findMany.mockResolvedValue([]);
+    await service.promotions(
+      'São Paulo',
+      '2026-11-02',
+      undefined,
+      undefined,
+      null,
+      new Date('2026-10-07T02:30:00.000Z'),
+    );
+
+    expect(prisma.bannerSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          displayDate: new Date(Date.UTC(2026, 10, 2)),
         }),
       }),
     );
