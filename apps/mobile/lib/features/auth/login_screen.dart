@@ -13,6 +13,26 @@ import '../public/public_chrome.dart';
 import 'auth_controller.dart';
 import 'social_auth.dart';
 
+/// Botão Apple na tela de login.
+///
+/// iOS nativo usa o botão oficial. Android nativo omite o botão.
+/// Web e os demais alvos mantêm o botão customizado já existente.
+enum AppleLoginButtonKind { official, custom, hidden }
+
+@visibleForTesting
+AppleLoginButtonKind appleLoginButtonKind({
+  required bool isWeb,
+  required TargetPlatform platform,
+}) {
+  if (!isWeb && platform == TargetPlatform.iOS) {
+    return AppleLoginButtonKind.official;
+  }
+  if (!isWeb && platform == TargetPlatform.android) {
+    return AppleLoginButtonKind.hidden;
+  }
+  return AppleLoginButtonKind.custom;
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
@@ -242,6 +262,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _loginCard(BuildContext context) {
+    final appleButton = appleLoginButtonKind(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
                         color: Colors.white,
@@ -388,8 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 22),
                       const _OrDivider(),
                       const SizedBox(height: 16),
-                      if (!kIsWeb &&
-                          defaultTargetPlatform == TargetPlatform.iOS)
+                      if (appleButton == AppleLoginButtonKind.official)
                         _IosSocialLogins(
                           loading: _loading,
                           onGoogle: () => _socialLogin(
@@ -398,6 +421,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           onApple: () => _socialLogin(
                             () => _socialAuth(context).signInWithApple(),
                           ),
+                        )
+                      else if (appleButton == AppleLoginButtonKind.hidden)
+                        _SocialButton(
+                          label: 'Google',
+                          icon: const SizedBox(
+                            key: Key('google-logo'),
+                            width: 20,
+                            height: 20,
+                            child: CustomPaint(
+                              painter: _GoogleLogoPainter(),
+                              child: SizedBox.expand(),
+                            ),
+                          ),
+                          onTap: _loading
+                              ? null
+                              : () => _socialLogin(
+                                    () => _socialAuth(context)
+                                        .signInWithGoogle(),
+                                  ),
                         )
                       else
                         Row(

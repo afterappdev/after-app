@@ -96,7 +96,7 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('Android mantém o botão Apple atual', (tester) async {
+  testWidgets('Android não exibe o botão Apple e mantém o Google', (tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1;
@@ -116,8 +116,74 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SignInWithAppleButton), findsNothing);
-    expect(find.text('Apple'), findsOneWidget);
+    expect(find.byKey(const Key('sign-in-with-apple')), findsNothing);
+    expect(find.text('Apple'), findsNothing);
+    expect(find.text('Sign in with Apple'), findsNothing);
+    expect(find.text('Google'), findsOneWidget);
     expect(find.byKey(const Key('google-logo')), findsOneWidget);
+    expect(find.text('Entrar'), findsOneWidget);
+    expect(find.text('Crie aqui.'), findsOneWidget);
+    expect(
+      tester.getSize(find.widgetWithText(OutlinedButton, 'Google')).width,
+      tester.getSize(find.byKey(const Key('login-email'))).width,
+    );
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  test('Web preserva o botão Apple customizado', () {
+    for (final platform in TargetPlatform.values) {
+      expect(
+        appleLoginButtonKind(isWeb: true, platform: platform),
+        AppleLoginButtonKind.custom,
+        reason: '$platform',
+      );
+    }
+  });
+
+  test('iOS nativo usa o botão oficial e Android omite o Apple', () {
+    expect(
+      appleLoginButtonKind(isWeb: false, platform: TargetPlatform.iOS),
+      AppleLoginButtonKind.official,
+    );
+    expect(
+      appleLoginButtonKind(isWeb: false, platform: TargetPlatform.android),
+      AppleLoginButtonKind.hidden,
+    );
+    expect(
+      appleLoginButtonKind(isWeb: false, platform: TargetPlatform.macOS),
+      AppleLoginButtonKind.custom,
+    );
+  });
+
+  testWidgets('alvo não Android mantém Apple ao lado do Google', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(client: MockClient((_) async => http.Response('{}', 404)));
+    final auth = AuthController(api: api, storage: AuthStorage())
+      ..bootstrapping = false;
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: auth),
+        ],
+        child: const MaterialApp(home: LoginScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SignInWithAppleButton), findsNothing);
+    expect(find.text('Apple'), findsOneWidget);
+    expect(find.text('Google'), findsOneWidget);
+    final googleWidth =
+        tester.getSize(find.widgetWithText(OutlinedButton, 'Google')).width;
+    final appleWidth =
+        tester.getSize(find.widgetWithText(OutlinedButton, 'Apple')).width;
+    final emailWidth = tester.getSize(find.byKey(const Key('login-email'))).width;
+    expect(googleWidth, appleWidth);
+    expect(googleWidth, lessThan(emailWidth));
     debugDefaultTargetPlatformOverride = null;
   });
 
