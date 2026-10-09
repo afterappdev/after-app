@@ -58,6 +58,7 @@ function mpPixOrder(overrides: Record<string, unknown> = {}) {
 describe('payment provider contract', () => {
   const originalEnv = process.env.NODE_ENV;
   const originalSecret = process.env.APPLE_SHARED_SECRET;
+  const originalAppAppleId = process.env.APPLE_APP_APPLE_ID;
   const originalMpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   const originalMpWebhook = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
   const originalMpSandbox = process.env.MERCADO_PAGO_SANDBOX;
@@ -68,6 +69,11 @@ describe('payment provider contract', () => {
       delete process.env.APPLE_SHARED_SECRET;
     } else {
       process.env.APPLE_SHARED_SECRET = originalSecret;
+    }
+    if (originalAppAppleId === undefined) {
+      delete process.env.APPLE_APP_APPLE_ID;
+    } else {
+      process.env.APPLE_APP_APPLE_ID = originalAppAppleId;
     }
     if (originalMpToken === undefined) {
       delete process.env.MERCADO_PAGO_ACCESS_TOKEN;
@@ -121,6 +127,7 @@ describe('payment provider contract', () => {
   it('Apple sem credenciais em production falha e não inventa validação', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.APPLE_SHARED_SECRET;
+    delete process.env.APPLE_APP_APPLE_ID;
     const apple = new AppleAppStorePaymentProvider();
     expect(apple.isConfigured).toBe(false);
     await expect(

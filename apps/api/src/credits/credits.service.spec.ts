@@ -1,4 +1,8 @@
 import {
+  VerificationException,
+  VerificationStatus,
+} from '@apple/app-store-server-library';
+import {
   BadRequestException,
   ForbiddenException,
   ServiceUnavailableException,
@@ -6,6 +10,7 @@ import {
 import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { CreditsService } from './credits.service';
 import { AppleAppStorePaymentProvider } from './providers/apple-app-store.provider';
+import { createTestAppleChain } from './providers/apple-storekit-test-jws';
 import { PixPaymentProvider } from './providers/pix.provider';
 import { PaymentProviderRegistry } from './providers/payment-providers';
 import { VerifiedPayment } from './providers/payment-provider';
@@ -57,6 +62,8 @@ function createPrisma() {
 
 describe('CreditsService billing', () => {
   const originalEnv = { ...process.env };
+  const originalBundleId = process.env.APPLE_BUNDLE_ID;
+  const originalAppAppleId = process.env.APPLE_APP_APPLE_ID;
   let prisma: ReturnType<typeof createPrisma>;
   let googleVerify: jest.Mock<Promise<VerifiedPayment>, [unknown]>;
   let payments: {
@@ -98,6 +105,10 @@ describe('CreditsService billing', () => {
     } else {
       process.env.APPLE_SHARED_SECRET = originalEnv.APPLE_SHARED_SECRET;
     }
+    if (originalBundleId === undefined) delete process.env.APPLE_BUNDLE_ID;
+    else process.env.APPLE_BUNDLE_ID = originalBundleId;
+    if (originalAppAppleId === undefined) delete process.env.APPLE_APP_APPLE_ID;
+    else process.env.APPLE_APP_APPLE_ID = originalAppAppleId;
     if (originalEnv.MERCADO_PAGO_ACCESS_TOKEN === undefined) {
       delete process.env.MERCADO_PAGO_ACCESS_TOKEN;
     } else {
@@ -306,6 +317,7 @@ describe('CreditsService billing', () => {
   it('não credita Apple sem configuração em production', async () => {
     process.env.NODE_ENV = 'production';
     delete process.env.APPLE_SHARED_SECRET;
+    delete process.env.APPLE_APP_APPLE_ID;
     payments.storeProvider.mockReturnValue(new AppleAppStorePaymentProvider());
 
     await expect(
@@ -316,6 +328,88 @@ describe('CreditsService billing', () => {
         verificationData: 'fake-receipt',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
+    expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('não credita a mesma transação Apple duas vezes', async () => {
+    process.env.APPLE_BUNDLE_ID = 'com.r2p.after.afterApp';
+    delete process.env.APPLE_APP_APPLE_ID;
+    const chain = createTestAppleChain();
+    const transactionId = '2000000999';
+    const signed = chain.sign({
+      transactionId,
+      originalTransactionId: transactionId,
+    });
+    payments.storeProvider.mockReturnValue(
+      AppleAppStorePaymentProvider.forTests({
+        rootCertificates: [chain.rootDer],
+        enableOnlineChecks: false,
+      }),
+    );
+    const paid = {
+      id: 'p-apple',
+      venueId: VENUE.id,
+      status: 'PAID',
+      provider: 'app_store',
+      providerTxId: `app_store:${transactionId}`,
+      credits: UNIT.credits,
+    };
+    prisma.creditPurchase.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(paid);
+    prisma.creditPurchase.create.mockResolvedValue(paid);
+    prisma.creditWallet.upsert.mockResolvedValue({
+      venueId: VENUE.id,
+      balance: UNIT.credits,
+    });
+    const dto = {
+      ...storeDto,
+      provider: 'app_store',
+      purchaseId: transactionId,
+      verificationData: signed,
+    };
+
+    const first = await service.confirmStorePurchase(USER_ID, dto);
+    const second = await service.confirmStorePurchase(USER_ID, dto);
+
+    expect(first.id).toBe('p-apple');
+    expect(second.id).toBe('p-apple');
+    expect(prisma.creditPurchase.create).toHaveBeenCalledTimes(1);
+    expect(prisma.creditPurchase.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          providerTxId: `app_store:${transactionId}`,
+          credits: UNIT.credits,
+        }),
+      }),
+    );
+    expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha temporária da Apple não credita a wallet', async () => {
+    process.env.APPLE_BUNDLE_ID = 'com.r2p.after.afterApp';
+    const chain = createTestAppleChain();
+    payments.storeProvider.mockReturnValue(
+      AppleAppStorePaymentProvider.forTests({
+        verifierFor: () => ({
+          verifyAndDecodeTransaction: () => {
+            throw new VerificationException(
+              VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
+            );
+          },
+        }),
+      }),
+    );
+
+    await expect(
+      service.confirmStorePurchase(USER_ID, {
+        ...storeDto,
+        provider: 'app_store',
+        purchaseId: '2000000123',
+        verificationData: chain.sign(),
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
     expect(prisma.creditPurchase.create).not.toHaveBeenCalled();
   });
