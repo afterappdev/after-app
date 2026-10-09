@@ -12,6 +12,7 @@ import 'fiscal_invoice_controller.dart';
 import 'fiscal_invoice_section.dart';
 import 'pix_checkout.dart';
 import 'store_billing.dart';
+import 'store_price.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key, required this.pack});
@@ -26,6 +27,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _paying = false;
   StoreBilling? _store;
   String? _storePriceLabel;
+  IosStorePrice? _iosPrice;
   String? _storeError;
   late final FiscalInvoiceController _fiscal;
 
@@ -38,7 +40,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return storeProductIdFor(widget.pack['key']?.toString() ?? '');
   }
 
-  String get _displayPrice => _storePriceLabel ?? formatBrl(_price);
+  String get _displayPrice {
+    if (StoreBilling.isApple) return iosCheckoutAmountText(_iosPrice);
+    return _storePriceLabel ?? formatBrl(_price);
+  }
+
+  bool get _showIosPriceNotice =>
+      StoreBilling.isApple &&
+      _storeError == null &&
+      _iosPrice != null &&
+      !_iosPrice!.showsAmount;
+
+  String get _payLabel {
+    if (StoreBilling.isApple) return appleCheckoutButtonLabel(_iosPrice);
+    return 'Pagar com ${StoreBilling.providerLabel} $_displayPrice';
+  }
+
+  Widget _amountLabel(TextStyle style) {
+    final text = Text(
+      _displayPrice,
+      textAlign: TextAlign.end,
+      style: _showIosPriceNotice
+          ? style.copyWith(fontWeight: FontWeight.w600, fontSize: 12, height: 1.35, color: kCreditsMuted)
+          : style,
+    );
+    if (!_showIosPriceNotice) return text;
+    return Flexible(fit: FlexFit.tight, child: text);
+  }
 
   @override
   void initState() {
@@ -83,8 +111,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       final info = await store.loadProduct(_storeProductId);
       if (!mounted) return;
+      if (!StoreBilling.isApple) {
+        setState(() {
+          _storePriceLabel = info?.price;
+          _iosPrice = null;
+          _storeError = info == null
+              ? 'Produto ainda não publicado na ${StoreBilling.providerLabel}.'
+              : null;
+        });
+        return;
+      }
+      IosStorePrice? decision;
+      if (info != null) {
+        final storefront = await store.currentStorefrontCountry();
+        if (!mounted) return;
+        decision = resolveIosStorePrice(
+          displayPrice: info.price,
+          currencyCode: info.currencyCode,
+          currencySymbol: info.currencySymbol,
+          storefrontCountry: storefront,
+        );
+      }
       setState(() {
-        _storePriceLabel = info?.price;
+        _iosPrice = decision;
+        _storePriceLabel = decision != null && decision.showsAmount ? decision.label : null;
         _storeError = info == null
             ? 'Produto ainda não publicado na ${StoreBilling.providerLabel}.'
             : null;
@@ -197,9 +247,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   ),
                                 ),
                               ),
-                              Text(
-                                _displayPrice,
-                                style: const TextStyle(
+                              _amountLabel(
+                                const TextStyle(
                                   fontFamily: AppTheme.fontFamily,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 14,
@@ -223,9 +272,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                 ),
                               ),
                               const Spacer(),
-                              Text(
-                                _displayPrice,
-                                style: const TextStyle(
+                              _amountLabel(
+                                const TextStyle(
                                   fontFamily: AppTheme.fontFamily,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 16,
@@ -334,9 +382,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ),
                         ),
                         const Spacer(),
-                        Text(
-                          _displayPrice,
-                          style: const TextStyle(
+                        _amountLabel(
+                          const TextStyle(
                             fontFamily: AppTheme.fontFamily,
                             fontWeight: FontWeight.w800,
                             fontSize: 18,
@@ -347,7 +394,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     ),
                     const SizedBox(height: 12),
                     CreditsPurpleButton(
-                      label: 'Pagar com ${StoreBilling.providerLabel} $_displayPrice',
+                      label: _payLabel,
                       icon: Icons.lock_outline,
                       loading: _paying,
                       onPressed: _storeError != null ? null : _payWithStore,
