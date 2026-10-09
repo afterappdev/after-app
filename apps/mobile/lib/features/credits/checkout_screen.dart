@@ -15,9 +15,14 @@ import 'store_billing.dart';
 import 'store_price.dart';
 
 class CheckoutScreen extends StatefulWidget {
-  const CheckoutScreen({super.key, required this.pack});
+  const CheckoutScreen({
+    super.key,
+    required this.pack,
+    @visibleForTesting this.storeBilling,
+  });
 
   final Map<String, dynamic> pack;
+  final StoreBilling? storeBilling;
 
   @override
   State<CheckoutScreen> createState() => _CheckoutScreenState();
@@ -83,7 +88,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       });
       return;
     }
-    _store = StoreBilling()
+    _store = (widget.storeBilling ?? StoreBilling())
       ..onUnfinishedPurchase = (purchase) async {
         await _confirmStorePurchase(purchase);
         if (mounted) Navigator.of(context).pop(true);
