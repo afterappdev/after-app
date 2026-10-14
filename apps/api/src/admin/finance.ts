@@ -8,7 +8,12 @@ import {
   monthRangeUtc,
 } from './timezone';
 
-export const REAL_SALE_PROVIDERS = ['google_play', 'app_store', 'pix'] as const;
+export const REAL_SALE_PROVIDERS = [
+  'google_play',
+  'app_store',
+  'pix',
+  'card',
+] as const;
 
 export type RealSaleProvider = (typeof REAL_SALE_PROVIDERS)[number];
 
@@ -34,15 +39,14 @@ export function emptyProviderMoney(): ProviderMoney {
     google_play: 0,
     app_store: 0,
     pix: 0,
+    card: 0,
   };
 }
 
 export function isRealSaleProvider(
   provider: string | null | undefined,
 ): provider is RealSaleProvider {
-  return (
-    provider === 'google_play' || provider === 'app_store' || provider === 'pix'
-  );
+  return (REAL_SALE_PROVIDERS as readonly string[]).includes(provider ?? '');
 }
 
 type ProviderGroup = {
@@ -61,6 +65,7 @@ export function summarizeProviderGroups(groups: ProviderGroup[]): {
     google_play: zeroMoney(),
     app_store: zeroMoney(),
     pix: zeroMoney(),
+    card: zeroMoney(),
   };
   let purchases = 0;
   let credits = 0;
@@ -83,6 +88,7 @@ export function summarizeProviderGroups(groups: ProviderGroup[]): {
       google_play: toMoneyNumber(byProviderDec.google_play),
       app_store: toMoneyNumber(byProviderDec.app_store),
       pix: toMoneyNumber(byProviderDec.pix),
+      card: toMoneyNumber(byProviderDec.card),
     },
   };
 }

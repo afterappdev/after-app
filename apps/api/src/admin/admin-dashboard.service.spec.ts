@@ -230,6 +230,7 @@ describe('AdminDashboardService metrics', () => {
       google_play: 25,
       app_store: 200,
       pix: 115,
+      card: 0,
     });
     const monthWhere = firstMockArg(prisma.creditPurchase.groupBy).where
       .confirmedAt;
@@ -288,6 +289,7 @@ describe('AdminDashboardService metrics', () => {
       google_play: 0,
       app_store: 0,
       pix: 0,
+      card: 0,
     });
     expect(firstMockArg(prisma.user.groupBy).where.role?.in).toEqual([
       Role.USER,
@@ -332,5 +334,91 @@ describe('AdminDashboardService metrics', () => {
     expect(result.warnings).toEqual([
       { code: 'PAID_MISSING_CONFIRMED_AT', count: 1 },
     ]);
+  });
+
+  it('cartão PAID entra com PIX, Play e Apple; pendente, recusado, cancelado e estorno total ficam de fora', async () => {
+    const prisma = createPrisma(
+      [
+        sale({
+          provider: 'pix',
+          credits: 5,
+          amountPaid: new Prisma.Decimal(115),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          provider: 'google_play',
+          credits: 1,
+          amountPaid: new Prisma.Decimal(25),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          provider: 'app_store',
+          credits: 10,
+          amountPaid: new Prisma.Decimal(200),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('34.90'),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          status: 'PENDING',
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('34.90'),
+          confirmedAt: null,
+        }),
+        sale({
+          status: 'FAILED',
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('34.90'),
+          confirmedAt: null,
+        }),
+        sale({
+          status: 'CANCELLED',
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('34.90'),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          status: 'REFUNDED',
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('34.90'),
+          confirmedAt: septemberPaid,
+        }),
+        sale({
+          provider: 'card',
+          credits: 1,
+          amountPaid: new Prisma.Decimal('49.90'),
+          confirmedAt: augustPaid,
+        }),
+      ],
+      [],
+    );
+    const service = new AdminDashboardService(prisma as never);
+    const result = await service.getDashboard(now);
+
+    expect(result.month.paidPurchases).toBe(4);
+    expect(result.month.creditsSold).toBe(17);
+    expect(result.month.grossRevenueBrl).toBe(374.9);
+    expect(result.month.revenueByProvider).toEqual({
+      google_play: 25,
+      app_store: 200,
+      pix: 115,
+      card: 34.9,
+    });
+    const august = result.history.find((row) => row.yearMonth === '2026-08');
+    expect(august?.purchases).toBe(1);
+    expect(august?.grossRevenueBrl).toBe(49.9);
+    expect(august?.byProvider.card).toBe(49.9);
+    const monthWhere = firstMockArg(prisma.creditPurchase.groupBy).where
+      .confirmedAt;
+    expect(monthWhere?.gte).toEqual(september.start);
+    expect(monthWhere?.lt).toEqual(september.end);
   });
 });
