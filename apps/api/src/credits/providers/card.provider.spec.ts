@@ -3,6 +3,7 @@ import { MercadoPagoOrdersClient, MercadoPagoTimeoutError, MercadoPagoNetworkErr
 import {
   CARD_MAX_INSTALLMENTS,
   CARD_SANDBOX_PAYER_EMAIL,
+  CARD_STATEMENT_DESCRIPTOR,
   CardPaymentProvider,
   CardReconcileRateLimitError,
   CardReconcileTransportError,
@@ -163,7 +164,45 @@ describe('CardPaymentProvider', () => {
       type: 'credit_card',
       token: TOKEN,
       installments: 1,
+      statement_descriptor: CARD_STATEMENT_DESCRIPTOR,
     });
+  });
+
+  it('createCharge envia CREDITOAFTER na fatura do cartão, sem o prefixo MP', async () => {
+    const { provider, createOrder } = providerWith(
+      jest.fn().mockResolvedValue({ status: 201, data: cardOrder() }),
+    );
+
+    await provider.createCharge(chargeInput());
+
+    const body = createOrder.mock.calls[0][2] as {
+      description: string;
+      total_amount: string;
+      config?: unknown;
+      transactions: {
+        payments: Array<{
+          amount: string;
+          payment_method: {
+            type: string;
+            installments: number;
+            statement_descriptor: string;
+          };
+        }>;
+      };
+    };
+    expect(CARD_STATEMENT_DESCRIPTOR).toBe('CREDITOAFTER');
+    expect(body.transactions.payments[0].payment_method.statement_descriptor).toBe(
+      'CREDITOAFTER',
+    );
+    expect(body.transactions.payments[0].payment_method.statement_descriptor).not.toMatch(
+      /MP/i,
+    );
+    expect(body.config).toBeUndefined();
+    expect(body.description).toBe('AFTER créditos unit_1');
+    expect(body.total_amount).toBe('34.90');
+    expect(body.transactions.payments[0].amount).toBe('34.90');
+    expect(body.transactions.payments[0].payment_method.installments).toBe(1);
+    expect(body.transactions.payments[0].payment_method.type).toBe('credit_card');
   });
 
   it('não registra o token do cartão nem o Access Token no log', async () => {
