@@ -5,21 +5,29 @@ class ProviderRevenue {
     required this.googlePlay,
     required this.appStore,
     required this.pix,
+    required this.card,
   });
 
   final double googlePlay;
   final double appStore;
   final double pix;
+  final double card;
 
   factory ProviderRevenue.fromJson(Map<String, dynamic> json) {
     return ProviderRevenue(
       googlePlay: asMoney(json['google_play']),
       appStore: asMoney(json['app_store']),
       pix: asMoney(json['pix']),
+      card: asMoney(json['card']),
     );
   }
 
-  static const zero = ProviderRevenue(googlePlay: 0, appStore: 0, pix: 0);
+  static const zero = ProviderRevenue(
+    googlePlay: 0,
+    appStore: 0,
+    pix: 0,
+    card: 0,
+  );
 }
 
 class AdminDashboardTotals {

@@ -1,9 +1,26 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 abstract class TokenStore {
   Future<void> saveToken(String token);
   Future<String?> readToken();
   Future<void> clear();
+}
+
+/// Android reports this when a stored value cannot be decrypted, which
+/// happens after reinstall or when the signing key changed.
+///
+/// `AndroidOptions(resetOnError: true)` in flutter_secure_storage 9.2.4
+/// deletes every secure entry and returns the string "Data has been reset"
+/// instead of null. Only the unreadable token key is removed.
+bool isRecoverableSecureReadFailure(Object error) {
+  if (error is! PlatformException) return false;
+  if (error.code != 'Exception encountered' || error.message != 'read') {
+    return false;
+  }
+  final details = '${error.details}';
+  return details.contains('BadPaddingException') ||
+      details.contains('BAD_DECRYPT');
 }
 
 class SecureTokenStore implements TokenStore {
@@ -20,8 +37,20 @@ class SecureTokenStore implements TokenStore {
   }
 
   @override
-  Future<String?> readToken() {
-    return _storage.read(key: _tokenKey);
+  Future<String?> readToken() async {
+    try {
+      final token = await _storage.read(key: _tokenKey);
+      if (token == null || token.isEmpty) return null;
+      return token;
+    } on PlatformException catch (error) {
+      if (!isRecoverableSecureReadFailure(error)) rethrow;
+      try {
+        await _storage.delete(key: _tokenKey);
+      } on PlatformException {
+        // The value is already unreadable. Keep going so login can open.
+      }
+      return null;
+    }
   }
 
   @override

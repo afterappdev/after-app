@@ -1,6 +1,8 @@
 import 'package:after_admin/core/formatters/admin_formatters.dart';
 import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/data/admin_report.dart';
+import 'package:after_admin/data/admin_sale.dart';
+import 'package:after_admin/data/paginated.dart';
 import 'package:after_admin/features/accounts/accounts_controller.dart';
 import 'package:after_admin/features/accounts/accounts_screen.dart';
 import 'package:after_admin/features/dashboard/dashboard_controller.dart';
@@ -10,6 +12,7 @@ import 'package:after_admin/features/reports/reports_controller.dart';
 import 'package:after_admin/features/reports/reports_screen.dart';
 import 'package:after_admin/features/sales/sales_controller.dart';
 import 'package:after_admin/features/sales/sales_screen.dart';
+import 'package:after_admin/features/sales/sale_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -66,6 +69,8 @@ void main() {
     expect(find.text('Google Play'), findsOneWidget);
     expect(find.text('Apple'), findsOneWidget);
     expect(find.text('PIX'), findsOneWidget);
+    expect(find.text('Cartão de crédito'), findsOneWidget);
+    expect(find.text(formatBrl(0)), findsWidgets);
   });
 
   testWidgets('dashboard com valores zero continua visível', (tester) async {
@@ -96,7 +101,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text(formatBrl(0)), findsWidgets);
     expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('Apple'), findsOneWidget);
     expect(find.text('PIX'), findsOneWidget);
+    expect(find.text('Cartão de crédito'), findsOneWidget);
   });
 
   testWidgets('accounts empty state', (tester) async {
@@ -177,4 +184,150 @@ void main() {
     expect(api.restoredVenueReportIds, ['r1']);
     expect(find.text('Oculto por moderação'), findsNothing);
   });
+
+  testWidgets('dashboard mostra o cartão formatado sem alterar o bruto', (
+    tester,
+  ) async {
+    final api = FakeAdminApi(
+      dashboardData: sampleDashboard(
+        paidPurchases: 7,
+        gross: 409.30,
+        play: 25,
+        apple: 200,
+        pix: 115,
+        card: 34.90,
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        providers: [
+          Provider<AdminApi>.value(value: api),
+          ChangeNotifierProvider(create: (_) => DashboardController(api)),
+        ],
+        home: const Scaffold(body: DashboardScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Cartão de crédito'), findsOneWidget);
+    expect(find.text(formatBrl(34.90)), findsOneWidget);
+    expect(find.text(formatBrl(409.30)), findsWidgets);
+    expect(find.text(formatBrl(444.20)), findsNothing);
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('Apple'), findsOneWidget);
+    expect(find.text('PIX'), findsOneWidget);
+  });
+
+  testWidgets('filtro de cartão consulta o provedor card', (tester) async {
+    final api = _SalesProbe(
+      catalog: const Paginated(
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SalesController(api)),
+        ],
+        home: const Scaffold(body: SalesScreen()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Todos'), findsOneWidget);
+    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.text('Apple'), findsOneWidget);
+    expect(find.text('PIX'), findsOneWidget);
+    expect(find.text('Cartão de crédito'), findsOneWidget);
+    expect(api.providers, [null]);
+    expect(api.pages, [1]);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Cartão de crédito'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(api.providers, [null, 'card']);
+    expect(api.pages, [1, 1]);
+  });
+
+  testWidgets('detalhe da venda mostra Cartão de crédito', (tester) async {
+    final api = _SalesProbe(
+      catalog: const Paginated(
+        items: [],
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+      ),
+      detail: AdminSaleDetail(
+        sale: AdminSale(
+          id: 'sale-card',
+          packageKey: 'unit_1',
+          credits: 1,
+          amountPaid: 34.90,
+          currency: 'BRL',
+          provider: 'card',
+          status: 'PAID',
+          confirmedAt: DateTime.utc(2026, 10, 14, 15),
+          venueId: 'v1',
+          venueName: 'Bar Central',
+        ),
+        createdAt: DateTime.utc(2026, 10, 14, 15),
+        venue: const AdminSaleVenue(
+          id: 'v1',
+          name: 'Bar Central',
+          city: 'Campinas',
+          state: 'SP',
+        ),
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        providers: [Provider<AdminApi>.value(value: api)],
+        home: const SaleDetailScreen(id: 'sale-card'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('Cartão de crédito'), findsOneWidget);
+    expect(find.text(formatBrl(34.90)), findsOneWidget);
+    expect(find.text('card'), findsNothing);
+    expect(find.text('Google Play'), findsNothing);
+  });
+}
+
+class _SalesProbe extends FakeAdminApi {
+  _SalesProbe({required Paginated<AdminSale> catalog, this.detail})
+    : super(salesPage: catalog);
+
+  final AdminSaleDetail? detail;
+  final providers = <String?>[];
+  final pages = <int>[];
+
+  @override
+  Future<Paginated<AdminSale>> sales({
+    int page = 1,
+    int limit = 20,
+    String? provider,
+    String? from,
+    String? to,
+  }) async {
+    providers.add(provider);
+    pages.add(page);
+    return super.sales(
+      page: page,
+      limit: limit,
+      provider: provider,
+      from: from,
+      to: to,
+    );
+  }
+
+  @override
+  Future<AdminSaleDetail> sale(String id) async {
+    return detail!;
+  }
 }

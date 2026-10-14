@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/push/admin_push_coordinator.dart';
@@ -36,6 +37,9 @@ class AuthController extends ChangeNotifier {
       user = await api.me();
       await _startPush();
     } on ApiException {
+      await _clearSession();
+    } on PlatformException catch (error) {
+      if (!isRecoverableSecureReadFailure(error)) rethrow;
       await _clearSession();
     } finally {
       bootstrapping = false;

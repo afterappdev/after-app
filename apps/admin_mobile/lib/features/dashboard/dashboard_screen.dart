@@ -328,9 +328,10 @@ class _ProvidersCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          _row('Google Play', revenue.googlePlay, AdminTheme.purple),
-          _row('Apple', revenue.appStore, AdminTheme.pink),
-          _row('PIX', revenue.pix, AdminTheme.green),
+          _row(providerLabel('google_play'), revenue.googlePlay, AdminTheme.purple),
+          _row(providerLabel('app_store'), revenue.appStore, AdminTheme.pink),
+          _row(providerLabel('pix'), revenue.pix, AdminTheme.green),
+          _row(providerLabel('card'), revenue.card, AdminTheme.orange),
         ],
       ),
     );

@@ -239,6 +239,7 @@ AdminDashboard sampleDashboard({
   double play = 2000,
   double apple = 1500,
   double pix = 4325,
+  double card = 0,
 }) {
   return AdminDashboard(
     totals: AdminDashboardTotals(
@@ -256,6 +257,7 @@ AdminDashboard sampleDashboard({
         googlePlay: play,
         appStore: apple,
         pix: pix,
+        card: card,
       ),
     ),
     history: [
@@ -276,6 +278,7 @@ AdminDashboard sampleDashboard({
           googlePlay: play,
           appStore: apple,
           pix: pix,
+          card: card,
         ),
       ),
     ],

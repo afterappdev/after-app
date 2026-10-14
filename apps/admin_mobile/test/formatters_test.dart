@@ -15,12 +15,17 @@ void main() {
     expect(normalize(formatBrl(340)), 'R\$ 340,00');
     expect(normalize(formatBrl(0)), 'R\$ 0,00');
     expect(normalize(formatBrl(7825)), 'R\$ 7.825,00');
+    expect(normalize(formatBrl(34.90)), 'R\$ 34,90');
+    expect(normalize(formatBrl(409.30)), 'R\$ 409,30');
   });
 
   test('traduz providers para o painel', () {
     expect(providerLabel('google_play'), 'Google Play');
     expect(providerLabel('app_store'), 'Apple');
+    expect(providerLabel('apple_app_store'), 'Apple');
     expect(providerLabel('pix'), 'PIX');
+    expect(providerLabel('card'), 'Cartão de crédito');
+    expect(providerLabel('CARD'), 'Cartão de crédito');
   });
 
   test('traduz roles', () {

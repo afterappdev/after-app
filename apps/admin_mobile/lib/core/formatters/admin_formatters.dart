@@ -34,6 +34,8 @@ String providerLabel(String? provider) {
       return 'Apple';
     case 'pix':
       return 'PIX';
+    case 'card':
+      return 'Cartão de crédito';
     default:
       return provider?.trim().isNotEmpty == true ? provider!.trim() : '—';
   }

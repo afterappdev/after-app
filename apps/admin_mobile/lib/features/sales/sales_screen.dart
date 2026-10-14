@@ -52,8 +52,14 @@ class _SalesScreenState extends State<SalesScreen> {
               const SizedBox(width: 8),
               _chip(
                 controller.provider == 'pix',
-                'PIX',
+                providerLabel('pix'),
                 () => controller.setProvider('pix'),
+              ),
+              const SizedBox(width: 8),
+              _chip(
+                controller.provider == 'card',
+                providerLabel('card'),
+                () => controller.setProvider('card'),
               ),
             ],
           ),
