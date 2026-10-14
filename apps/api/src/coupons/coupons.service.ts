@@ -4,8 +4,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AdminPushService } from '../admin/push/admin-push.service';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { isCouponCode, normalizeCouponCode } from './coupon-code';
@@ -27,7 +29,10 @@ export type CouponCreateInput = CouponWriteInput & {
 
 @Injectable()
 export class CouponsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly adminPush?: AdminPushService,
+  ) {}
 
   async list(page: number, limit: number, skip: number) {
     const [total, rows] = await this.prisma.$transaction([
@@ -210,7 +215,7 @@ export class CouponsService {
       throw new ForbiddenException('Conta não é de estabelecimento');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const redeemed = await this.prisma.$transaction(async (tx) => {
       const located = await tx.creditCoupon.findUnique({ where: { code } });
       if (!located) {
         throw new NotFoundException('Cupom inexistente.');
@@ -254,7 +259,7 @@ export class CouponsService {
         );
       }
 
-      await tx.creditCouponRedemption.create({
+      const redemption = await tx.creditCouponRedemption.create({
         data: {
           couponId: coupon.id,
           venueId: venue.id,
@@ -271,11 +276,35 @@ export class CouponsService {
       });
 
       return {
+        redemptionId: redemption.id,
+        couponId: coupon.id,
         code: coupon.code,
         creditAmount: coupon.creditAmount,
         balance: wallet.balance,
+        venueName: venue.name,
       };
     });
+
+    await this.notifyCouponRedeemed(redeemed);
+    return {
+      code: redeemed.code,
+      creditAmount: redeemed.creditAmount,
+      balance: redeemed.balance,
+    };
+  }
+
+  private async notifyCouponRedeemed(redeemed: {
+    redemptionId: string;
+    couponId: string;
+    code: string;
+    venueName: string;
+  }) {
+    if (!this.adminPush) return;
+    try {
+      await this.adminPush.notifyCouponRedeemed(redeemed);
+    } catch {
+      // The redemption is already stored. Push failure must not undo it.
+    }
   }
 
   private toSummary(row: {

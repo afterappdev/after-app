@@ -7,6 +7,8 @@ export const ADMIN_PUSH_TYPES = {
   ACCOUNT_CREATED: 'ACCOUNT_CREATED',
   VENUE_CREATED: 'VENUE_CREATED',
   PURCHASE_PAID: 'PURCHASE_PAID',
+  REPORT_CREATED: 'REPORT_CREATED',
+  COUPON_REDEEMED: 'COUPON_REDEEMED',
 } as const;
 
 export function providerLabel(provider: string | null | undefined): string {
@@ -17,6 +19,8 @@ export function providerLabel(provider: string | null | undefined): string {
       return 'Apple';
     case 'pix':
       return 'PIX';
+    case 'card':
+      return 'Cartão de crédito';
     default:
       return 'pagamento';
   }
@@ -40,7 +44,11 @@ export function isRealPaidSale(
   if (!purchase.confirmedAt) return false;
   const packageKey = purchase.packageKey?.trim().toLowerCase();
   if (packageKey === 'welcome' || packageKey === 'stub') return false;
-  if ((purchase.provider ?? '').trim().toLowerCase() === 'stub') return false;
+  const provider = (purchase.provider ?? '').trim().toLowerCase();
+  if (provider === 'stub') return false;
+  // Card sales are real purchases. The admin finance provider list on this
+  // commit still omits card, so the push must not depend on that list.
+  if (provider === 'card') return true;
   return isRealSaleProvider(purchase.provider);
 }
 
@@ -68,10 +76,10 @@ export function accountCreatedCopy(
 export function venueCreatedCopy(venueName: string | null | undefined) {
   const trimmed = venueName?.trim();
   return {
-    title: 'Novo estabelecimento',
+    title: 'Novo estabelecimento cadastrado 🏪',
     body: trimmed
-      ? `${trimmed} foi cadastrado no After.`
-      : 'Um novo estabelecimento foi cadastrado no After.',
+      ? `${trimmed} acabou de se cadastrar no After.`
+      : 'Um novo estabelecimento acabou de se cadastrar no After.',
   };
 }
 
@@ -81,6 +89,9 @@ export function purchasePaidCopy(input: {
   provider: string | null | undefined;
   venueName?: string | null;
 }) {
+  if ((input.provider ?? '').trim().toLowerCase() === 'card') {
+    return cardPurchaseCopy(input);
+  }
   const creditsLabel =
     input.credits === 1
       ? '1 crédito vendido'
@@ -91,6 +102,86 @@ export function purchasePaidCopy(input: {
     title: 'Nova venda no After',
     body: venueName ? `${venueName} — ${sale}` : sale,
   };
+}
+
+function cardPurchaseCopy(input: {
+  credits: number;
+  amountPaid: unknown;
+  venueName?: string | null;
+}) {
+  const creditsLabel =
+    input.credits === 1 ? '1 crédito' : `${input.credits} créditos`;
+  const venueName = input.venueName?.trim() || 'Um estabelecimento';
+  return {
+    title: 'Nova compra de créditos 💳',
+    body: `${venueName} comprou ${creditsLabel} por ${formatBrl(input.amountPaid)} via cartão de crédito.`,
+  };
+}
+
+export function reportCreatedCopy(input: {
+  targetType: string;
+  reason?: string | null;
+  snapshot?: unknown;
+}) {
+  const kind = reportKindLabel(input.targetType);
+  return {
+    title: 'Nova denúncia recebida 🚩',
+    body: `Uma nova denúncia de ${kind} foi registrada no After. Motivo: ${reportReasonLabel(input.reason)}.`,
+  };
+}
+
+export function couponRedeemedCopy(input: {
+  code: string;
+  venueName?: string | null;
+}) {
+  const code = input.code.trim();
+  const venueName = input.venueName?.trim();
+  return {
+    title: 'Cupom utilizado 🎟️',
+    body: venueName
+      ? `O cupom ${code} foi utilizado no estabelecimento ${venueName}.`
+      : `O cupom ${code} foi utilizado em um estabelecimento.`,
+  };
+}
+
+function reportKindLabel(targetType: string): string {
+  switch (targetType.trim().toUpperCase()) {
+    case 'VENUE':
+      return 'estabelecimento';
+    case 'BANNER':
+      return 'promoção';
+    case 'PHOTO':
+      return 'foto';
+    case 'VIDEO':
+      return 'vídeo';
+    case 'REVIEW':
+      return 'comentário';
+    default:
+      return 'outro';
+  }
+}
+
+function reportReasonLabel(reason: string | null | undefined): string {
+  switch ((reason ?? '').trim().toUpperCase()) {
+    case 'INAPPROPRIATE':
+      return 'conteúdo impróprio';
+    case 'SPAM':
+      return 'spam';
+    case 'MISLEADING':
+      return 'informação enganosa';
+    case 'VIOLENCE':
+      return 'violência';
+    case 'SEXUAL':
+      return 'conteúdo sexual';
+    case 'HATE':
+      return 'discurso de ódio';
+    case 'COPYRIGHT':
+      return 'direitos autorais';
+    case 'OTHER':
+      return 'outro';
+    default:
+      return 'outro';
+  }
 }
 
 export function safePushErrorMessage(error: unknown, logger: Logger): string {

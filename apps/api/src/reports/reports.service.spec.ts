@@ -224,3 +224,169 @@ describe('ReportsService', () => {
     expect(prisma.report.create).not.toHaveBeenCalled();
   });
 });
+
+describe('ReportsService notifica o Admin só depois de gravar', () => {
+  function withPush() {
+    const prisma = createPrisma();
+    const push = {
+      notifyReportCreated: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new ReportsService(prisma as never, push as never);
+    return { prisma, push, service };
+  }
+
+  const venue = {
+    id: 'venue-1',
+    name: 'Bar Central',
+    description: 'descrição interna',
+    city: 'Campinas',
+    state: 'SP',
+    category: 'Bar',
+    logoUrl: null,
+    coverUrl: null,
+    ownerUserId: 'owner-1',
+    moderationHiddenAt: null,
+  };
+
+  it('denúncia de estabelecimento dispara um push com o nome do local', async () => {
+    const { prisma, push, service } = withPush();
+    prisma.venue.findUnique.mockResolvedValue(venue);
+    prisma.report.create.mockResolvedValue({
+      id: 'report-1',
+      status: 'PENDING',
+      createdAt: new Date('2026-10-08T12:00:00.000Z'),
+    });
+
+    const result = await service.create(user, {
+      targetType: ReportTargetType.VENUE,
+      targetId: 'venue-1',
+      reason: ReportReason.SPAM,
+      description: 'texto completo da denúncia',
+    });
+
+    expect(result.id).toBe('report-1');
+    expect(push.notifyReportCreated).toHaveBeenCalledTimes(1);
+    expect(push.notifyReportCreated).toHaveBeenCalledWith({
+      id: 'report-1',
+      targetType: 'VENUE',
+      reason: 'SPAM',
+      snapshot: expect.objectContaining({ name: 'Bar Central' }),
+    });
+    const payload = push.notifyReportCreated.mock.calls[0][0] as {
+      description?: string;
+    };
+    expect(payload.description).toBeUndefined();
+  });
+
+  it('denúncia de promoção usa o fluxo existente', async () => {
+    const { prisma, push, service } = withPush();
+    prisma.banner.findUnique.mockResolvedValue({
+      id: 'banner-1',
+      title: 'Happy hour',
+      description: 'segredo',
+      imageUrl: null,
+      status: 'ACTIVE',
+      venueId: 'venue-1',
+      venue: {
+        id: 'venue-1',
+        name: 'Bar Central',
+        ownerUserId: 'owner-1',
+        moderationHiddenAt: null,
+      },
+    });
+    prisma.report.create.mockResolvedValue({
+      id: 'report-2',
+      status: 'PENDING',
+      createdAt: new Date(),
+    });
+
+    await service.create(user, {
+      targetType: ReportTargetType.BANNER,
+      targetId: 'banner-1',
+      reason: ReportReason.MISLEADING,
+    });
+
+    expect(push.notifyReportCreated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'report-2',
+        targetType: 'BANNER',
+        reason: 'MISLEADING',
+        snapshot: expect.objectContaining({ venueName: 'Bar Central' }),
+      }),
+    );
+  });
+
+  it('denúncia duplicada ou inválida não dispara push', async () => {
+    const duplicate = withPush();
+    duplicate.prisma.venue.findUnique.mockResolvedValue(venue);
+    duplicate.prisma.report.create.mockRejectedValue(
+      Object.assign(new Error('unique'), { code: 'P2002' }),
+    );
+    await expect(
+      duplicate.service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'venue-1',
+        reason: ReportReason.SPAM,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(duplicate.push.notifyReportCreated).not.toHaveBeenCalled();
+
+    const missing = withPush();
+    missing.prisma.venue.findUnique.mockResolvedValue(null);
+    await expect(
+      missing.service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'missing',
+        reason: ReportReason.SPAM,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(missing.push.notifyReportCreated).not.toHaveBeenCalled();
+
+    const own = withPush();
+    own.prisma.venue.findUnique.mockResolvedValue({
+      ...venue,
+      ownerUserId: 'user-1',
+    });
+    await expect(
+      own.service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'venue-1',
+        reason: ReportReason.SPAM,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(own.push.notifyReportCreated).not.toHaveBeenCalled();
+  });
+
+  it('falha ao salvar não dispara push', async () => {
+    const { prisma, push, service } = withPush();
+    prisma.venue.findUnique.mockResolvedValue(venue);
+    prisma.report.create.mockRejectedValue(new Error('db down'));
+    await expect(
+      service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'venue-1',
+        reason: ReportReason.SPAM,
+      }),
+    ).rejects.toThrow('db down');
+    expect(push.notifyReportCreated).not.toHaveBeenCalled();
+  });
+
+  it('falha do FCM depois de gravar mantém a denúncia', async () => {
+    const { prisma, push, service } = withPush();
+    prisma.venue.findUnique.mockResolvedValue(venue);
+    prisma.report.create.mockResolvedValue({
+      id: 'report-1',
+      status: 'PENDING',
+      createdAt: new Date(),
+    });
+    push.notifyReportCreated.mockRejectedValue(new Error('fcm down'));
+
+    await expect(
+      service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'venue-1',
+        reason: ReportReason.SPAM,
+      }),
+    ).resolves.toMatchObject({ id: 'report-1' });
+  });
+});

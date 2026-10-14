@@ -3,10 +3,12 @@ import { AdminPushEventType, CreditPurchase, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   accountCreatedCopy,
+  couponRedeemedCopy,
+  isRealPaidSale,
   purchasePaidCopy,
+  reportCreatedCopy,
   safePushErrorMessage,
   venueCreatedCopy,
-  isRealPaidSale,
 } from './admin-push.copy';
 import {
   FIREBASE_MESSAGING_PORT,
@@ -86,6 +88,61 @@ export class AdminPushService {
           data: {
             type: AdminPushEventType.PURCHASE_PAID,
             entityId: purchase.id,
+          },
+        },
+      });
+    } catch (error) {
+      safePushErrorMessage(error, this.logger);
+    }
+  }
+
+  async notifyReportCreated(input: {
+    id: string;
+    targetType: string;
+    reason?: string | null;
+    snapshot?: unknown;
+  }): Promise<void> {
+    try {
+      const copy = reportCreatedCopy(input);
+      await this.dispatch({
+        type: AdminPushEventType.REPORT_CREATED,
+        entityId: input.id,
+        payload: {
+          ...copy,
+          data: {
+            type: AdminPushEventType.REPORT_CREATED,
+            entityId: input.id,
+          },
+        },
+      });
+    } catch (error) {
+      safePushErrorMessage(error, this.logger);
+    }
+  }
+
+  async notifyCouponRedeemed(input: {
+    redemptionId: string;
+    couponId: string;
+    code: string;
+    venueName?: string | null;
+  }): Promise<void> {
+    try {
+      const redemptionId = input.redemptionId.trim();
+      const code = input.code.trim();
+      if (!redemptionId || !code) return;
+      const copy = couponRedeemedCopy({
+        code,
+        venueName: input.venueName,
+      });
+      await this.dispatch({
+        type: AdminPushEventType.COUPON_REDEEMED,
+        entityId: redemptionId,
+        payload: {
+          ...copy,
+          data: {
+            type: AdminPushEventType.COUPON_REDEEMED,
+            entityId: redemptionId,
+            couponId: input.couponId.trim(),
           },
         },
       });

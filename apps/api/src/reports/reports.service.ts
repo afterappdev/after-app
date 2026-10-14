@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   BannerStatus,
@@ -14,6 +15,7 @@ import {
 } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { AdminPushService } from '../admin/push/admin-push.service';
 
 const CONTENT_GONE = 'Conteúdo não encontrado';
 const ALREADY_REPORTED = 'Você já denunciou este conteúdo.';
@@ -28,7 +30,10 @@ type ResolvedTarget = {
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly adminPush?: AdminPushService,
+  ) {}
 
   async create(user: AuthUser, dto: {
     targetType: ReportTargetType;
@@ -73,6 +78,12 @@ export class ReportsService {
         },
         select: { id: true, status: true, createdAt: true },
       });
+      await this.notifyReport(
+        report.id,
+        dto.targetType,
+        dto.reason,
+        target.snapshot,
+      );
       return report;
     } catch (error) {
       const code = (error as { code?: string }).code;
@@ -80,6 +91,25 @@ export class ReportsService {
         throw new ConflictException(ALREADY_REPORTED);
       }
       throw error;
+    }
+  }
+
+  private async notifyReport(
+    id: string,
+    targetType: ReportTargetType,
+    reason: ReportReason,
+    snapshot: TargetSnapshot,
+  ) {
+    if (!this.adminPush) return;
+    try {
+      await this.adminPush.notifyReportCreated({
+        id,
+        targetType,
+        reason,
+        snapshot,
+      });
+    } catch {
+      // The report is already stored. Push failure must not undo it.
     }
   }
 

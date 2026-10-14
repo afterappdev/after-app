@@ -75,6 +75,8 @@ enum AdminPushEventType {
   ACCOUNT_CREATED
   VENUE_CREATED
   PURCHASE_PAID
+  REPORT_CREATED
+  COUPON_REDEEMED
 }
 
 /// FCM registration tokens for After Admin devices. Not used by the consumer app.
