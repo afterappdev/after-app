@@ -169,6 +169,7 @@ model Venue {
   reviews       Review[]
   wallet        CreditWallet?
   purchases     CreditPurchase[]
+  refundAudits  CreditRefundAudit[]
   banners             Banner[]
   notifications       Notification[]
   blockedByUsers      UserVenueBlock[]
@@ -246,10 +247,40 @@ model CreditPurchase {
   fiscalEmail       String?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  refundAudits        CreditRefundAudit[]
 
   @@index([venueId, createdAt])
   @@index([status, confirmedAt])
   @@index([provider, status, confirmedAt])
+}
+
+/// One row per purchase and kind. Duplicate webhooks do not insert again.
+model CreditRefundAudit {
+  id                 String         @id @default(cuid())
+  purchaseId         String
+  purchase           CreditPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  venueId            String
+  venue              Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  /// shortfall: credits not recovered on a full refund.
+  /// partial_review: latest proven partial sum for this purchase. It only increases.
+  /// refund_review: unproven refund signal. It stays after a later proof and is not a debit.
+  kind               String
+  creditsRecovered   Int?
+  creditsUnrecovered Int?
+  originalAmount     Decimal?       @db.Decimal(10, 2)
+  refundedAmount     Decimal?       @db.Decimal(10, 2)
+  refundId           String?
+  createdAt          DateTime       @default(now())
+
+  @@unique([purchaseId, kind])
+  @@index([venueId, createdAt])
+}
+
+/// Single lease row so paid-card reconciliation cannot run twice at once.
+model CardReconcileLock {
+  id          Int      @id
+  lockedUntil DateTime
+  lockedBy    String
 }
 
 /// Bonus credits granted by an admin code. Not a store discount.

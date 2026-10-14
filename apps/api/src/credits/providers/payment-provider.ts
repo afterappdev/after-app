@@ -4,6 +4,7 @@ export const CANONICAL_PAYMENT_PROVIDERS = [
   'google_play',
   'app_store',
   'pix',
+  'card',
 ] as const;
 
 export type CanonicalPaymentProvider =
@@ -14,6 +15,7 @@ const PROVIDER_ALIASES: Record<string, CanonicalPaymentProvider> = {
   app_store: 'app_store',
   apple_app_store: 'app_store',
   pix: 'pix',
+  card: 'card',
 };
 
 export const STORE_PROVIDER_INPUTS = [
@@ -54,6 +56,29 @@ export function pixOrderIdFromProviderTxId(
   const externalId = providerTxId.slice(prefix.length).trim();
   if (!externalId) return null;
   if (externalId.startsWith('pending:') || externalId.startsWith('duplicate:')) {
+    return null;
+  }
+  if (/^\d+$/.test(externalId)) return null;
+  return externalId;
+}
+
+/**
+ * Real Mercado Pago Order id for a card purchase.
+ * Ignores in-flight operation keys (`card:op:…`) and placeholders.
+ */
+export function cardOrderIdFromProviderTxId(
+  providerTxId?: string | null,
+): string | null {
+  if (!providerTxId) return null;
+  const prefix = 'card:';
+  if (!providerTxId.startsWith(prefix)) return null;
+  const externalId = providerTxId.slice(prefix.length).trim();
+  if (!externalId) return null;
+  if (
+    externalId.startsWith('op:') ||
+    externalId.startsWith('pending:') ||
+    externalId.startsWith('duplicate:')
+  ) {
     return null;
   }
   if (/^\d+$/.test(externalId)) return null;

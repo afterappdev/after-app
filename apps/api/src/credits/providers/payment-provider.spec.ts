@@ -9,6 +9,8 @@ import { AppleAppStorePaymentProvider } from './apple-app-store.provider';
 import {
   extractMercadoPagoOrderId,
   formatMercadoPagoErrorLog,
+  formatMercadoPagoWebhookSignatureLog,
+  inspectMercadoPagoWebhookSignature,
   mapMercadoPagoOrderStatus,
   MercadoPagoOrdersClient,
   mercadoPagoErrorLogDetails,
@@ -17,6 +19,7 @@ import {
 } from './mercado-pago-orders';
 import {
   buildProviderTxId,
+  cardOrderIdFromProviderTxId,
   normalizeProviderId,
   pixOrderIdFromProviderTxId,
 } from './payment-provider';
@@ -97,6 +100,7 @@ describe('payment provider contract', () => {
     expect(normalizeProviderId('apple_app_store')).toBe('app_store');
     expect(normalizeProviderId('google_play')).toBe('google_play');
     expect(normalizeProviderId('pix')).toBe('pix');
+    expect(normalizeProviderId('card')).toBe('card');
   });
 
   it('rejeita provider desconhecido', () => {
@@ -112,8 +116,12 @@ describe('payment provider contract', () => {
       'app_store:1000000123',
     );
     expect(buildProviderTxId('pix', 'pay_1')).toBe('pix:pay_1');
+    expect(buildProviderTxId('card', 'ORD01CARD')).toBe('card:ORD01CARD');
     expect(buildProviderTxId('google_play', 'token-1')).not.toBe(
       buildProviderTxId('app_store', 'token-1'),
+    );
+    expect(buildProviderTxId('card', 'ORD01CARD')).not.toBe(
+      buildProviderTxId('pix', 'ORD01CARD'),
     );
   });
 
@@ -122,6 +130,16 @@ describe('payment provider contract', () => {
     expect(pixOrderIdFromProviderTxId('pix:pending:abc')).toBeNull();
     expect(pixOrderIdFromProviderTxId('pix:duplicate:p1')).toBeNull();
     expect(pixOrderIdFromProviderTxId('google_play:order-1')).toBeNull();
+    expect(pixOrderIdFromProviderTxId('card:ORD01CARD')).toBeNull();
+  });
+
+  it('extrai Order id do cartão e ignora a operação em andamento', () => {
+    expect(cardOrderIdFromProviderTxId('card:ORD01CARD')).toBe('ORD01CARD');
+    expect(cardOrderIdFromProviderTxId('card:op:cpabc:deadbeef')).toBeNull();
+    expect(cardOrderIdFromProviderTxId('card:pending:abc')).toBeNull();
+    expect(cardOrderIdFromProviderTxId('card:duplicate:p1')).toBeNull();
+    expect(cardOrderIdFromProviderTxId('pix:ORD01CARD')).toBeNull();
+    expect(cardOrderIdFromProviderTxId('card:12345')).toBeNull();
   });
 
   it('Apple sem credenciais em production falha e não inventa validação', async () => {
@@ -209,18 +227,20 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
     ).toBeNull();
   });
 
-  it('valida HMAC do webhook conforme o manifesto do Mercado Pago', () => {
+  it('aceita a ordem em maiúsculas com a caixa original e rejeita o manifesto em minúsculas', () => {
     const secret = 'whsec_test';
-    const dataId = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
+    const dataId = 'ORDTST01M4EJXGH4C0JXW2Z603Y25GBB';
     const requestId = '2066ca19-c6f1-498a-be75-1923005edd06';
     const ts = '1742505638683';
-    const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
-    const v1 = createHmac('sha256', secret).update(manifest).digest('hex');
+    const sign = (id: string) =>
+      createHmac('sha256', secret)
+        .update(`id:${id};request-id:${requestId};ts:${ts};`)
+        .digest('hex');
 
     expect(
       verifyMercadoPagoWebhookSignature({
         secret,
-        xSignature: `ts=${ts},v1=${v1}`,
+        xSignature: `ts=${ts},v1=${sign(dataId)}`,
         xRequestId: requestId,
         dataId,
       }),
@@ -228,8 +248,67 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
     expect(
       verifyMercadoPagoWebhookSignature({
         secret,
+        xSignature: `ts=${ts},v1=${sign(dataId.toLowerCase())}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
         xSignature: `ts=${ts},v1=${'0'.repeat(64)}`,
         xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret: 'whsec_other',
+        xSignature: `ts=${ts},v1=${sign(dataId)}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+  });
+
+  it('confere o manifesto literal da documentação e não trata o v1 ilustrativo como vetor', () => {
+    const secret = 'whsec_documented_template';
+    const dataId = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
+    const requestId = '2066ca19-c6f1-498a-be75-1923005edd06';
+    const ts = '1742505638683';
+    const manifest = 'id:ORD01JQ4S4KY8HWQ6NA5PXB65B3D3;request-id:2066ca19-c6f1-498a-be75-1923005edd06;ts:1742505638683;';
+    const v1 = createHmac('sha256', secret).update(manifest).digest('hex');
+    const illustrated =
+      'ced36ab6d33566bb1e16c125819b8d840d6b8ef136b0b9127c76064466f5229b';
+
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts}, v1=${v1}`,
+        xRequestId: ` ${requestId} `,
+        dataId: ` ${dataId} `,
+      }),
+    ).toBe(true);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${illustrated}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${createHmac('sha256', secret).update(`id:${dataId};ts:${ts};`).digest('hex')}`,
+        dataId,
+      }),
+    ).toBe(true);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${createHmac('sha256', secret).update(`id:${dataId};request-id:${requestId};ts:${ts};`).digest('hex')}`,
+        xRequestId: `${requestId}, outro-request`,
         dataId,
       }),
     ).toBe(false);
@@ -519,39 +598,107 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     ).toThrow(UnauthorizedException);
   });
 
-  it('HMAC aceita data.id aninhado pelo parser do Express', () => {
+  it('HMAC usa o data.id da query na caixa original e ignora um body diferente', () => {
     process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'whsec_test';
-    const dataId = 'ORD01JQ4S4KY8HWQ6NA5PXB65B3D3';
+    const dataId = 'ORDTST01M4EJXGH4C0JXW2Z603Y25GBB';
     const requestId = '2066ca19-c6f1-498a-be75-1923005edd06';
     const ts = '1742505638683';
-    const manifest = `id:${dataId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+    const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
     const v1 = createHmac('sha256', 'whsec_test').update(manifest).digest('hex');
     const pix = providerWithClient({});
+    const payload = {
+      action: 'order.updated',
+      type: 'order',
+      id: '123456',
+      data: { id: '123456' },
+    };
+    const query = { data: { id: dataId }, type: 'order' };
+    const logged = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    try {
+      expect(() =>
+        pix.assertWebhookSignature(
+          { xSignature: `ts=${ts},v1=${v1}`, xRequestId: requestId, query },
+          payload,
+        ),
+      ).not.toThrow();
+      expect(pix.extractOrderId(payload, query)).toBe(dataId);
+      const line = logged.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(line).toContain('signature accepted');
+      expect(line).toContain('source=query');
+      expect(line).toContain('format=alphanumeric');
+      expect(line).toContain('case=upper');
+      expect(line).toContain('normalized=original');
+      expect(line).toContain('mismatch=true');
+      expect(line).not.toContain(dataId);
+      expect(line).not.toContain('whsec_test');
+      expect(line).not.toContain(v1);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('rejeita webhook sem x-signature, sem x-request-id assinado e com segredo errado', () => {
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = 'whsec_test';
+    const dataId = '123456';
+    const ts = '1742505638683';
+    const requestId = 'req-1';
+    const pix = providerWithClient({});
+    const signed = (manifest: string, secret = 'whsec_test') =>
+      createHmac('sha256', secret).update(manifest).digest('hex');
+    const query = { 'data.id': dataId };
+
+    expect(() => pix.assertWebhookSignature({ query }, { data: { id: dataId } })).toThrow(
+      UnauthorizedException,
+    );
+
+    const withoutRequest = `id:${dataId};ts:${ts};`;
+    expect(() =>
+      pix.assertWebhookSignature(
+        { xSignature: `ts=${ts},v1=${signed(withoutRequest)}`, query },
+        { data: { id: dataId } },
+      ),
+    ).not.toThrow();
+
+    const withRequest = `id:${dataId};request-id:${requestId};ts:${ts};`;
+    expect(() =>
+      pix.assertWebhookSignature(
+        { xSignature: `ts=${ts},v1=${signed(withRequest)}`, query },
+        { data: { id: dataId } },
+      ),
+    ).toThrow(UnauthorizedException);
+
     expect(() =>
       pix.assertWebhookSignature(
         {
-          xSignature: `ts=${ts},v1=${v1}`,
+          xSignature: `ts=${ts},v1=${signed(withRequest, 'whsec_other')}`,
           xRequestId: requestId,
-          query: { data: { id: dataId }, type: 'order' },
+          query,
         },
-        {
-          action: 'order.processed',
-          type: 'order',
-          id: '123456',
-          data: { id: dataId },
-        },
+        { data: { id: dataId } },
       ),
-    ).not.toThrow();
+    ).toThrow(UnauthorizedException);
+
+    const numeric = inspectMercadoPagoWebhookSignature({
+      payload: { data: { id: dataId } },
+      query,
+      xSignature: `ts=${ts},v1=${signed(withoutRequest)}`,
+    });
+    expect(numeric.format).toBe('numeric');
+    expect(formatMercadoPagoWebhookSignatureLog('accepted', numeric)).toContain(
+      'format=numeric',
+    );
   });
 
   it('sandbox=true usa e-mail @testuser.com e first_name APRO, ignorando o pagador real', async () => {
     process.env.NODE_ENV = 'test';
     process.env.MERCADO_PAGO_SANDBOX = 'true';
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = 'TEST-access-token';
     const createOrder = jest.fn().mockResolvedValue({
       status: 201,
       data: mpPixOrder(),
     });
     const pix = providerWithClient({ createOrder });
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = 'TEST-access-token';
 
     await pix.createCharge({
       purchaseId: 'purchase-1',
@@ -624,6 +771,63 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     expect(createOrder).not.toHaveBeenCalled();
   });
 
+  it('sandbox aceita Access Token APP_USR das credenciais de teste', async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.MERCADO_PAGO_SANDBOX = 'true';
+    const createOrder = jest.fn().mockResolvedValue({
+      status: 201,
+      data: mpPixOrder(),
+    });
+    const pix = providerWithClient({ createOrder });
+
+    await pix.createCharge({
+      purchaseId: 'purchase-1',
+      packageKey: 'unit_1',
+      amountBrl: 25,
+      payerEmail: 'venue@after.com',
+      idempotencyKey: 'idem-test-app-usr',
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('produção com credencial de teste não cria PIX', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createOrder = jest.fn();
+    const pix = providerWithClient({ createOrder });
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = 'TEST-access-token';
+
+    await expect(
+      pix.createCharge({
+        purchaseId: 'purchase-1',
+        packageKey: 'unit_1',
+        amountBrl: 25,
+        payerEmail: 'venue@after.com',
+        idempotencyKey: 'idem-test-token',
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('produção com credencial APP_USR e sandbox desligado cria PIX', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.MERCADO_PAGO_SANDBOX = 'false';
+    const createOrder = jest.fn().mockResolvedValue({
+      status: 201,
+      data: mpPixOrder(),
+    });
+    const pix = providerWithClient({ createOrder });
+
+    await pix.createCharge({
+      purchaseId: 'purchase-1',
+      packageKey: 'unit_1',
+      amountBrl: 25,
+      payerEmail: 'venue@after.com',
+      idempotencyKey: 'idem-live-prod',
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
   it('fora do sandbox, ausência de e-mail real é rejeitada', async () => {
     process.env.NODE_ENV = 'test';
     process.env.MERCADO_PAGO_SANDBOX = 'false';
@@ -672,5 +876,98 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
       }
     }
     expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it('GET PIX distingue reembolso integral, parcial, moeda e dados ausentes', async () => {
+    const read = async (data: Record<string, unknown>) => {
+      const pix = providerWithClient({
+        getOrder: jest.fn().mockResolvedValue({ status: 200, data }),
+      });
+      return pix.getOrder('ORD01TESTPIX');
+    };
+
+    const full = await read(
+      mpPixOrder({
+        status: 'refunded',
+        status_detail: 'refunded',
+        currency: 'brl',
+        total_amount: '34.90',
+      }),
+    );
+    expect(full.status).toBe('REFUNDED');
+    expect(full.refundProof).toBe('full');
+    expect(full.currency).toBe('BRL');
+    expect(full.amountBrl).toBe(34.9);
+
+    const partial = await read(
+      mpPixOrder({ status: 'processed', status_detail: 'partially_refunded', currency: 'BRL' }),
+    );
+    expect(partial.status).toBe('REFUNDED');
+    expect(partial.refundProof).toBe('partial');
+
+    const detailOnly = await read(
+      mpPixOrder({ status: 'processed', status_detail: 'refunded', currency: 'BRL' }),
+    );
+    expect(detailOnly.refundProof).toBe('full');
+
+    const unproven = await read(
+      mpPixOrder({ status: 'processed', status_detail: 'refund_in_process', currency: 'BRL' }),
+    );
+    expect(unproven.status).toBe('REFUNDED');
+    expect(unproven.refundProof).toBe('unproven');
+
+    const usd = await read(mpPixOrder({ status: 'refunded', currency: 'USD' }));
+    expect(usd.currency).toBe('USD');
+
+    const absent = await read(mpPixOrder({ status: 'refunded', currency: '', currency_id: '' }));
+    expect(absent.currency).toBeNull();
+
+    const conflict = await read(
+      mpPixOrder({ status: 'refunded', currency: 'USD', currency_id: 'BRL' }),
+    );
+    expect(conflict.currency).toBeNull();
+
+    const barePartial = await read(
+      mpPixOrder({
+        status: 'processed',
+        status_detail: 'partially_refunded',
+        currency: 'BRL',
+      }),
+    );
+    expect(barePartial.refundProof).toBe('partial');
+    expect(barePartial.provenPartialRefund).toBeNull();
+
+    const proved = await read(
+      mpPixOrder({
+        status: 'processed',
+        status_detail: 'partially_refunded',
+        currency: 'BRL',
+        total_amount: '34.90',
+        transactions: {
+          payments: [
+            {
+              id: 'PAY01TESTPIX',
+              status: 'processed',
+              status_detail: 'partially_refunded',
+              amount: '34.90',
+              payment_method: { id: 'pix', type: 'bank_transfer' },
+            },
+          ],
+          refunds: [
+            {
+              id: 'REF-PIX-1',
+              status: 'processed',
+              amount: '10.00',
+              transaction_id: 'PAY01TESTPIX',
+            },
+          ],
+        },
+      }),
+    );
+    expect(proved.provenPartialRefund).toEqual({
+      refundedAmountBrl: 10,
+      refundId: 'REF-PIX-1',
+    });
+    expect(proved.amountBrl).toBe(34.9);
   });
 });

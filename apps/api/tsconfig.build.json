@@ -5,6 +5,7 @@
     "test",
     "dist",
     "**/*spec.ts",
-    "**/apple-storekit-test-jws.ts"
+    "**/apple-storekit-test-jws.ts",
+    "**/card-refund.sandbox-fixture.ts"
   ]
 }

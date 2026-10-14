@@ -16,13 +16,115 @@ export type AfterPurchaseStatus =
 export type MercadoPagoHttpResult = {
   status: number;
   data: unknown;
+  retryAfter?: string | null;
 };
+
+/** Reconciliation GET aborted by its own deadline. The message stays generic. */
+export class MercadoPagoTimeoutError extends Error {
+  constructor() {
+    super('timeout');
+    this.name = 'MercadoPagoTimeoutError';
+  }
+}
+
+export type MercadoPagoTransportKind = 'timeout' | 'dns' | 'connection' | 'tls' | 'unknown';
+
+/** Network failure whose message is already sanitized. `transport` is taken from the error code, not guessed. */
+export class MercadoPagoNetworkError extends Error {
+  constructor(
+    readonly transport: Exclude<MercadoPagoTransportKind, 'timeout'>,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'MercadoPagoNetworkError';
+  }
+}
+
+const DNS_CODES = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENODATA']);
+const CONNECTION_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ECONNABORTED',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CLOSED',
+]);
+const TLS_CODES = new Set([
+  'CERT_HAS_EXPIRED',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'ERR_SSL_WRONG_VERSION_NUMBER',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+]);
+
+function errorCode(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || !('code' in value)) return null;
+  const code = (value as { code?: unknown }).code;
+  return typeof code === 'string' && code.trim() ? code.trim().toUpperCase() : null;
+}
+
+function walkThrown(error: unknown, visit: (value: object) => void, seen = new Set<unknown>()): void {
+  if (!error || typeof error !== 'object' || seen.has(error)) return;
+  seen.add(error);
+  visit(error);
+  const record = error as { cause?: unknown; errors?: unknown };
+  if (Array.isArray(record.errors)) {
+    for (const item of record.errors) walkThrown(item, visit, seen);
+  }
+  if (record.cause) walkThrown(record.cause, visit, seen);
+}
+
+function codeKind(code: string): MercadoPagoTransportKind | null {
+  if (DNS_CODES.has(code)) return 'dns';
+  if (CONNECTION_CODES.has(code)) return 'connection';
+  if (TLS_CODES.has(code)) return 'tls';
+  return null;
+}
+
+/**
+ * Reads only error name, `code`, and the same tokens already present in the message.
+ * An unrecognized failure stays `unknown`.
+ */
+export function classifyMercadoPagoNetworkFailure(error: unknown): MercadoPagoTransportKind {
+  if (error instanceof MercadoPagoTimeoutError) return 'timeout';
+  if (error instanceof MercadoPagoNetworkError) return error.transport;
+  let kind: MercadoPagoTransportKind | null = null;
+  const texts: string[] = [];
+  walkThrown(error, (value) => {
+    const name = value instanceof Error ? value.name : '';
+    if (value instanceof MercadoPagoTimeoutError || name === 'AbortError') {
+      kind = 'timeout';
+    }
+    const code = errorCode(value);
+    const fromCode = code ? codeKind(code) : null;
+    if (fromCode && kind == null) kind = fromCode;
+    if (value instanceof Error && value.message) texts.push(value.message);
+  });
+  if (kind) return kind;
+  const tokens = texts
+    .join(' ')
+    .toUpperCase()
+    .split(/[^A-Z0-9_]+/)
+    .filter((token) => token.length > 2);
+  for (const token of tokens) {
+    const found = codeKind(token);
+    if (found) return found;
+  }
+  return 'unknown';
+}
 
 export type MercadoPagoOrderPayment = {
   id?: string;
   status?: string;
   status_detail?: string;
   amount?: string;
+  paid_amount?: string;
+  reference_id?: string;
   date_of_expiration?: string;
   payment_method?: {
     id?: string;
@@ -30,7 +132,17 @@ export type MercadoPagoOrderPayment = {
     qr_code?: string | null;
     qr_code_base64?: string | null;
     ticket_url?: string | null;
+    installments?: number;
   };
+};
+
+export type MercadoPagoOrderRefund = {
+  id?: string;
+  amount?: string;
+  transaction_amount?: string;
+  transaction_id?: string;
+  reference_id?: string;
+  status?: string;
 };
 
 export type MercadoPagoOrder = {
@@ -39,8 +151,13 @@ export type MercadoPagoOrder = {
   status_detail?: string;
   total_amount?: string;
   external_reference?: string;
+  /** Legacy Orders field used by older fixtures. */
+  currency_id?: string;
+  /** Field returned by the current Orders API. */
+  currency?: string;
   transactions?: {
     payments?: MercadoPagoOrderPayment[] | MercadoPagoOrderPayment;
+    refunds?: MercadoPagoOrderRefund[] | MercadoPagoOrderRefund;
   };
 };
 
@@ -94,23 +211,96 @@ export function firstOrderPayment(
   return undefined;
 }
 
+export type MercadoPagoOrderEnvelope = {
+  order: MercadoPagoOrder | null;
+  orderId: string | null;
+  status: string | null;
+  statusDetail: string | null;
+  code: string | null;
+  detail: string | null;
+};
+
 /**
- * `data.id` from an Orders webhook: JSON body and/or query.
+ * Orders HTTP 402 often wraps the created order in `data` and the reason in
+ * `errors[].details`. A missing root `id` does not mean the order is absent.
+ */
+export function readMercadoPagoOrderEnvelope(
+  data: unknown,
+): MercadoPagoOrderEnvelope {
+  const root = asRecord(data);
+  const nested = asRecord(root?.data);
+  const nestedIsOrder = Boolean(
+    nested && (nested.id || nested.status || nested.transactions),
+  );
+  const order = (nestedIsOrder ? nested : root) as MercadoPagoOrder | null;
+  const payment = firstOrderPayment(order);
+  const error = firstErrorRecord(root ?? {});
+  const detail =
+    errorDetailText(error?.details) ??
+    textOrNull(payment?.status_detail) ??
+    textOrNull(order?.status_detail);
+  return {
+    order: order && (order.id || order.status || order.transactions) ? order : null,
+    orderId: validOrderId(textOrNull(order?.id)),
+    status: textOrNull(order?.status) ?? textOrNull(payment?.status),
+    statusDetail: textOrNull(order?.status_detail) ?? textOrNull(payment?.status_detail),
+    code: textOrNull(error?.code) ?? textOrNull(root?.code),
+    detail,
+  };
+}
+
+/** Decline is definitive only from a failed/cancelled status or a specific reason. */
+export function isUnequivocalCardDecline(
+  envelope: MercadoPagoOrderEnvelope,
+): boolean {
+  const status = (envelope.status ?? '').trim().toLowerCase();
+  if (
+    status === 'processing' ||
+    status === 'created' ||
+    status === 'action_required' ||
+    status === 'pending'
+  ) {
+    return false;
+  }
+  if (
+    status === 'failed' ||
+    status === 'canceled' ||
+    status === 'cancelled' ||
+    status === 'expired'
+  ) {
+    return true;
+  }
+  const detail = (envelope.detail ?? '').trim().toLowerCase();
+  if (!detail || detail === 'failed' || detail === 'error' || detail === '402') {
+    return false;
+  }
+  return /cc_rejected|rejected_|required_call_for_authorize|call_for_authorize|insufficient|bad_filled|invalid_/.test(
+    detail,
+  );
+}
+
+/**
+ * Resource id for processing. The signed id is the query param, so it wins
+ * when both are present. The body is only a fallback. Never uses the
+ * notification envelope `id` (e.g. `"123456"`).
  * Express `qs` parses `?data.id=ORD…` as `{ data: { id } }` — not `{ 'data.id' }`.
- * Never uses the notification envelope `id` (e.g. `"123456"`), which is not the Order id.
  */
 export function extractMercadoPagoDataId(
   payload?: unknown,
   query?: Record<string, unknown>,
 ): string | null {
-  const body = asRecord(payload);
-  const data = asRecord(body?.data);
   return (
-    coerceResourceId(data?.id) ||
-    queryParam(query, 'data.id') ||
-    queryParam(query, 'data_id') ||
+    extractMercadoPagoSignatureDataId(query) ||
+    bodyDataId(payload) ||
     null
   );
+}
+
+/** Query `data.id` only. The HMAC manifest does not cover the JSON body. */
+export function extractMercadoPagoSignatureDataId(
+  query?: Record<string, unknown>,
+): string | null {
+  return queryParam(query, 'data.id') || queryParam(query, 'data_id');
 }
 
 export function extractMercadoPagoOrderId(
@@ -144,7 +334,10 @@ export function verifyMercadoPagoWebhookSignature(input: {
   }
   if (!ts || !hash) return false;
 
-  const dataId = (input.dataId ?? '').trim().toLowerCase();
+  // Orders manual still says to lowercase alphanumeric ids. Mercado Pago signs
+  // the original query value (sdk-nodejs#439). A numeric simulation is unchanged
+  // either way; an uppercase Order id is not.
+  const dataId = (input.dataId ?? '').trim();
   const requestId = (input.xRequestId ?? '').trim();
   const parts: string[] = [];
   if (dataId) parts.push(`id:${dataId}`);
@@ -193,12 +386,16 @@ export function mercadoPagoErrorLogDetails(data: unknown): Record<string, unknow
   if (!record) return {};
 
   const details = pickSafeDiagnosticRecord(record);
-  const payment = firstOrderPayment(record as MercadoPagoOrder);
+  const envelope = readMercadoPagoOrderEnvelope(data);
+  const payment = firstOrderPayment(envelope.order);
   if (payment) {
     mergePreferSpecific(details, pickSafeDiagnosticRecord(payment as Record<string, unknown>));
   }
   const firstError = firstErrorRecord(record);
   if (firstError) mergePreferSpecific(details, pickSafeDiagnosticRecord(firstError, 1));
+  if (envelope.orderId) details.order_id = envelope.orderId;
+  if (envelope.status) mergePreferSpecific(details, { status: envelope.status });
+  if (envelope.detail) mergePreferSpecific(details, { status_detail: envelope.detail });
   return details;
 }
 
@@ -235,6 +432,99 @@ function timingSafeEqualHex(left: string, right: string): boolean {
   } catch {
     return false;
   }
+}
+
+export type MercadoPagoWebhookSignatureDiagnostic = {
+  source: 'query' | 'absent';
+  format: 'absent' | 'numeric' | 'alphanumeric' | 'other';
+  letterCase: 'absent' | 'upper' | 'lower' | 'mixed' | 'numeric';
+  normalized: 'none' | 'original';
+  query: 'present' | 'absent';
+  body: 'present' | 'absent';
+  mismatch: boolean;
+  xSignature: 'present' | 'absent';
+  ts: 'present' | 'absent';
+  v1: 'present' | 'absent';
+  xRequestId: 'present' | 'absent';
+};
+
+/** Safe fields for a webhook log. No id, header value, secret, or body. */
+export function inspectMercadoPagoWebhookSignature(input: {
+  payload?: unknown;
+  query?: Record<string, unknown>;
+  xSignature?: string;
+  xRequestId?: string;
+}): MercadoPagoWebhookSignatureDiagnostic {
+  const queryId = extractMercadoPagoSignatureDataId(input.query);
+  const bodyId = bodyDataId(input.payload);
+  let ts = false;
+  let v1 = false;
+  for (const part of (input.xSignature ?? '').split(',')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    const key = part.slice(0, eq).trim();
+    const value = part.slice(eq + 1).trim();
+    if (key === 'ts' && value) ts = true;
+    if (key === 'v1' && value) v1 = true;
+  }
+  return {
+    source: queryId ? 'query' : 'absent',
+    format: signatureIdFormat(queryId),
+    letterCase: signatureIdCase(queryId),
+    normalized: queryId ? 'original' : 'none',
+    query: queryId ? 'present' : 'absent',
+    body: bodyId ? 'present' : 'absent',
+    mismatch: Boolean(queryId && bodyId && queryId !== bodyId),
+    xSignature: input.xSignature?.trim() ? 'present' : 'absent',
+    ts: ts ? 'present' : 'absent',
+    v1: v1 ? 'present' : 'absent',
+    xRequestId: input.xRequestId?.trim() ? 'present' : 'absent',
+  };
+}
+
+export function formatMercadoPagoWebhookSignatureLog(
+  outcome: 'accepted' | 'rejected',
+  diagnostic: MercadoPagoWebhookSignatureDiagnostic,
+): string {
+  return [
+    `Mercado Pago webhook signature ${outcome}`,
+    `source=${diagnostic.source}`,
+    `format=${diagnostic.format}`,
+    `case=${diagnostic.letterCase}`,
+    `normalized=${diagnostic.normalized}`,
+    `query=${diagnostic.query}`,
+    `body=${diagnostic.body}`,
+    `mismatch=${diagnostic.mismatch}`,
+    `xSignature=${diagnostic.xSignature}`,
+    `ts=${diagnostic.ts}`,
+    `v1=${diagnostic.v1}`,
+    `xRequestId=${diagnostic.xRequestId}`,
+  ].join(' ');
+}
+
+function signatureIdFormat(
+  id: string | null,
+): MercadoPagoWebhookSignatureDiagnostic['format'] {
+  if (!id) return 'absent';
+  if (/^\d+$/.test(id)) return 'numeric';
+  if (/^[A-Za-z0-9]+$/.test(id)) return 'alphanumeric';
+  return 'other';
+}
+
+function signatureIdCase(
+  id: string | null,
+): MercadoPagoWebhookSignatureDiagnostic['letterCase'] {
+  if (!id) return 'absent';
+  if (!/[A-Za-z]/.test(id)) return 'numeric';
+  if (id === id.toUpperCase()) return 'upper';
+  if (id === id.toLowerCase()) return 'lower';
+  return 'mixed';
+}
+
+function bodyDataId(payload?: unknown): string | null {
+  const body = asRecord(payload);
+  const data = asRecord(body?.data);
+  return coerceResourceId(data?.id);
 }
 
 function coerceResourceId(value: unknown): string | null {
@@ -280,6 +570,33 @@ function firstErrorRecord(record: Record<string, unknown>): Record<string, unkno
   const errors = record.errors;
   if (Array.isArray(errors)) return asRecord(errors[0]);
   return asRecord(errors);
+}
+
+function textOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = sanitizeProviderError(value).trim();
+  return trimmed || null;
+}
+
+function validOrderId(value: string | null): string | null {
+  if (!value || /^\d+$/.test(value)) return null;
+  return value;
+}
+
+function errorDetailText(value: unknown): string | null {
+  const parts: string[] = [];
+  if (typeof value === 'string') parts.push(value);
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 4)) {
+      if (typeof item === 'string') parts.push(item);
+    }
+  }
+  if (!parts.length) return null;
+  const sanitized = sanitizeProviderError(parts.join('; '))
+    .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, '[redacted]')
+    .trim()
+    .slice(0, 280);
+  return sanitized || null;
 }
 
 function isGenericDiagnostic(value: unknown): boolean {
@@ -363,10 +680,23 @@ export class MercadoPagoOrdersClient {
   async getOrder(
     accessToken: string,
     orderId: string,
+    options?: { timeoutMs?: number },
   ): Promise<MercadoPagoHttpResult> {
     return this.request(accessToken, {
       method: 'GET',
       path: `/v1/orders/${encodeURIComponent(orderId)}`,
+      timeoutMs: options?.timeoutMs,
+    });
+  }
+
+  async getCurrentUser(
+    accessToken: string,
+    options?: { timeoutMs?: number },
+  ): Promise<MercadoPagoHttpResult> {
+    return this.request(accessToken, {
+      method: 'GET',
+      path: '/users/me',
+      timeoutMs: options?.timeoutMs,
     });
   }
 
@@ -377,6 +707,7 @@ export class MercadoPagoOrdersClient {
       path: string;
       idempotencyKey?: string;
       body?: unknown;
+      timeoutMs?: number;
     },
   ): Promise<MercadoPagoHttpResult> {
     const headers: Record<string, string> = {
@@ -388,18 +719,33 @@ export class MercadoPagoOrdersClient {
       headers['X-Idempotency-Key'] = input.idempotencyKey;
     }
 
+    const timeoutMs = input.timeoutMs;
+    const controller =
+      timeoutMs != null && timeoutMs > 0 ? new AbortController() : null;
+    const timer = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
     let response: Response;
     try {
       response = await this.fetchImpl(`${MERCADO_PAGO_API_BASE}${input.path}`, {
         method: input.method,
         headers,
         body: input.method === 'POST' ? JSON.stringify(input.body ?? {}) : undefined,
+        ...(controller ? { signal: controller.signal } : {}),
       });
     } catch (error) {
+      if (controller?.signal.aborted) {
+        throw new MercadoPagoTimeoutError();
+      }
       const message = sanitizeProviderError(
         error instanceof Error ? error.message : 'network error',
       );
-      throw new Error(message);
+      const transport = classifyMercadoPagoNetworkFailure(error);
+      if (transport === 'timeout') throw new MercadoPagoTimeoutError();
+      throw new MercadoPagoNetworkError(transport, message);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
 
     let data: unknown = {};
@@ -408,6 +754,10 @@ export class MercadoPagoOrdersClient {
     } catch {
       data = {};
     }
-    return { status: response.status, data };
+    const retryAfter =
+      typeof response.headers?.get === 'function'
+        ? response.headers.get('retry-after')
+        : null;
+    return { status: response.status, data, retryAfter };
   }
 }

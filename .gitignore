@@ -8,6 +8,8 @@ Thumbs.db
 # Env / secrets
 .env
 **/.env
+.env.card-test
+**/.env.card-test
 !.env.example
 !**/.env.example
 

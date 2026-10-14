@@ -2,17 +2,21 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  Equals,
   IsBoolean,
   IsEmail,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateIf,
@@ -88,6 +92,33 @@ class PixCreateDto extends FiscalFieldsDto {
   packageKey!: (typeof PACKAGE_KEYS)[number];
 }
 
+export class CardPayDto extends FiscalFieldsDto {
+  @IsString()
+  @IsIn(PACKAGE_KEYS)
+  packageKey!: (typeof PACKAGE_KEYS)[number];
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{16,64}$/)
+  idempotencyKey!: string;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{20,256}$/)
+  token!: string;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_]{2,32}$/)
+  paymentMethodId!: string;
+
+  @IsString()
+  @IsIn(['credit_card'])
+  paymentType!: 'credit_card';
+
+  @Type(() => Number)
+  @IsInt()
+  @Equals(1)
+  installments!: number;
+}
+
 @Controller('credits')
 @UseGuards(JwtAuthGuard)
 export class CreditsController {
@@ -134,6 +165,17 @@ export class CreditsController {
       user.email,
       dto,
     );
+  }
+
+  @Get('card/config')
+  cardConfig() {
+    return this.creditsService.cardCheckoutConfig();
+  }
+
+  @Post('card/pay')
+  @HttpCode(200)
+  payCard(@CurrentUser() user: AuthUser, @Body() dto: CardPayDto) {
+    return this.creditsService.payCard(user.userId, dto, user.email);
   }
 
   @Post('dev-confirm/:purchaseId')

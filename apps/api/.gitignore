@@ -2,6 +2,7 @@ node_modules
 dist
 coverage
 .env
+.env.card-test
 *.log
 uploads/*
 !uploads/.gitkeep

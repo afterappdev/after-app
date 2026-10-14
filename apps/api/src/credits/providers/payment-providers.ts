@@ -6,6 +6,7 @@ import {
   StorePaymentProvider,
   normalizeProviderId,
 } from './payment-provider';
+import { CardPaymentProvider } from './card.provider';
 import { PixPaymentProvider } from './pix.provider';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class PaymentProviderRegistry {
     private readonly googlePlay: GooglePlayPaymentProvider,
     private readonly appleAppStore: AppleAppStorePaymentProvider,
     private readonly pix: PixPaymentProvider,
+    private readonly card: CardPaymentProvider,
   ) {}
 
   storeProvider(raw: string): StorePaymentProvider {
@@ -25,6 +27,10 @@ export class PaymentProviderRegistry {
 
   pixProvider(): PixPaymentProvider {
     return this.pix;
+  }
+
+  cardProvider(): CardPaymentProvider {
+    return this.card;
   }
 
   canonicalId(raw: string): CanonicalPaymentProvider {

@@ -6,22 +6,32 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { isMercadoPagoSandbox, isProduction } from '../../common/env';
-import { PaymentProvider } from './payment-provider';
+import { assertMercadoPagoPixChargeAllowed } from './mercado-pago-credentials';
+import { asMoney } from '../purchase-public';
+import { PaymentProvider, pixOrderIdFromProviderTxId } from './payment-provider';
 import {
   AfterPurchaseStatus,
   MercadoPagoOrder,
   MercadoPagoOrdersClient,
   PIX_EXPIRATION_ISO8601,
-  extractMercadoPagoDataId,
   extractMercadoPagoOrderId,
+  extractMercadoPagoSignatureDataId,
   firstOrderPayment,
   formatBrlAmount,
   formatMercadoPagoErrorLog,
+  formatMercadoPagoWebhookSignatureLog,
+  inspectMercadoPagoWebhookSignature,
   mapMercadoPagoOrderStatus,
   mercadoPagoPublicErrorMessage,
   parseBrlAmount,
   verifyMercadoPagoWebhookSignature,
 } from './mercado-pago-orders';
+import {
+  diagnoseMercadoPagoWebhookHmac,
+  formatMercadoPagoHmacDiagnosis,
+  formatMercadoPagoRawHeaderObservation,
+  type MercadoPagoRawHeaderObservation,
+} from './mercado-pago-webhook-diagnose';
 
 /** Payer overlay used only when MERCADO_PAGO_SANDBOX=true (never in production). */
 export const MERCADO_PAGO_SANDBOX_PAYER = {
@@ -89,6 +99,22 @@ export type PixWebhookMeta = {
   xSignature?: string;
   xRequestId?: string;
   query?: Record<string, unknown>;
+  /** Sanitized wire-header comparison. Not an input to the HMAC. */
+  headerObservation?: MercadoPagoRawHeaderObservation;
+};
+
+/** full: status or detail names a complete refund. partial: partially_refunded. unproven: another refund word without that proof. */
+export type PixRefundProof = 'none' | 'full' | 'partial' | 'unproven';
+
+/**
+ * One marker per purchase. It is the first proven partial observation, not a
+ * history of later partials. The unique key is `(purchaseId, kind)`.
+ */
+export const PIX_PARTIAL_REVIEW_KIND = 'pix_partial_review';
+
+export type PixProvenPartial = {
+  refundedAmountBrl: number;
+  refundId: string | null;
 };
 
 export type PixVerifiedOrder = {
@@ -96,9 +122,18 @@ export type PixVerifiedOrder = {
   paymentId: string | null;
   status: AfterPurchaseStatus;
   amountBrl: number | null;
-  currency: 'BRL';
+  currency: string | null;
   externalReference: string | null;
   expiresAt: string | null;
+  paymentMethodId?: string | null;
+  paymentType?: string | null;
+  /**
+   * Absent only on older fixtures. A missing value is not partial and is not
+   * unproven; settlement still requires identity, BRL, and the purchase amount.
+   */
+  refundProof?: PixRefundProof;
+  /** Processed refund lines that prove a partial. The charge total is `amountBrl`. */
+  provenPartialRefund?: PixProvenPartial | null;
 };
 
 @Injectable()
@@ -113,6 +148,7 @@ export class PixPaymentProvider implements PaymentProvider {
   }
 
   async createCharge(input: PixCreateChargeInput): Promise<PixChargeResult> {
+    assertMercadoPagoPixChargeAllowed();
     const token = this.requireToken();
     const payer = this.resolvePayer(input);
 
@@ -200,17 +236,20 @@ export class PixPaymentProvider implements PaymentProvider {
     const order = (result.data ?? {}) as MercadoPagoOrder;
     const payment = firstOrderPayment(order);
     const resolvedId = String(order.id ?? id).trim();
+    const rawStatus = order.status ?? payment?.status;
+    const rawDetail = order.status_detail ?? payment?.status_detail;
     return {
       orderId: resolvedId,
       paymentId: payment?.id?.trim() || null,
-      status: mapMercadoPagoOrderStatus(
-        order.status ?? payment?.status,
-        order.status_detail ?? payment?.status_detail,
-      ),
+      status: mapMercadoPagoOrderStatus(rawStatus, rawDetail),
       amountBrl: parseBrlAmount(order.total_amount ?? payment?.amount),
-      currency: 'BRL',
+      currency: readPixCurrency(order),
       externalReference: order.external_reference?.trim() || null,
       expiresAt: payment?.date_of_expiration?.trim() || null,
+      paymentMethodId: payment?.payment_method?.id?.trim().toLowerCase() || null,
+      paymentType: payment?.payment_method?.type?.trim().toLowerCase() || null,
+      refundProof: pixRefundProof(rawStatus, rawDetail),
+      provenPartialRefund: provenPixPartialRefund(order, payment),
     };
   }
 
@@ -226,16 +265,49 @@ export class PixPaymentProvider implements PaymentProvider {
       return;
     }
 
-    const dataId = extractMercadoPagoDataId(payload, meta.query) ?? undefined;
+    const diagnostic = inspectMercadoPagoWebhookSignature({
+      payload,
+      query: meta.query,
+      xSignature: meta.xSignature,
+      xRequestId: meta.xRequestId,
+    });
     const ok = verifyMercadoPagoWebhookSignature({
       secret,
       xSignature: meta.xSignature,
       xRequestId: meta.xRequestId,
-      dataId,
+      dataId: extractMercadoPagoSignatureDataId(meta.query) ?? undefined,
     });
+    const line = formatMercadoPagoWebhookSignatureLog(
+      ok ? 'accepted' : 'rejected',
+      diagnostic,
+    );
+    const rawLine =
+      process.env.AFTER_CARD_TEST === '1' && meta.headerObservation
+        ? formatMercadoPagoRawHeaderObservation(meta.headerObservation)
+        : null;
     if (!ok) {
+      this.logger.warn(line);
+      if (process.env.AFTER_CARD_TEST === '1') {
+        try {
+          this.logger.warn(
+            formatMercadoPagoHmacDiagnosis(
+              diagnoseMercadoPagoWebhookHmac({
+                secret,
+                dataId: extractMercadoPagoSignatureDataId(meta.query) ?? undefined,
+                xRequestId: meta.xRequestId,
+                xSignature: meta.xSignature,
+              }),
+            ),
+          );
+        } catch {
+          this.logger.warn('Mercado Pago webhook hmac diagnose local unavailable');
+        }
+        if (rawLine) this.logger.warn(rawLine);
+      }
       throw new UnauthorizedException('Assinatura do webhook inválida');
     }
+    this.logger.log(line);
+    if (rawLine) this.logger.log(rawLine);
   }
 
   extractOrderId(
@@ -254,7 +326,6 @@ export class PixPaymentProvider implements PaymentProvider {
     first_name?: string;
     last_name?: string;
   } {
-    this.assertSandboxNotInProduction();
     if (isMercadoPagoSandbox()) {
       return {
         email: MERCADO_PAGO_SANDBOX_PAYER.email,
@@ -269,14 +340,6 @@ export class PixPaymentProvider implements PaymentProvider {
       email,
       ...splitPersonName(input.payerName),
     };
-  }
-
-  private assertSandboxNotInProduction(): void {
-    if (isProduction() && isMercadoPagoSandbox()) {
-      throw new ServiceUnavailableException(
-        'PIX Sandbox não pode ser usado em produção.',
-      );
-    }
   }
 
   private accessToken(): string | undefined {
@@ -319,4 +382,162 @@ function splitPersonName(name?: string): { first_name?: string; last_name?: stri
 
 function sanitizeExternalReference(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+}
+
+export function pixReferenceMatchesPurchase(
+  purchaseId: string,
+  reference: string | null,
+): boolean {
+  const value = reference?.trim() ?? '';
+  if (!value) return false;
+  return value === purchaseId || value === sanitizeExternalReference(purchaseId);
+}
+
+/**
+ * A PIX refund may change status only when the order is the stored order,
+ * the reference is this purchase, the currency is BRL, and the amount is the
+ * purchase amount. A partial or unproven signal does not settle.
+ */
+export function pixRefundMaySettle(
+  purchase: { id: string; amountPaid: unknown; providerTxId?: string | null },
+  order: PixVerifiedOrder,
+): boolean {
+  if (order.status !== 'REFUNDED') return false;
+  if (order.refundProof === 'partial' || order.refundProof === 'unproven') return false;
+  if (order.refundProof != null && order.refundProof !== 'full') return false;
+  if (order.currency !== 'BRL') return false;
+  const stored = pixOrderIdFromProviderTxId(purchase.providerTxId);
+  if (!stored || stored !== order.orderId) return false;
+  if (!pixReferenceMatchesPurchase(purchase.id, order.externalReference)) return false;
+  if (order.amountBrl == null) return false;
+  return Math.abs(order.amountBrl - asMoney(purchase.amountPaid)) <= 0.009;
+}
+
+/**
+ * A partial may be marked only when the charge identity matches and a
+ * processed refund line proves an amount below the charge. The status word
+ * alone is not proof. `amountBrl` stays the charge total.
+ */
+export function pixPartialMarkerAllowed(
+  purchase: {
+    id: string;
+    amountPaid: unknown;
+    providerTxId?: string | null;
+    provider?: string | null;
+  },
+  order: PixVerifiedOrder,
+): boolean {
+  if (purchase.provider != null && purchase.provider !== 'pix') return false;
+  if (order.refundProof !== 'partial' || order.status !== 'REFUNDED') return false;
+  if (order.currency !== 'BRL') return false;
+  if (order.paymentMethodId != null && order.paymentMethodId !== 'pix') return false;
+  if (order.paymentType != null && order.paymentType !== 'bank_transfer') return false;
+  const stored = pixOrderIdFromProviderTxId(purchase.providerTxId);
+  if (!stored || stored !== order.orderId) return false;
+  if (!pixReferenceMatchesPurchase(purchase.id, order.externalReference)) return false;
+  if (order.amountBrl == null) return false;
+  const charge = asMoney(purchase.amountPaid);
+  if (Math.abs(order.amountBrl - charge) > 0.009) return false;
+  const proven = order.provenPartialRefund;
+  if (!proven || proven.refundedAmountBrl == null) return false;
+  if (!(proven.refundedAmountBrl > 0) || proven.refundedAmountBrl >= charge - 0.009) {
+    return false;
+  }
+  return true;
+}
+
+function readPixCurrency(order: MercadoPagoOrder): string | null {
+  const modern = text(order.currency).toUpperCase();
+  const legacy = text(order.currency_id).toUpperCase();
+  if (modern && legacy && modern !== legacy) return null;
+  return modern || legacy || null;
+}
+
+function pixRefundProof(status?: string | null, detail?: string | null): PixRefundProof {
+  const normalized = text(status).toLowerCase();
+  const statusDetail = text(detail).toLowerCase();
+  if (
+    statusDetail === 'partially_refunded' ||
+    statusDetail.includes('partially_refunded')
+  ) {
+    return 'partial';
+  }
+  if (normalized === 'refunded' || normalized === 'charged_back') return 'full';
+  if (statusDetail === 'refunded' || statusDetail.includes('refunded')) return 'full';
+  if (normalized === 'processed' && statusDetail.includes('refund')) return 'unproven';
+  return 'none';
+}
+
+function provenPixPartialRefund(
+  order: MercadoPagoOrder,
+  payment: ReturnType<typeof firstOrderPayment>,
+): PixProvenPartial | null {
+  const rawStatus = order.status ?? payment?.status;
+  const rawDetail = order.status_detail ?? payment?.status_detail;
+  if (pixRefundProof(rawStatus, rawDetail) !== 'partial') return null;
+  const paid = pixChargeCents(order, payment);
+  const counted = pixProcessedRefundCents(order, payment);
+  if (paid == null || !counted.ok) return null;
+  if (counted.cents <= 0 || counted.cents >= paid) return null;
+  return {
+    refundedAmountBrl: counted.cents / 100,
+    refundId: counted.refundId,
+  };
+}
+
+function pixChargeCents(
+  order: MercadoPagoOrder,
+  payment: ReturnType<typeof firstOrderPayment>,
+): number | null {
+  const total = pixCents(order.total_amount);
+  const paymentAmount = pixCents(payment?.amount);
+  if (total == null || paymentAmount == null || total !== paymentAmount) return null;
+  return total;
+}
+
+function pixProcessedRefundCents(
+  order: MercadoPagoOrder,
+  payment: ReturnType<typeof firstOrderPayment>,
+): { ok: true; cents: number; refundId: string | null } | { ok: false } {
+  const refunds = order.transactions?.refunds;
+  const list = Array.isArray(refunds) ? refunds : refunds ? [refunds] : [];
+  const paymentId = text(payment?.id);
+  const byId = new Map<string, number>();
+  for (const refund of list) {
+    if (text(refund.status).toLowerCase() !== 'processed') continue;
+    const id = text(refund.id);
+    const transactionId = text(refund.transaction_id);
+    if (!id || !paymentId || !transactionId) return { ok: false };
+    if (transactionId !== paymentId) continue;
+    const cents = pixCents(refund.amount ?? refund.transaction_amount);
+    if (cents == null || cents <= 0) return { ok: false };
+    const previous = byId.get(id);
+    if (previous != null && previous !== cents) return { ok: false };
+    byId.set(id, cents);
+  }
+  if (byId.size === 0) return { ok: false };
+  let cents = 0;
+  for (const value of byId.values()) cents += value;
+  const ids = [...byId.keys()];
+  return { ok: true, cents, refundId: ids.length === 1 ? ids[0] : null };
+}
+
+function pixCents(value: unknown): number | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    const rendered = value.toFixed(2);
+    if (Math.abs(value - Number(rendered)) > 1e-6) return null;
+    return pixCents(rendered);
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  const [whole, fraction = ''] = trimmed.split('.');
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  if (!Number.isSafeInteger(cents)) return null;
+  return cents;
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
