@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { fetchIbgeJson } from './ibge-client';
+
+const cityLookupUnavailable =
+  'Não foi possível consultar as cidades. Tente novamente.';
 
 type IbgeState = {
   id: number;
@@ -41,14 +45,9 @@ export class LocationsService {
       return this.statesCache;
     }
 
-    const res = await fetch(
+    const data = (await this.readIbge(
       'https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome',
-    );
-    if (!res.ok) {
-      throw new NotFoundException('Não foi possível carregar os estados');
-    }
-
-    const data = (await res.json()) as IbgeState[];
+    )) as IbgeState[];
     this.statesCache = data.map((s) => ({
       uf: s.sigla,
       name: s.nome,
@@ -67,14 +66,9 @@ export class LocationsService {
       return cached;
     }
 
-    const res = await fetch(
-      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios?orderBy=nome`,
-    );
-    if (!res.ok) {
-      throw new NotFoundException(`Cidades não encontradas para ${key}`);
-    }
-
-    const data = (await res.json()) as IbgeCity[];
+    const data = (await this.readIbge(
+      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${encodeURIComponent(key)}/municipios?orderBy=nome`,
+    )) as IbgeCity[];
     const cities = data.map((c) => ({
       id: c.id,
       name: c.nome,
@@ -124,14 +118,9 @@ export class LocationsService {
       return this.allCitiesCache;
     }
 
-    const res = await fetch(
+    const data = (await this.readIbge(
       'https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome',
-    );
-    if (!res.ok) {
-      throw new NotFoundException('Não foi possível carregar as cidades');
-    }
-
-    const data = (await res.json()) as IbgeMunicipality[];
+    )) as IbgeMunicipality[];
     this.allCitiesCache = data.map((c) => ({
       id: c.id,
       name: c.nome,
@@ -141,5 +130,18 @@ export class LocationsService {
         '',
     }));
     return this.allCitiesCache;
+  }
+
+  private async readIbge(url: string): Promise<unknown[]> {
+    let data: unknown;
+    try {
+      data = await fetchIbgeJson(url);
+    } catch {
+      throw new ServiceUnavailableException(cityLookupUnavailable);
+    }
+    if (!Array.isArray(data)) {
+      throw new ServiceUnavailableException(cityLookupUnavailable);
+    }
+    return data;
   }
 }

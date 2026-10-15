@@ -56,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _promotions = [];
   List<dynamic> _venues = [];
   List<Map<String, dynamic>> _cityResults = [];
+  String? _cityLookupError;
   List<Map<String, dynamic>> _recentCities = [];
   int _citySearchGen = 0;
   List<Map<String, dynamic>> _venueResults = [];
@@ -348,6 +349,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _cityResults = _cityPrelist();
       _searchingCities = false;
+      _cityLookupError = null;
     });
   }
 
@@ -372,13 +374,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _searchCities(String query) async {
     final gen = ++_citySearchGen;
-    setState(() => _searchingCities = true);
+    setState(() {
+      _searchingCities = true;
+      _cityLookupError = null;
+    });
     try {
       final api = context.read<ApiClient>();
-      final data = await api.get(
-        '/locations/cities',
-        query: {'q': query.trim()},
-      );
+      final data = await api
+          .get(
+            '/locations/cities',
+            query: {'q': query.trim()},
+          )
+          .timeout(const Duration(seconds: 20));
       if (!mounted || gen != _citySearchGen) return;
       final list = (data as List<dynamic>)
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -386,12 +393,17 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _cityResults = list;
         _searchingCities = false;
+        _cityLookupError = null;
       });
-    } on ApiException {
+    } catch (error) {
       if (!mounted || gen != _citySearchGen) return;
+      final message = error is ApiException && error.message.trim().isNotEmpty
+          ? error.message
+          : 'Não foi possível consultar as cidades. Tente novamente.';
       setState(() {
         _cityResults = [];
         _searchingCities = false;
+        _cityLookupError = message;
       });
     }
   }
@@ -725,9 +737,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                       focusNode: _cityFocus,
                                       results: _cityResults,
                                       loading: _searchingCities,
+                                      error: _cityLookupError,
                                       onToggle: _toggleCityPicker,
                                       onQueryChanged: _onCityQueryChanged,
                                       onSelect: _selectCity,
+                                      onRetry: () => _searchCities(_cityQuery.text),
                                     ),
                                     if (_navIndex == 1) ...[
                                       const SizedBox(height: 12),
@@ -849,9 +863,11 @@ class _LocationPicker extends StatelessWidget {
     required this.focusNode,
     required this.results,
     required this.loading,
+    required this.error,
     required this.onToggle,
     required this.onQueryChanged,
     required this.onSelect,
+    required this.onRetry,
   });
 
   final String city;
@@ -862,9 +878,11 @@ class _LocationPicker extends StatelessWidget {
   final FocusNode focusNode;
   final List<Map<String, dynamic>> results;
   final bool loading;
+  final String? error;
   final VoidCallback onToggle;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<Map<String, dynamic>> onSelect;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -980,6 +998,41 @@ class _LocationPicker extends StatelessWidget {
                       strokeWidth: 2.2,
                       color: Color(0xFFF58634),
                     ),
+                  ),
+                )
+              else if (error != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        error!,
+                        style: const TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontSize: 13,
+                          color: Color(0xFFB42318),
+                        ),
+                      ),
+                      TextButton(
+                        key: const Key('home-city-retry'),
+                        onPressed: onRetry,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: Color(0xFFF58634),
+                        ),
+                        child: const Text(
+                          'Tentar novamente',
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 )
               else if (results.isEmpty)
