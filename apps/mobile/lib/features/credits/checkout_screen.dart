@@ -10,7 +10,7 @@ import 'billing_channel.dart';
 import 'credits_ui.dart';
 import 'fiscal_invoice_controller.dart';
 import 'fiscal_invoice_section.dart';
-import 'pix_checkout.dart';
+import 'web_checkout_screen.dart';
 import 'store_billing.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -49,7 +49,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => PixCheckoutScreen(pack: widget.pack),
+            builder: (_) => WebCheckoutScreen(pack: widget.pack),
           ),
         );
       });
