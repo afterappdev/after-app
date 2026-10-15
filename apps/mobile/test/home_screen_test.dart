@@ -1114,6 +1114,59 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('falha da busca de cidade não aparece como lista vazia', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    var cityCalls = 0;
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/locations/cities')) {
+          cityCalls += 1;
+          if (cityCalls == 1) {
+            return http.Response(
+              jsonEncode({
+                'statusCode': 503,
+                'message':
+                    'Não foi possível consultar as cidades. Tente novamente.',
+              }),
+              503,
+              headers: const {'content-type': 'application/json'},
+            );
+          }
+          return _json([
+            {'id': 3509502, 'name': 'Campinas', 'uf': 'SP'},
+          ]);
+        }
+        return _json([]);
+      }),
+    );
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.text('Campinas, SP'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Campinas');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    expect(
+      find.text('Não foi possível consultar as cidades. Tente novamente.'),
+      findsOneWidget,
+    );
+    expect(find.text('Nenhuma cidade encontrada.'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('home-city-retry')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Campinas, SP'), findsOneWidget);
+    expect(
+      find.text('Não foi possível consultar as cidades. Tente novamente.'),
+      findsNothing,
+    );
+  });
 }
 
 Future<void> _pumpHomeAt(

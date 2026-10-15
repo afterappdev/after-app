@@ -160,10 +160,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
     try {
       final api = context.read<ApiClient>();
-      final data = await api.get(
-        '/locations/cities',
-        query: {'q': query.trim()},
-      );
+      final data = await api
+          .get(
+            '/locations/cities',
+            query: {'q': query.trim()},
+          )
+          .timeout(const Duration(seconds: 20));
       if (!mounted || gen != _citySearchGen) return;
       final list = (data as List<dynamic>)
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -173,13 +175,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _searchingCities = false;
         _cityLookupDone = true;
       });
-    } on ApiException catch (e) {
+    } catch (error) {
       if (!mounted || gen != _citySearchGen) return;
+      final message = error is ApiException && error.message.trim().isNotEmpty
+          ? error.message
+          : 'Não foi possível consultar as cidades. Tente novamente.';
       setState(() {
         _cityResults = [];
         _searchingCities = false;
         _cityLookupDone = true;
-        _locationsError = e.message;
+        _locationsError = message;
       });
     }
   }
@@ -493,9 +498,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 if (_locationsError != null) ...[
                   Text(
                     _locationsError!,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: AppTheme.fontFamily,
-                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                      color: Color(0xFFB42318),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const Key('register-city-retry'),
+                      onPressed: _cityQuery.text.trim().isEmpty
+                          ? null
+                          : () => _searchCities(_cityQuery.text),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: _accent,
+                      ),
+                      child: const Text(
+                        'Tentar novamente',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
