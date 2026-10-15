@@ -9,7 +9,9 @@ import 'package:after_app/core/location/origin_cache.dart';
 import 'package:after_app/core/network/api_client.dart';
 import 'package:after_app/features/auth/auth_controller.dart';
 import 'package:after_app/features/auth/models/user_session.dart';
+import 'package:after_app/features/home/home_feed_cards.dart';
 import 'package:after_app/features/home/home_screen.dart';
+import 'package:after_app/features/home/home_visual.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -92,17 +94,24 @@ Map<String, dynamic> _promo({
   required String title,
   String venueName = 'Bar do Centro',
   String city = 'Campinas',
+  String description = 'Detalhe da promoção',
+  String category = 'Bar',
+  String venueId = 'v1',
+  bool isOpen = true,
+  double? distanceKm,
+  String displayDate = '2026-09-14',
 }) {
   return {
     'bannerId': 'b1',
     'title': title,
-    'description': 'Detalhe da promoção',
-    'displayDate': '2026-09-14',
-    'isOpen': true,
+    'description': description,
+    'displayDate': displayDate,
+    'isOpen': isOpen,
+    'distanceKm': ?distanceKm,
     'venue': {
-      'id': 'v1',
+      'id': venueId,
       'name': venueName,
-      'category': 'Bar',
+      'category': category,
       'city': city,
       'lat': _campinas.lat,
       'lng': _campinas.lng,
@@ -113,15 +122,21 @@ Map<String, dynamic> _promo({
 Map<String, dynamic> _venue({
   String name = 'Bar do Centro',
   String city = 'Campinas',
+  String description = 'Pub',
+  String category = 'Bar',
+  String id = 'v1',
+  bool isOpen = true,
+  double? distanceKm,
 }) {
   return {
-    'id': 'v1',
+    'id': id,
     'name': name,
-    'description': 'Pub',
-    'category': 'Bar',
+    'description': description,
+    'category': category,
     'city': city,
     'state': 'SP',
-    'isOpen': true,
+    'isOpen': isOpen,
+    'distanceKm': ?distanceKm,
     'lat': _campinas.lat,
     'lng': _campinas.lng,
   };
@@ -131,20 +146,24 @@ http.Response _json(Object body, [int status = 200]) {
   return http.Response(jsonEncode(body), status);
 }
 
-UserSession _user({String city = 'Campinas'}) {
+UserSession _user({String city = 'Campinas', String role = 'USER'}) {
   return UserSession(
     id: 'u1',
     name: 'Ana',
     email: 'ana@after.app',
-    role: 'USER',
+    role: role,
     state: 'SP',
     city: city,
   );
 }
 
-AuthController _auth(ApiClient api, {String city = 'Campinas'}) {
+AuthController _auth(
+  ApiClient api, {
+  String city = 'Campinas',
+  String role = 'USER',
+}) {
   final auth = AuthController(api: api, storage: AuthStorage());
-  auth.user = _user(city: city);
+  auth.user = _user(city: city, role: role);
   auth.bootstrapping = false;
   return auth;
 }
@@ -267,11 +286,7 @@ void main() {
       }),
     );
 
-    await _pumpHome(
-      tester,
-      api: api,
-      locator: FakeDeviceLocator(),
-    );
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
     expect(maxInFlight, greaterThanOrEqualTo(2));
     releasePromo.complete();
     releaseVenue.complete();
@@ -308,9 +323,7 @@ void main() {
     expect(locator.currentCalls, 0);
     expect(
       requests.where((uri) => uri.path.contains('/home/')),
-      everyElement(
-        predicate<Uri>((uri) => uri.queryParameters['lat'] == null),
-      ),
+      everyElement(predicate<Uri>((uri) => uri.queryParameters['lat'] == null)),
     );
   });
 
@@ -582,7 +595,9 @@ void main() {
     await tester.pump();
     expect(find.text('Promo Campinas'), findsNothing);
 
-    spPromo.complete(_json([_promo(title: 'Promo São Paulo', city: 'São Paulo')]));
+    spPromo.complete(
+      _json([_promo(title: 'Promo São Paulo', city: 'São Paulo')]),
+    );
     spVenue.complete(_json([_venue(city: 'São Paulo')]));
     await tester.pump();
     await tester.pump();
@@ -669,7 +684,7 @@ void main() {
 
     expect(find.text('Locais próximos'), findsOneWidget);
     expect(find.text('Pub da Esquina'), findsOneWidget);
-    expect(find.text('Promoções/ Eventos do dia'), findsNothing);
+    expect(find.text('Promoções / Eventos do dia'), findsNothing);
     expect(find.text('Não há Promoções/ Eventos no dia'), findsNothing);
   });
 
@@ -690,7 +705,7 @@ void main() {
     await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
     await tester.pump();
 
-    expect(find.text('Promoções/ Eventos do dia'), findsOneWidget);
+    expect(find.text('Promoções / Eventos do dia'), findsOneWidget);
     expect(find.text('Happy Hour After'), findsOneWidget);
     expect(find.text('Locais próximos'), findsOneWidget);
     expect(find.text('Pub da Esquina'), findsOneWidget);
@@ -729,6 +744,433 @@ void main() {
     expect(find.text('Locais próximos'), findsOneWidget);
     expect(find.text('Pub da Esquina'), findsOneWidget);
   });
+
+  testWidgets('seções usam laranja nas promoções e roxo nos locais', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([
+            _promo(
+              title: 'Chopp em dobro',
+              description: 'Chopp em dobro até as 20h',
+              venueName: 'Refúgio do Chef',
+              venueId: 'promo-venue',
+              isOpen: false,
+              distanceKm: 9.2,
+            ),
+          ]);
+        }
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([
+            _venue(
+              name: 'Flash Balada',
+              id: 'venue-1',
+              description: 'Gente bonita e música boa',
+              category: 'Baladas e Boates',
+              isOpen: false,
+              distanceKm: 1.5,
+            ),
+          ]);
+        }
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+
+    final promoTitle = tester.widget<Text>(
+      find.text('Promoções / Eventos do dia'),
+    );
+    final nearbyTitle = tester.widget<Text>(find.text('Locais próximos'));
+    expect(_sectionLead(promoTitle), 'Promoções');
+    expect(_sectionLeadColor(promoTitle), HomeVisual.orange);
+    expect(_sectionRestColor(promoTitle), HomeVisual.titleInk);
+    expect(_sectionLead(nearbyTitle), 'Locais');
+    expect(_sectionLeadColor(nearbyTitle), HomeVisual.purple);
+    expect(_sectionRestColor(nearbyTitle), HomeVisual.titleInk);
+    expect(promoTitle.style?.fontSize, HomeVisual.titleFontSize);
+    expect(promoTitle.style?.fontWeight, FontWeight.w700);
+    expect(nearbyTitle.style?.fontSize, HomeVisual.titleFontSize);
+    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.location_on_rounded), findsOneWidget);
+
+    final tones = tester
+        .widgetList<HomeAccentBar>(find.byType(HomeAccentBar))
+        .map((bar) => bar.tone);
+    expect(tones, contains(HomeAccentTone.promotion));
+    expect(tones, contains(HomeAccentTone.venue));
+    expect(find.byType(HomeOfferMark), findsOneWidget);
+
+    final distances = tester
+        .widgetList<HomeDistanceLabel>(find.byType(HomeDistanceLabel))
+        .toList();
+    expect(
+      distances.singleWhere((item) => item.label == '~9,2 km').color,
+      HomeVisual.muted,
+    );
+    expect(
+      distances.singleWhere((item) => item.label == '~1,5 km').color,
+      HomeVisual.purple,
+    );
+
+    expect(find.text('Refúgio do Chef'), findsOneWidget);
+    expect(find.text('Fechado'), findsWidgets);
+    expect(find.text('Chopp em dobro'), findsOneWidget);
+    expect(find.text('Chopp em dobro até as 20h'), findsOneWidget);
+    expect(find.text('Válido para o dia 14/09/2026'), findsOneWidget);
+    expect(find.text('Flash Balada'), findsOneWidget);
+    expect(find.text('Baladas e Boates'), findsOneWidget);
+    expect(find.text('Campinas'), findsOneWidget);
+    expect(find.text('Gente bonita e música boa'), findsOneWidget);
+    expect(find.text('Ver todas'), findsNothing);
+    expect(find.text('Ver todos'), findsNothing);
+    expect(find.text('Sua cidade'), findsOneWidget);
+    expect(find.text('Sua localização atual'), findsNothing);
+  });
+
+  testWidgets('evento sem oferta não recebe o selo de desconto', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([
+            _promo(title: 'Show ao vivo', description: 'Banda local na sexta'),
+          ]);
+        }
+        if (req.url.path.endsWith('/home/venues')) return _json([_venue()]);
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+    expect(find.text('Show ao vivo'), findsOneWidget);
+    expect(find.byType(HomeOfferMark), findsNothing);
+  });
+
+  testWidgets('filtro de data pede as promoções do dia escolhido', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final dates = <String?>[];
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          final date = req.url.queryParameters['date'];
+          dates.add(date);
+          final title = dates.length == 1
+              ? 'Happy Hour After'
+              : 'Promo do sábado';
+          return _json([_promo(title: title)]);
+        }
+        if (req.url.path.endsWith('/home/venues')) return _json([_venue()]);
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+    expect(find.text('Hoje'), findsOneWidget);
+    expect(find.byIcon(Icons.calendar_today_outlined), findsWidgets);
+
+    final nextDay = find.byWidgetPredicate(
+      (widget) => widget is HomeDayChip && !widget.selected,
+    );
+    await tester.tap(nextDay.first);
+    await tester.pump();
+    await tester.pump();
+
+    expect(dates.length, greaterThan(1));
+    expect(dates.last, isNot(dates.first));
+    expect(find.text('Promo do sábado'), findsOneWidget);
+    expect(find.text('Happy Hour After'), findsNothing);
+  });
+
+  testWidgets('toque no card abre o estabelecimento correspondente', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([
+            _promo(title: 'Happy Hour After', venueId: 'promo-venue'),
+          ]);
+        }
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([_venue(name: 'Pub da Esquina', id: 'venue-1')]);
+        }
+        return _json([]);
+      }),
+    );
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: _auth(api)),
+        ],
+        child: MaterialApp(
+          onGenerateRoute: (settings) {
+            final args = settings.arguments;
+            final id = args is Map ? args['venueId']?.toString() : null;
+            return MaterialPageRoute<void>(
+              settings: settings,
+              builder: (_) => Scaffold(body: Text('opened-$id')),
+            );
+          },
+          home: HomeScreen(
+            locator: FakeDeviceLocator(),
+            originCache: MemoryOriginCache(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Happy Hour After'));
+    await tester.pumpAndSettle();
+    expect(find.text('opened-promo-venue'), findsOneWidget);
+
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pub da Esquina'));
+    await tester.pumpAndSettle();
+    expect(find.text('opened-venue-1'), findsOneWidget);
+  });
+
+  testWidgets('cidade escolhida não é descrita como localização atual', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    SharedPreferences.setMockInitialValues({
+      'recent_cities_u1': jsonEncode([
+        {'name': 'Campinas', 'uf': 'SP'},
+        {'name': 'São Paulo', 'uf': 'SP'},
+      ]),
+    });
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) return _json([]);
+        if (req.url.path.endsWith('/home/venues')) return _json([_venue()]);
+        return _json([]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+    expect(find.text('Sua cidade'), findsOneWidget);
+    expect(find.text('Sua localização atual'), findsNothing);
+
+    await tester.tap(find.text('Campinas, SP'));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('São Paulo, SP'));
+    await tester.pump();
+    expect(find.text('São Paulo, SP'), findsOneWidget);
+    expect(find.text('Cidade selecionada'), findsOneWidget);
+    expect(find.text('Sua localização atual'), findsNothing);
+  });
+
+  testWidgets('listas vazias preservam o estado vazio', (tester) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(client: MockClient((req) async => _json([])));
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+    expect(find.text('Nenhum local cadastrado nesta cidade.'), findsOneWidget);
+    expect(find.text('Promoções / Eventos do dia'), findsNothing);
+    expect(find.text('Locais próximos'), findsOneWidget);
+  });
+
+  testWidgets('carregamento não mostra os cards antes da resposta', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final release = Completer<void>();
+    final api = ApiClient(
+      client: MockClient((req) async {
+        await release.future;
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([_promo(title: 'Happy Hour After')]);
+        }
+        return _json([_venue(name: 'Pub da Esquina')]);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Happy Hour After'), findsNothing);
+    expect(find.text('Locais próximos'), findsNothing);
+
+    release.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Happy Hour After'), findsOneWidget);
+    expect(find.text('Locais próximos'), findsOneWidget);
+  });
+
+  testWidgets('falha das duas listas mostra o erro da API', (tester) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(
+      client: MockClient((req) async {
+        return http.Response(jsonEncode({'message': 'Falha na home'}), 500);
+      }),
+    );
+
+    await _pumpHome(tester, api: api, locator: FakeDeviceLocator());
+    await tester.pump();
+    expect(find.text('Falha na home'), findsOneWidget);
+    expect(find.text('Locais próximos'), findsNothing);
+  });
+
+  testWidgets('conta de estabelecimento mantém Publicar na navegação', (
+    tester,
+  ) async {
+    await _useTallSurface(tester);
+    final api = ApiClient(client: MockClient((req) async => _json([])));
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider.value(value: api),
+          ChangeNotifierProvider.value(value: _auth(api, role: 'VENUE')),
+        ],
+        child: MaterialApp(
+          home: HomeScreen(
+            locator: FakeDeviceLocator(),
+            originCache: MemoryOriginCache(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Pesquisar locais'), findsOneWidget);
+    expect(find.text('Publicar'), findsOneWidget);
+    expect(find.text('Perfil'), findsOneWidget);
+    expect(find.text('Favoritos'), findsNothing);
+  });
+
+  testWidgets('home não estoura o layout nas larguras da web', (tester) async {
+    final sizes = <Size>[
+      const Size(320, 740),
+      const Size(360, 780),
+      const Size(390, 844),
+      const Size(430, 932),
+      const Size(768, 1024),
+      const Size(1280, 800),
+      const Size(1440, 900),
+    ];
+    final api = ApiClient(
+      client: MockClient((req) async {
+        if (req.url.path.endsWith('/home/promotions')) {
+          return _json([
+            _promo(
+              title: 'Chopp em dobro até o fim da noite no salão principal',
+              description:
+                  'Descrição longa da promoção para verificar a quebra de linha sem overflow horizontal.',
+              venueName: 'Refúgio do Chef e da Casa de Shows',
+              distanceKm: 9.2,
+            ),
+          ]);
+        }
+        if (req.url.path.endsWith('/home/venues')) {
+          return _json([
+            _venue(
+              name: 'Flash Balada da Cidade',
+              description:
+                  'Descrição longa do estabelecimento para verificar a leitura em colunas estreitas e largas.',
+              distanceKm: 1.5,
+            ),
+          ]);
+        }
+        return _json([]);
+      }),
+    );
+
+    for (final size in sizes) {
+      await _pumpHomeAt(tester, api: api, size: size, textScale: 1);
+      expect(tester.takeException(), isNull, reason: 'overflow em $size');
+      expect(find.text('Promoções / Eventos do dia'), findsOneWidget);
+      expect(find.text('Locais próximos'), findsOneWidget);
+    }
+
+    await _pumpHomeAt(
+      tester,
+      api: api,
+      size: const Size(390, 844),
+      textScale: 1.4,
+    );
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text('Chopp em dobro até o fim da noite no salão principal'),
+      findsOneWidget,
+    );
+  });
+}
+
+Future<void> _pumpHomeAt(
+  WidgetTester tester, {
+  required ApiClient api,
+  required Size size,
+  required double textScale,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        Provider.value(value: api),
+        ChangeNotifierProvider.value(value: _auth(api)),
+      ],
+      child: MaterialApp(
+        home: HomeScreen(
+          locator: FakeDeviceLocator(),
+          originCache: MemoryOriginCache(),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+String _sectionLead(Text text) {
+  final span = text.textSpan;
+  if (span is! TextSpan || span.children == null || span.children!.isEmpty) {
+    return text.data ?? '';
+  }
+  final lead = span.children!.first;
+  return lead is TextSpan ? lead.text ?? '' : '';
+}
+
+Color? _sectionLeadColor(Text text) {
+  final span = text.textSpan;
+  if (span is! TextSpan || span.children == null || span.children!.isEmpty) {
+    return text.style?.color;
+  }
+  final lead = span.children!.first;
+  return lead is TextSpan ? lead.style?.color : null;
+}
+
+Color? _sectionRestColor(Text text) {
+  final span = text.textSpan;
+  if (span is! TextSpan || span.children == null || span.children!.length < 2) {
+    return text.style?.color;
+  }
+  final rest = span.children![1];
+  return rest is TextSpan ? rest.style?.color ?? span.style?.color : null;
 }
 
 class _ExpiredOriginCache extends OriginCache {
@@ -738,8 +1180,6 @@ class _ExpiredOriginCache extends OriginCache {
 
   @override
   Future<GeoOrigin?> read({DateTime? now}) {
-    return super.read(
-      now: writtenAt.add(const Duration(minutes: 31)),
-    );
+    return super.read(now: writtenAt.add(const Duration(minutes: 31)));
   }
 }

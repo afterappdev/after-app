@@ -3,10 +3,17 @@ import 'package:flutter/material.dart';
 class AppTheme {
   /// Laranja da logo After
   static const Color brand = Color(0xFFF58634);
+
+  /// Laranja e roxo do layout da Home. Não substituem [brand] no restante do app.
+  static const Color accentOrange = Color(0xFFFF812E);
+  static const Color accentPurple = Color(0xFF7739C6);
+
   /// Sage da logo
   static const Color brandSage = Color(0xFFAABFB8);
+
   /// Texto e superfícies escuras
   static const Color ink = Color(0xFF282829);
+
   /// Fundo claro, levemente esverdeado
   static const Color canvas = Color(0xFFF6F8F7);
   static const Color sageSoft = Color(0xFFE8F0ED);
