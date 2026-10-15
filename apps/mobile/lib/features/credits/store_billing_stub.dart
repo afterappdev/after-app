@@ -12,6 +12,8 @@ class StoreBilling {
 
   Future<StoreProductInfo?> loadProduct(String productId) async => null;
 
+  Future<String?> currentStorefrontCountry() async => null;
+
   Future<StorePurchase> purchase(String productId) async {
     throw StoreBillingException(
       'Compras na loja não estão disponíveis nesta plataforma.',

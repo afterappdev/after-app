@@ -52,7 +52,23 @@ class StoreBilling {
     final response = await _iap.queryProductDetails({productId});
     if (response.productDetails.isEmpty) return null;
     final product = response.productDetails.first;
-    return StoreProductInfo(id: product.id, price: product.price);
+    return StoreProductInfo(
+      id: product.id,
+      price: product.price,
+      currencyCode: product.currencyCode,
+      currencySymbol: product.currencySymbol,
+    );
+  }
+
+  /// País do storefront atual (ISO 3166-1 alfa-3 no iOS).
+  Future<String?> currentStorefrontCountry() async {
+    try {
+      final code = (await InAppPurchase.instance.countryCode()).trim();
+      if (code.isEmpty) return null;
+      return code;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<StorePurchase> purchase(String productId) async {

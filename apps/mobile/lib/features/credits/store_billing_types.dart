@@ -7,10 +7,17 @@ class StoreBillingException implements Exception {
 }
 
 class StoreProductInfo {
-  const StoreProductInfo({required this.id, required this.price});
+  const StoreProductInfo({
+    required this.id,
+    required this.price,
+    this.currencyCode = '',
+    this.currencySymbol = '',
+  });
 
   final String id;
   final String price;
+  final String currencyCode;
+  final String currencySymbol;
 }
 
 class StorePurchase {
