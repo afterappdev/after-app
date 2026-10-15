@@ -7,7 +7,7 @@ import 'billing_channel.dart';
 import 'checkout_screen.dart';
 import 'coupon_redeem_section.dart';
 import 'credits_ui.dart';
-import 'pix_checkout.dart';
+import 'web_checkout_screen.dart';
 import 'pix_pending_reconcile.dart';
 import 'purchase_labels.dart';
 
@@ -130,7 +130,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     final pack = _selected;
     if (pack == null) return;
     final dest = _usePixCheckout
-        ? PixCheckoutScreen(pack: pack)
+        ? WebCheckoutScreen(pack: pack)
         : CheckoutScreen(pack: pack);
     final paid = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => dest),

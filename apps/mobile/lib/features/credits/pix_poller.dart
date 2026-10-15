@@ -19,8 +19,8 @@ class PixPurchasePoller {
   final Duration timeout;
 
   Timer? _timer;
+  Timer? _deadline;
   bool _active = false;
-  DateTime? _startedAt;
 
   bool get isActive => _active;
 
@@ -32,16 +32,14 @@ class PixPurchasePoller {
   }) {
     stop();
     _active = true;
-    _startedAt = DateTime.now();
+    _deadline = Timer(timeout, () {
+      if (!_active) return;
+      stop();
+      onTimeout?.call();
+    });
 
     Future<void> tick() async {
       if (!_active) return;
-      final started = _startedAt;
-      if (started != null && DateTime.now().difference(started) >= timeout) {
-        stop();
-        onTimeout?.call();
-        return;
-      }
       try {
         final status = await fetchStatus(purchaseId);
         if (!_active) return;
@@ -66,6 +64,8 @@ class PixPurchasePoller {
     _active = false;
     _timer?.cancel();
     _timer = null;
+    _deadline?.cancel();
+    _deadline = null;
   }
 
   void dispose() => stop();

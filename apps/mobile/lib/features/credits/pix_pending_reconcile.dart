@@ -6,6 +6,12 @@ bool isPendingPixPurchase(Map<String, dynamic> purchase) {
   return provider == 'pix' && status == 'PENDING';
 }
 
+bool isPendingMercadoPagoPurchase(Map<String, dynamic> purchase) {
+  final provider = (purchase['provider']?.toString() ?? '').trim().toLowerCase();
+  final status = (purchase['status']?.toString() ?? '').trim().toUpperCase();
+  return status == 'PENDING' && (provider == 'pix' || provider == 'card');
+}
+
 String? pixPurchaseId(Map<String, dynamic> purchase) {
   final id = purchase['id']?.toString().trim();
   if (id == null || id.isEmpty) return null;
@@ -37,7 +43,7 @@ Future<PixListReconcileResult> reconcilePendingPixPurchases({
     final raw = next[i];
     if (raw is! Map) continue;
     final row = Map<String, dynamic>.from(raw);
-    if (!isPendingPixPurchase(row)) continue;
+    if (!isPendingMercadoPagoPurchase(row)) continue;
     final id = pixPurchaseId(row);
     if (id == null) continue;
 
