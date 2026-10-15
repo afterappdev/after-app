@@ -393,6 +393,7 @@ void main() {
     expect(purchaseProviderLabel('app_store'), 'App Store');
     expect(purchaseProviderLabel('apple_app_store'), 'App Store');
     expect(purchaseProviderLabel('pix'), 'PIX');
+    expect(purchaseProviderLabel('card'), 'Cartão de crédito');
     expect(purchaseProviderLabel('stub'), 'Desenvolvimento');
     expect(purchaseStatusLabel('PENDING'), 'Aguardando pagamento');
     expect(purchaseStatusLabel('PAID'), 'Pago');
