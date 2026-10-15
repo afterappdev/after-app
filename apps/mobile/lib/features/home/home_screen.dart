@@ -21,14 +21,12 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
 import '../venue/promo_validity.dart';
+import 'home_feed_cards.dart';
+import 'home_visual.dart';
 import 'venue_filter_sheet_layout.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    this.locator,
-    this.originCache,
-  });
+  const HomeScreen({super.key, this.locator, this.originCache});
 
   final DeviceLocator? locator;
   final OriginCache? originCache;
@@ -38,8 +36,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _accent = Color(0xFFF58634);
-  static const _bg = Color(0xFFF6F8F7);
+  static const _accent = HomeVisual.orange;
+  static const _bg = HomeVisual.canvas;
 
   final _cityQuery = TextEditingController();
   final _cityFocus = FocusNode();
@@ -239,15 +237,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final originQuery = _originQuery(city);
       final promotionsFuture = api.get(
         '/home/promotions',
-        query: {
-          ...originQuery,
-          'date': _dateQuery(_selectedDay),
-        },
+        query: {...originQuery, 'date': _dateQuery(_selectedDay)},
       );
-      final venuesFuture = api.get(
-        '/home/venues',
-        query: originQuery,
-      );
+      final venuesFuture = api.get('/home/venues', query: originQuery);
       if (!fromOriginUpdate) {
         _startBackgroundGps();
       }
@@ -306,18 +298,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _stampGpsDistances(
-    List<dynamic> items, {
-    bool nestedVenue = false,
-  }) {
+  void _stampGpsDistances(List<dynamic> items, {bool nestedVenue = false}) {
     final from = _origin;
     if (from == null) return;
     for (final item in items) {
       if (item is! Map) continue;
       final source = nestedVenue
           ? (item['venue'] is Map
-              ? Map<String, dynamic>.from(item['venue'] as Map)
-              : null)
+                ? Map<String, dynamic>.from(item['venue'] as Map)
+                : null)
           : item;
       if (source == null) continue;
       final lat = _distanceValue(source['lat']);
@@ -347,8 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
       list.add({'name': currentName, 'uf': currentUf});
     }
     for (final city in _recentCities) {
-      if (currentName.isNotEmpty &&
-          _isSameCity(currentName, currentUf, city)) {
+      if (currentName.isNotEmpty && _isSameCity(currentName, currentUf, city)) {
         continue;
       }
       list.add(city);
@@ -493,10 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _venueFocus.unfocus();
     final result = await Navigator.of(context).pushNamed(
       AppRoutes.venuePublic,
-      arguments: {
-        'venueId': id,
-        'navIndex': _navIndex,
-      },
+      arguments: {'venueId': id, 'navIndex': _navIndex},
     );
     if (!mounted) return;
     if (result == 'blocked') {
@@ -679,248 +664,175 @@ class _HomeScreenState extends State<HomeScreen> {
         : _selectedCity;
     final state = _selectedUf.isEmpty ? (user?.state ?? '') : _selectedUf;
 
+    final profileCity = user?.city ?? '';
+    final profileUf = user?.state ?? '';
+    final locationCaption = homeLocationCaption(
+      displayedCity: city,
+      displayedUf: state,
+      profileCity: profileCity,
+      profileUf: profileUf,
+    );
+    final showPromoHeader =
+        _promotions.isNotEmpty || !_isSameDay(_selectedDay, _today);
+
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: Column(
-              children: [
-                Expanded(
-                  child: RefreshIndicator(
-                    color: _accent,
-                    onRefresh: _load,
-                    child: CustomScrollView(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                            child: Column(
-                              children: [
-                                const AfterLogo(height: 70),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'O que tem pra hoje?',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                    color: Color(0xFF282829),
-                                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: HomeVisual.columnMaxWidth(constraints.maxWidth),
+                ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: RefreshIndicator(
+                        color: _accent,
+                        onRefresh: _load,
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  12,
+                                  20,
+                                  0,
                                 ),
-                                const SizedBox(height: 16),
-                                _LocationPicker(
-                                  city: city,
-                                  state: state,
-                                  expanded: _pickingCity,
-                                  queryController: _cityQuery,
-                                  focusNode: _cityFocus,
-                                  results: _cityResults,
-                                  loading: _searchingCities,
-                                  onToggle: _toggleCityPicker,
-                                  onQueryChanged: _onCityQueryChanged,
-                                  onSelect: _selectCity,
-                                ),
-                                if (_navIndex == 1) ...[
-                                  const SizedBox(height: 12),
-                                  _VenueSearchField(
-                                    controller: _venueQuery,
-                                    focusNode: _venueFocus,
-                                    results: _venueResults,
-                                    loading: _searchingVenues,
-                                    filterCount: _venueFilters.count,
-                                    onQueryChanged: _onVenueQueryChanged,
-                                    onSelect: _openVenue,
-                                    onFiltersTap: _openVenueFilters,
-                                  ),
-                                  if (_venueFilters.isActive) ...[
-                                    const SizedBox(height: 10),
-                                    _VenueActiveFilters(
-                                      filters: _venueFilters,
-                                      onOpen: _openVenueFilters,
-                                      onClear: _clearVenueFilter,
-                                    ),
-                                  ],
-                                ] else if (_promotions.isNotEmpty ||
-                                    !_isSameDay(_selectedDay, _today)) ...[
-                                  const SizedBox(height: 22),
-                                  const Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      'Promoções/ Eventos do dia',
+                                child: Column(
+                                  children: [
+                                    const AfterLogo(height: 70),
+                                    const SizedBox(height: 2),
+                                    const Text(
+                                      'O que tem pra hoje?',
+                                      textAlign: TextAlign.center,
                                       style: TextStyle(
                                         fontFamily: AppTheme.fontFamily,
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 15,
+                                        fontSize: 16,
                                         color: Color(0xFF282829),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  SizedBox(
-                                    height: 36,
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: ListView.separated(
-                                            scrollDirection: Axis.horizontal,
-                                            itemCount: _promoFilterDays.length,
-                                            separatorBuilder: (_, _) =>
-                                                const SizedBox(width: 8),
-                                            itemBuilder: (context, index) {
-                                              final day =
-                                                  _promoFilterDays[index];
-                                              final selected = _isSameDay(
-                                                day,
-                                                _selectedDay,
-                                              );
-                                              return GestureDetector(
-                                                onTap: () =>
-                                                    _selectPromoDay(day),
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(
-                                                    milliseconds: 180,
-                                                  ),
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                    horizontal: 12,
-                                                    vertical: 8,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: selected
-                                                        ? _accent
-                                                        : Colors.white,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                      18,
-                                                    ),
-                                                    border: Border.all(
-                                                      color: selected
-                                                          ? _accent
-                                                          : AppTheme.sageBorder,
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    _dayChipLabel(day),
-                                                    style: TextStyle(
-                                                      fontFamily:
-                                                          AppTheme.fontFamily,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                      fontSize: 12,
-                                                      color: selected
-                                                          ? Colors.white
-                                                          : const Color(
-                                                              0xFF282829,
-                                                            ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        GestureDetector(
-                                          onTap: _pickPromoDay,
-                                          child: Container(
-                                            width: 36,
-                                            height: 36,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(18),
-                                              border: Border.all(
-                                                color: AppTheme.sageBorder,
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.calendar_today_outlined,
-                                              size: 16,
-                                              color: _accent,
-                                            ),
-                                          ),
+                                    const SizedBox(height: 16),
+                                    _LocationPicker(
+                                      city: city,
+                                      state: state,
+                                      caption: locationCaption,
+                                      expanded: _pickingCity,
+                                      queryController: _cityQuery,
+                                      focusNode: _cityFocus,
+                                      results: _cityResults,
+                                      loading: _searchingCities,
+                                      onToggle: _toggleCityPicker,
+                                      onQueryChanged: _onCityQueryChanged,
+                                      onSelect: _selectCity,
+                                    ),
+                                    if (_navIndex == 1) ...[
+                                      const SizedBox(height: 12),
+                                      _VenueSearchField(
+                                        controller: _venueQuery,
+                                        focusNode: _venueFocus,
+                                        results: _venueResults,
+                                        loading: _searchingVenues,
+                                        filterCount: _venueFilters.count,
+                                        onQueryChanged: _onVenueQueryChanged,
+                                        onSelect: _openVenue,
+                                        onFiltersTap: _openVenueFilters,
+                                      ),
+                                      if (_venueFilters.isActive) ...[
+                                        const SizedBox(height: 10),
+                                        _VenueActiveFilters(
+                                          filters: _venueFilters,
+                                          onOpen: _openVenueFilters,
+                                          onClear: _clearVenueFilter,
                                         ),
                                       ],
+                                    ] else if (showPromoHeader) ...[
+                                      const SizedBox(height: 22),
+                                      const HomeSectionTitle(
+                                        tone: HomeAccentTone.promotion,
+                                        title: 'Promoções/ Eventos do dia',
+                                      ),
+                                      const SizedBox(height: 12),
+                                      HomeDayStrip(
+                                        days: _promoFilterDays,
+                                        selected: _selectedDay,
+                                        labelFor: _dayChipLabel,
+                                        onSelect: _selectPromoDay,
+                                        onCalendar: _pickPromoDay,
+                                      ),
+                                    ],
+                                    const SizedBox(height: 12),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (_navIndex == 1)
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: 24),
+                              )
+                            else if (_loading)
+                              const SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    color: _accent,
+                                  ),
+                                ),
+                              )
+                            else if (_error != null)
+                              SliverFillRemaining(
+                                hasScrollBody: false,
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Text(
+                                      _error!,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                      ),
                                     ),
                                   ),
-                                ],
-                                const SizedBox(height: 12),
-                              ],
-                            ),
-                          ),
+                                ),
+                              )
+                            else ...[
+                              if (_promotions.isNotEmpty)
+                                _PromotionCards(
+                                  items: _promotions,
+                                  onOpenVenue: _openVenueById,
+                                ),
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    20,
+                                    _promotions.isNotEmpty ? 8 : 10,
+                                    20,
+                                    12,
+                                  ),
+                                  child: const HomeSectionTitle(
+                                    tone: HomeAccentTone.venue,
+                                    title: 'Locais próximos',
+                                  ),
+                                ),
+                              ),
+                              _VenueCards(
+                                items: _venues,
+                                onOpenVenue: _openVenueById,
+                              ),
+                            ],
+                          ],
                         ),
-                        if (_navIndex == 1)
-                          const SliverToBoxAdapter(child: SizedBox(height: 24))
-                        else if (_loading)
-                          const SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: CircularProgressIndicator(color: _accent),
-                            ),
-                          )
-                        else if (_error != null)
-                          SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Text(
-                                  _error!,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        else ...[
-                          if (_promotions.isNotEmpty)
-                            _PromotionCards(
-                              items: _promotions,
-                              onOpenVenue: _openVenueById,
-                            ),
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                20,
-                                _promotions.isNotEmpty ? 8 : 10,
-                                20,
-                                12,
-                              ),
-                              child: const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Locais próximos',
-                                  style: TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                    color: Color(0xFF282829),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          _VenueCards(
-                            items: _venues,
-                            onOpenVenue: _openVenueById,
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
-                  ),
+                    AfterBottomNav(index: _navIndex, onTap: _onNavTap),
+                  ],
                 ),
-                AfterBottomNav(
-                  index: _navIndex,
-                  onTap: _onNavTap,
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -931,6 +843,7 @@ class _LocationPicker extends StatelessWidget {
   const _LocationPicker({
     required this.city,
     required this.state,
+    required this.caption,
     required this.expanded,
     required this.queryController,
     required this.focusNode,
@@ -943,6 +856,7 @@ class _LocationPicker extends StatelessWidget {
 
   final String city;
   final String state;
+  final String? caption;
   final bool expanded;
   final TextEditingController queryController;
   final FocusNode focusNode;
@@ -955,150 +869,166 @@ class _LocationPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = state.isEmpty ? city : '$city, $state';
-    return Material(
-      color: Colors.white,
-      elevation: 3,
-      shadowColor: Colors.black26,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          InkWell(
-            onTap: expanded ? null : onToggle,
-            borderRadius: BorderRadius.circular(20),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on, color: Color(0xFFF58634), size: 22),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: expanded
-                        ? TextField(
-                            controller: queryController,
-                            focusNode: focusNode,
-                            autofocus: true,
-                            onChanged: onQueryChanged,
-                            style: const TextStyle(
-                              fontFamily: AppTheme.fontFamily,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: Color(0xFF282829),
-                            ),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              hintText: 'Buscar cidade',
-                              hintStyle: TextStyle(
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: HomeVisual.cardShadow,
+      ),
+      child: Material(
+        color: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            InkWell(
+              onTap: expanded ? null : onToggle,
+              borderRadius: BorderRadius.circular(18),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on,
+                      color: HomeVisual.orange,
+                      size: 22,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: expanded
+                          ? TextField(
+                              controller: queryController,
+                              focusNode: focusNode,
+                              autofocus: true,
+                              onChanged: onQueryChanged,
+                              style: const TextStyle(
                                 fontFamily: AppTheme.fontFamily,
-                                fontWeight: FontWeight.w400,
+                                fontWeight: FontWeight.w600,
                                 fontSize: 14,
-                                color: Color(0xFF9A9AA3),
+                                color: Color(0xFF282829),
                               ),
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              filled: false,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                label,
-                                style: const TextStyle(
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                hintText: 'Buscar cidade',
+                                hintStyle: TextStyle(
                                   fontFamily: AppTheme.fontFamily,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w400,
                                   fontSize: 14,
-                                  color: Color(0xFF282829),
-                                ),
-                              ),
-                              const Text(
-                                'Sua localização atual',
-                                style: TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  fontSize: 11,
                                   color: Color(0xFF9A9AA3),
                                 ),
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                filled: false,
+                                contentPadding: EdgeInsets.zero,
                               ),
-                            ],
-                          ),
-                  ),
-                  IconButton(
-                    onPressed: onToggle,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    icon: Icon(
-                      expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: const Color(0xFF9A9AA3),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  style: const TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                    color: HomeVisual.ink,
+                                  ),
+                                ),
+                                if (caption != null)
+                                  Text(
+                                    caption!,
+                                    style: const TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 12,
+                                      color: HomeVisual.muted,
+                                    ),
+                                  ),
+                              ],
+                            ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: onToggle,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                      icon: Icon(
+                        expanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: const Color(0xFF9A9AA3),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          if (expanded) ...[
-            const Divider(height: 1, color: Color(0xFFE8E8EE)),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: SizedBox(
-                  height: 22,
-                  width: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.2,
-                    color: Color(0xFFF58634),
+            if (expanded) ...[
+              const Divider(height: 1, color: Color(0xFFE8E8EE)),
+              if (loading)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Color(0xFFF58634),
+                    ),
                   ),
-                ),
-              )
-            else if (results.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Nenhuma cidade encontrada.',
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 13,
-                    color: Color(0xFF9A9AA3),
+                )
+              else if (results.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Nenhuma cidade encontrada.',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 13,
+                      color: Color(0xFF9A9AA3),
+                    ),
                   ),
-                ),
-              )
-            else
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 240),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.only(bottom: 8),
-                  itemCount: results.length,
-                  itemBuilder: (context, index) {
-                    final item = results[index];
-                    final name = item['name']?.toString() ?? '';
-                    final uf = item['uf']?.toString() ?? '';
-                    return ListTile(
-                      dense: true,
-                      leading: const Icon(
-                        Icons.location_on_outlined,
-                        color: Color(0xFFF58634),
-                        size: 20,
-                      ),
-                      title: Text(
-                        uf.isEmpty ? name : '$name, $uf',
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF282829),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: results.length,
+                    itemBuilder: (context, index) {
+                      final item = results[index];
+                      final name = item['name']?.toString() ?? '';
+                      final uf = item['uf']?.toString() ?? '';
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(
+                          Icons.location_on_outlined,
+                          color: Color(0xFFF58634),
+                          size: 20,
                         ),
-                      ),
-                      onTap: () => onSelect(item),
-                    );
-                  },
+                        title: Text(
+                          uf.isEmpty ? name : '$name, $uf',
+                          style: const TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF282829),
+                          ),
+                        ),
+                        onTap: () => onSelect(item),
+                      );
+                    },
+                  ),
                 ),
-              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1179,9 +1109,7 @@ class _VenueSearchField extends StatelessWidget {
                     label: Text('$filterCount'),
                     backgroundColor: const Color(0xFFF58634),
                     child: Icon(
-                      filterCount > 0
-                          ? Icons.tune
-                          : Icons.tune_outlined,
+                      filterCount > 0 ? Icons.tune : Icons.tune_outlined,
                       color: const Color(0xFFF58634),
                       size: 22,
                     ),
@@ -1235,7 +1163,8 @@ class _VenueSearchField extends StatelessWidget {
                     item['category']?.toString(),
                   );
                   final avg = (item['avgRating'] as num?)?.toDouble();
-                  final reviewCount = (item['reviewCount'] as num?)?.toInt() ?? 0;
+                  final reviewCount =
+                      (item['reviewCount'] as num?)?.toInt() ?? 0;
                   final ratingLabel = reviewCount > 0 && avg != null
                       ? '${avg.toStringAsFixed(1).replaceAll('.', ',')} (${reviewCount})'
                       : '';
@@ -1245,8 +1174,7 @@ class _VenueSearchField extends StatelessWidget {
                     if (ratingLabel.isNotEmpty) ratingLabel,
                   ].join(' · ');
                   final imageUrl = ApiConfig.resolveMediaUrl(
-                    item['logoUrl']?.toString() ??
-                        item['coverUrl']?.toString(),
+                    item['logoUrl']?.toString() ?? item['coverUrl']?.toString(),
                   );
                   return ListTile(
                     dense: true,
@@ -1309,10 +1237,7 @@ class _VenueSearchField extends StatelessWidget {
 }
 
 class _PromotionCards extends StatelessWidget {
-  const _PromotionCards({
-    required this.items,
-    required this.onOpenVenue,
-  });
+  const _PromotionCards({required this.items, required this.onOpenVenue});
 
   final List<dynamic> items;
   final ValueChanged<String> onOpenVenue;
@@ -1341,7 +1266,7 @@ class _PromotionCards extends StatelessWidget {
         itemBuilder: (context, index) {
           final item = items[index] as Map<String, dynamic>;
           final venue = item['venue'] as Map<String, dynamic>? ?? {};
-          return _PromoCard(
+          return HomePromoCard(
             imageUrl: ApiConfig.resolveMediaUrl(
               item['imageUrl']?.toString() ??
                   venue['coverUrl']?.toString() ??
@@ -1379,10 +1304,7 @@ class _PromotionCards extends StatelessWidget {
 }
 
 class _VenueCards extends StatelessWidget {
-  const _VenueCards({
-    required this.items,
-    required this.onOpenVenue,
-  });
+  const _VenueCards({required this.items, required this.onOpenVenue});
 
   final List<dynamic> items;
   final ValueChanged<String> onOpenVenue;
@@ -1410,7 +1332,7 @@ class _VenueCards extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final venue = items[index] as Map<String, dynamic>;
-          return _PromoCard(
+          return HomeVenueCard(
             imageUrl: ApiConfig.resolveMediaUrl(
               venue['logoUrl']?.toString() ?? venue['coverUrl']?.toString(),
             ),
@@ -1419,9 +1341,8 @@ class _VenueCards extends StatelessWidget {
             hasOpenInfo: venue['isOpen'] != null,
             distanceLabel: _formatDistanceKm(venue['distanceKm']),
             category: VenueCategories.present(venue['category']?.toString()),
-            dealTitle: venue['city']?.toString() ?? '',
-            dealDetail: venue['description']?.toString() ?? '',
-            validUntil: '',
+            city: venue['city']?.toString() ?? '',
+            description: venue['description']?.toString() ?? '',
             onTap: () {
               final id = venue['id']?.toString();
               if (id != null && id.isNotEmpty) {
@@ -1430,242 +1351,6 @@ class _VenueCards extends StatelessWidget {
             },
           );
         },
-      ),
-    );
-  }
-}
-
-class _PromoCard extends StatelessWidget {
-  const _PromoCard({
-    required this.imageUrl,
-    required this.venueName,
-    required this.isOpen,
-    required this.hasOpenInfo,
-    required this.category,
-    required this.dealTitle,
-    required this.dealDetail,
-    required this.validUntil,
-    required this.onTap,
-    this.distanceLabel,
-    this.onImageTap,
-  });
-
-  final String imageUrl;
-  final String venueName;
-  final bool isOpen;
-  final bool hasOpenInfo;
-  final String? distanceLabel;
-  final String category;
-  final String dealTitle;
-  final String dealDetail;
-  final String validUntil;
-  final VoidCallback onTap;
-  final VoidCallback? onImageTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(10),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              GestureDetector(
-                onTap: onImageTap ?? onTap,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: 108,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        const ColoredBox(color: Color(0xFFEEF3F1)),
-                        if (imageUrl.isEmpty)
-                          const Center(
-                            child: Icon(
-                              Icons.local_bar_outlined,
-                              color: Color(0xFFF58634),
-                            ),
-                          )
-                        else
-                          Positioned.fill(
-                            child: Image.network(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => const ColoredBox(
-                                color: Color(0xFFEEF3F1),
-                                child: Icon(
-                                  Icons.broken_image_outlined,
-                                  color: Color(0xFF9A9AA3),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        venueName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: AppTheme.fontFamily,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                          height: 1.15,
-                          color: Color(0xFF282829),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          if (hasOpenInfo)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isOpen
-                                    ? const Color(0xFF22A45A)
-                                    : const Color(0xFF9A9AA3),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                isOpen ? 'Aberto' : 'Fechado',
-                                style: const TextStyle(
-                                  fontFamily: AppTheme.fontFamily,
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          if (hasOpenInfo &&
-                              distanceLabel != null &&
-                              distanceLabel!.isNotEmpty)
-                            const SizedBox(width: 8),
-                          if (distanceLabel != null &&
-                              distanceLabel!.isNotEmpty)
-                            Flexible(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.near_me_outlined,
-                                    size: 12,
-                                    color: Color(0xFF8B8B96),
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Flexible(
-                                    child: Text(
-                                      distanceLabel!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontFamily: AppTheme.fontFamily,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                        color: Color(0xFF8B8B96),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (category.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          category,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 11,
-                            color: Color(0xFF8B8B96),
-                          ),
-                        ),
-                      ],
-                      if (dealTitle.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          dealTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                            color: Color(0xFF282829),
-                          ),
-                        ),
-                      ],
-                      if (dealDetail.isNotEmpty)
-                        Text(
-                          dealDetail,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontSize: 11,
-                            color: Color(0xFF8B8B96),
-                            height: 1.25,
-                          ),
-                        ),
-                      if (validUntil.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.calendar_today_outlined,
-                              size: 12,
-                              color: Color(0xFF9A9AA3),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Válido para o dia $validUntil',
-                              style: const TextStyle(
-                                fontFamily: AppTheme.fontFamily,
-                                fontSize: 10,
-                                color: Color(0xFF9A9AA3),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1697,7 +1382,9 @@ double? _distanceValue(dynamic value) {
 
 String? _formatDistanceKm(dynamic value) {
   if (value == null) return null;
-  final km = value is num ? value.toDouble() : double.tryParse(value.toString());
+  final km = value is num
+      ? value.toDouble()
+      : double.tryParse(value.toString());
   if (km == null || km.isNaN || km < 0) return null;
   if (km < 0.1) return '~100 m';
   if (km < 1) return '~${(km * 1000).round()} m';

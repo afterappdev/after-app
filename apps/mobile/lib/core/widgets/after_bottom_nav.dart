@@ -5,11 +5,7 @@ import '../../features/auth/auth_controller.dart';
 import '../theme/app_theme.dart';
 
 class AfterBottomNav extends StatelessWidget {
-  const AfterBottomNav({
-    super.key,
-    required this.index,
-    required this.onTap,
-  });
+  const AfterBottomNav({super.key, required this.index, required this.onTap});
 
   final int index;
   final ValueChanged<int> onTap;
@@ -19,47 +15,60 @@ class AfterBottomNav extends StatelessWidget {
     final isVenue = context.watch<AuthController>().user?.isVenue == true;
     return Material(
       color: Colors.white,
-      elevation: 8,
-      shadowColor: Colors.black26,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 70,
-          child: Row(
-            children: [
-              _Item(
-                icon: Icons.home_outlined,
-                label: 'Home',
-                selected: index == 0,
-                onTap: () => onTap(0),
-              ),
-              _Item(
-                icon: Icons.search,
-                label: 'Pesquisar locais',
-                selected: index == 1,
-                onTap: () => onTap(1),
-              ),
-              if (isVenue)
-                _Item(
-                  icon: index == 2 ? Icons.image : Icons.image_outlined,
-                  label: 'Publicar',
-                  selected: index == 2,
-                  onTap: () => onTap(2),
-                )
-              else
-                _Item(
-                  icon: index == 2 ? Icons.favorite : Icons.favorite_border,
-                  label: 'Favoritos',
-                  selected: index == 2,
-                  onTap: () => onTap(2),
+      elevation: 0,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFE6E6EA))),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Builder(
+            builder: (context) {
+              final scale = MediaQuery.textScalerOf(context).scale(1);
+              final height = 70.0 * (scale < 1 ? 1.0 : scale);
+              return SizedBox(
+                height: height,
+                child: Row(
+                  children: [
+                    _Item(
+                      icon: Icons.home_outlined,
+                      label: 'Home',
+                      selected: index == 0,
+                      onTap: () => onTap(0),
+                    ),
+                    _Item(
+                      icon: Icons.search,
+                      label: 'Pesquisar locais',
+                      selected: index == 1,
+                      onTap: () => onTap(1),
+                    ),
+                    if (isVenue)
+                      _Item(
+                        icon: index == 2 ? Icons.image : Icons.image_outlined,
+                        label: 'Publicar',
+                        selected: index == 2,
+                        onTap: () => onTap(2),
+                      )
+                    else
+                      _Item(
+                        icon: index == 2
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        label: 'Favoritos',
+                        selected: index == 2,
+                        onTap: () => onTap(2),
+                      ),
+                    _Item(
+                      icon: index == 3 ? Icons.person : Icons.person_outline,
+                      label: 'Perfil',
+                      selected: index == 3,
+                      onTap: () => onTap(3),
+                    ),
+                  ],
                 ),
-              _Item(
-                icon: index == 3 ? Icons.person : Icons.person_outline,
-                label: 'Perfil',
-                selected: index == 3,
-                onTap: () => onTap(3),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
@@ -82,7 +91,7 @@ class _Item extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const accent = AppTheme.brand;
+    const accent = AppTheme.accentOrange;
     const muted = AppTheme.muted;
     final color = selected ? accent : muted;
     return Expanded(
