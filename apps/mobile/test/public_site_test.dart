@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -142,11 +143,39 @@ Future<void> _scrollToKey(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
 }
 
+const _urlLauncherChannel = MethodChannel('plugins.flutter.io/url_launcher');
+
+List<String> _bindStoreLaunches() {
+  final urls = <String>[];
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(_urlLauncherChannel, (call) async {
+    if (call.method == 'launch') {
+      final args = Map<Object?, Object?>.from(call.arguments as Map);
+      urls.add(args['url']! as String);
+    }
+    return true;
+  });
+  addTearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_urlLauncherChannel, null);
+  });
+  return urls;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  test('a home reutiliza a abertura externa, que na web usa nova aba', () {
+    final web = File('lib/core/location/open_url_web.dart').readAsStringSync();
+    final landing =
+        File('lib/features/public/landing_page.dart').readAsStringSync();
+    expect(web, contains("html.window.open(url, '_blank')"));
+    expect(landing, contains('openExternalUrl(kGooglePlayDownloadUrl)'));
+    expect(landing, contains('openExternalUrl(kAppStoreDownloadUrl)'));
   });
 
   testWidgets('landing abre sem login', (tester) async {
@@ -184,24 +213,20 @@ void main() {
     expect(find.text('Bem-vindo(a)!'), findsOneWidget);
   });
 
-  testWidgets('badges das lojas não navegam (links ainda não publicados)', (
+  testWidgets('badges das lojas abrem as lojas oficiais sem sair da home', (
     tester,
   ) async {
+    final urls = _bindStoreLaunches();
     await _surface(tester, const Size(1200, 900));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('landing-badge-play')),
-      warnIfMissed: false,
-    );
+    await tester.tap(find.byKey(const Key('landing-badge-play')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('landing-badge-store')),
-      warnIfMissed: false,
-    );
+    await tester.tap(find.byKey(const Key('landing-badge-store')));
     await tester.pumpAndSettle();
 
+    expect(urls, [kGooglePlayDownloadUrl, kAppStoreDownloadUrl]);
     expect(find.byType(LoginScreen), findsNothing);
     expect(find.byType(LandingPage), findsOneWidget);
   });
@@ -461,22 +486,20 @@ void main() {
     expect(find.text('Bem-vindo(a)!'), findsOneWidget);
   });
 
-  testWidgets('badges mobile não navegam', (tester) async {
+  testWidgets('badges mobile abrem as lojas oficiais sem sair da home', (
+    tester,
+  ) async {
+    final urls = _bindStoreLaunches();
     await _surface(tester, const Size(390, 1200));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('landing-badge-play')),
-      warnIfMissed: false,
-    );
+    await tester.tap(find.byKey(const Key('landing-badge-play')));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('landing-badge-store')),
-      warnIfMissed: false,
-    );
+    await tester.tap(find.byKey(const Key('landing-badge-store')));
     await tester.pumpAndSettle();
 
+    expect(urls, [kGooglePlayDownloadUrl, kAppStoreDownloadUrl]);
     expect(find.byType(LoginScreen), findsNothing);
     expect(find.byType(LandingPage), findsOneWidget);
     expect(find.byKey(const Key('landing-mobile')), findsOneWidget);

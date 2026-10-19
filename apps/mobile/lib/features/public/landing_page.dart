@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../../core/location/open_url.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
@@ -26,6 +27,11 @@ const double kLandingMobileBreakpoint = 768;
 const double kLandingTwoColMin = 900;
 const double kLandingDesktopBreakpoint = 1024;
 const double kLandingMaxWidth = 1320;
+
+const String kGooglePlayDownloadUrl =
+    'https://play.google.com/store/apps/details?id=com.r2p.after.after_app';
+const String kAppStoreDownloadUrl =
+    'https://apps.apple.com/br/app/after/id6812746791';
 
 const Color _kVenueWash = Color(0xFFF5F1F8);
 
@@ -648,14 +654,17 @@ class _StoreBadgeHotspots extends StatelessWidget {
               bottom: 0,
               width: (w * 0.46).clamp(120, 185),
               height: (h * 0.18).clamp(44, 72),
-              child: GestureDetector(
-                key: const Key('landing-badge-play'),
-                behavior: HitTestBehavior.translucent,
-                onTap: null,
-                child: Semantics(
-                  button: true,
-                  label: 'Google Play',
-                  child: const SizedBox.expand(),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: const Key('landing-badge-play'),
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => openExternalUrl(kGooglePlayDownloadUrl),
+                  child: Semantics(
+                    button: true,
+                    label: 'Google Play',
+                    child: const SizedBox.expand(),
+                  ),
                 ),
               ),
             ),
@@ -664,14 +673,17 @@ class _StoreBadgeHotspots extends StatelessWidget {
               bottom: 0,
               width: (w * 0.46).clamp(120, 185),
               height: (h * 0.18).clamp(44, 72),
-              child: GestureDetector(
-                key: const Key('landing-badge-store'),
-                behavior: HitTestBehavior.translucent,
-                onTap: null,
-                child: Semantics(
-                  button: true,
-                  label: 'App Store',
-                  child: const SizedBox.expand(),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  key: const Key('landing-badge-store'),
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () => openExternalUrl(kAppStoreDownloadUrl),
+                  child: Semantics(
+                    button: true,
+                    label: 'App Store',
+                    child: const SizedBox.expand(),
+                  ),
                 ),
               ),
             ),

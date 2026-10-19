@@ -346,8 +346,8 @@
   </div>
 
   <script>
-    const googlePlayUrl = '';
-    const appStoreUrl = '';
+    const googlePlayUrl = 'https://play.google.com/store/apps/details?id=com.r2p.after.after_app';
+    const appStoreUrl = 'https://apps.apple.com/br/app/after/id6812746791';
 
     function bindStore(id, url) {
       var link = document.getElementById(id);
@@ -364,6 +364,8 @@
         return;
       }
       link.href = destination;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
       link.removeAttribute('aria-disabled');
     }
 

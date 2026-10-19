@@ -42,13 +42,25 @@ void main() {
     expect(page, contains('name="after-download-page"'));
   });
 
-  test('lojas ficam sem URL e os destinos fixos estão corretos', () {
-    expect(page, contains("const googlePlayUrl = '';"));
-    expect(page, contains("const appStoreUrl = '';"));
+  test('lojas abrem as URLs oficiais em nova aba e os demais destinos permanecem', () {
+    expect(
+      page,
+      contains(
+        "const googlePlayUrl = 'https://play.google.com/store/apps/details?id=com.r2p.after.after_app';",
+      ),
+    );
+    expect(
+      page,
+      contains(
+        "const appStoreUrl = 'https://apps.apple.com/br/app/after/id6812746791';",
+      ),
+    );
+    expect(page, contains("link.target = '_blank';"));
+    expect(page, contains("link.rel = 'noopener noreferrer';"));
     expect(page, contains('href="https://app-after.com.br"'));
     expect(page, contains('href="https://wa.me/5517996470194"'));
-    expect(page.contains('play.google.com'), isFalse);
-    expect(page.contains('apps.apple.com'), isFalse);
+    expect(page.contains('href="https://app-after.com.br" target'), isFalse);
+    expect(page.contains('href="https://wa.me/5517996470194" target'), isFalse);
     expect(page.contains('itunes.apple.com'), isFalse);
     expect(page.contains('wa.me/5517996470194?'), isFalse);
     expect(page.contains('instagram.com'), isFalse);
