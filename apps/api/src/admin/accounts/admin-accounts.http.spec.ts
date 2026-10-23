@@ -25,6 +25,7 @@ describe('Admin accounts HTTP', () => {
     getById: jest.fn(),
     remove: jest.fn(),
     stats: jest.fn(),
+    cities: jest.fn(),
   };
   const prisma = {
     user: {
@@ -74,13 +75,28 @@ describe('Admin accounts HTTP', () => {
     accounts.getById.mockReset();
     accounts.remove.mockReset();
     accounts.stats.mockReset();
+    accounts.cities.mockReset();
     accounts.remove.mockResolvedValue({ success: true });
     accounts.stats.mockResolvedValue({ totals: { users: 0, venues: 0, accounts: 0 } });
+    accounts.cities.mockResolvedValue({ items: [] });
   });
 
   function token(role: Role) {
     return jwt.sign({ sub: `id-${role}`, email: `${role}@after.local`, role });
   }
+
+  it('GET /admin/accounts/cities sem autenticação → 401', async () => {
+    await request(app.getHttpServer()).get('/admin/accounts/cities').expect(401);
+    expect(accounts.cities).not.toHaveBeenCalled();
+  });
+
+  it('GET /admin/accounts/cities com ADMIN → 200', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/accounts/cities')
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .expect(200);
+    expect(accounts.cities).toHaveBeenCalled();
+  });
 
   it('GET /admin/accounts/stats sem autenticação → 401', async () => {
     await request(app.getHttpServer()).get('/admin/accounts/stats').expect(401);

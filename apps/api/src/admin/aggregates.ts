@@ -7,6 +7,7 @@ import {
 } from './finance';
 
 export type RankedCity = { city: string; state: string; count: number };
+export type CityLocation = { city: string; state: string; accountCount: number };
 export type RankedCategory = { category: string; count: number };
 export type CountBucket = { key: string; count: number };
 
@@ -200,6 +201,27 @@ export async function paidSalesSummaryInRange(
     vipCredits,
     packages: { unit1, combo5, combo10 },
   };
+}
+
+export async function listConsumerCityLocations(
+  prisma: PrismaService,
+): Promise<CityLocation[]> {
+  const rows = await prisma.$queryRaw<
+    Array<{ city: string; state: string; count: bigint }>
+  >`
+    SELECT u.city, u.state, COUNT(*)::bigint AS count
+    FROM "User" u
+    WHERE u.role IN ('USER', 'VENUE')
+      AND NULLIF(TRIM(u.city), '') IS NOT NULL
+      AND NULLIF(TRIM(u.state), '') IS NOT NULL
+    GROUP BY u.city, u.state
+    ORDER BY u.state ASC, u.city ASC
+  `;
+  return rows.map((row) => ({
+    city: row.city,
+    state: row.state,
+    accountCount: Number(row.count),
+  }));
 }
 
 export async function consumerTotals(prisma: PrismaService) {

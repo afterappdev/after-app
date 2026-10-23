@@ -14,6 +14,11 @@ export class AdminAccountsController {
     return this.accounts.list(query);
   }
 
+  @Get('cities')
+  cities() {
+    return this.accounts.cities();
+  }
+
   @Get('stats')
   stats(@Query() query: AdminAccountsStatsQueryDto) {
     return this.accounts.stats(query);

@@ -10,6 +10,7 @@ import {
   consumerTotals,
   countUsersByAgeBand,
   countVenuesByCategory,
+  listConsumerCityLocations,
 } from '../aggregates';
 import { paginate, paginationMeta } from '../pagination';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
@@ -23,6 +24,10 @@ export class AdminAccountsService {
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
   ) {}
+
+  async cities() {
+    return { items: await listConsumerCityLocations(this.prisma) };
+  }
 
   async list(query: AdminAccountsQueryDto) {
     const { page, limit, skip } = paginate(query.page, query.limit);
@@ -197,6 +202,30 @@ export class AdminAccountsService {
         { venue: { name: { contains: q, mode: 'insensitive' } } },
       ];
     }
+    this.applyCityStateFilter(where, query.city, query.state);
     return where;
+  }
+
+  private applyCityStateFilter(
+    where: Prisma.UserWhereInput,
+    cityRaw?: string,
+    stateRaw?: string,
+  ): void {
+    const city = cityRaw?.trim();
+    const state = stateRaw?.trim()?.toUpperCase();
+    if (city && !state) {
+      throw new BadRequestException(
+        'Informe state (UF) junto com city para filtrar contas.',
+      );
+    }
+    if (state && !city) {
+      throw new BadRequestException(
+        'Informe city junto com state para filtrar contas.',
+      );
+    }
+    if (city && state) {
+      where.city = city;
+      where.state = state;
+    }
   }
 }

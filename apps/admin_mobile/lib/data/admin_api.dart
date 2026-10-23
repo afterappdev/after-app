@@ -1,6 +1,7 @@
 import '../core/network/api_client.dart';
 import 'admin_account.dart';
 import 'admin_accounts_stats.dart';
+import 'admin_city_scope.dart';
 import 'admin_coupon.dart';
 import 'admin_dashboard.dart';
 import 'admin_sales_summary.dart';
@@ -21,11 +22,15 @@ abstract class AdminApi {
 
   Future<AdminAccountsStats> accountsStats({String? city, String? state});
 
+  Future<AdminCityScopeList> accountsCities();
+
   Future<Paginated<AdminAccount>> accounts({
     int page = 1,
     int limit = 20,
     String? role,
     String? query,
+    String? city,
+    String? state,
   });
 
   Future<AdminAccountDetail> account(String id);
@@ -147,11 +152,19 @@ class HttpAdminApi implements AdminApi {
   }
 
   @override
+  Future<AdminCityScopeList> accountsCities() async {
+    final data = await client.get('/admin/accounts/cities');
+    return AdminCityScopeList.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
   Future<Paginated<AdminAccount>> accounts({
     int page = 1,
     int limit = 20,
     String? role,
     String? query,
+    String? city,
+    String? state,
   }) async {
     final data = await client.get(
       '/admin/accounts',
@@ -160,6 +173,8 @@ class HttpAdminApi implements AdminApi {
         'limit': '$limit',
         if (role != null && role.isNotEmpty) 'role': role,
         if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+        if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+        if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
       },
     );
     return Paginated.fromJson(

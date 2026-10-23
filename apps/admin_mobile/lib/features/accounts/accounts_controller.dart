@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../data/admin_account.dart';
 import '../../data/admin_accounts_stats.dart';
 import '../../data/admin_api.dart';
+import '../../data/admin_city_scope.dart';
 
 class AccountsController extends ChangeNotifier {
   AccountsController(this.api);
@@ -17,7 +18,9 @@ class AccountsController extends ChangeNotifier {
   String? role = 'USER';
   int totalUsers = 0;
   int totalVenues = 0;
-  String? cityFilter;
+  AdminCityScope? selectedCity;
+  List<AdminCityScope> cityOptions = [];
+  bool loadingCities = false;
   int page = 1;
   int totalPages = 1;
   bool loading = false;
@@ -28,22 +31,31 @@ class AccountsController extends ChangeNotifier {
 
   Timer? _debounce;
 
-  Future<void> loadTotals() async {
-    await loadStats();
+  Future<void> loadCityOptions() async {
+    loadingCities = true;
+    notifyListeners();
+    try {
+      final list = await api.accountsCities();
+      cityOptions = list.items;
+      if (selectedCity != null &&
+          !cityOptions.any((c) => c.matches(selectedCity))) {
+        selectedCity = null;
+      }
+    } on ApiException {
+      // keep previous options
+    } finally {
+      loadingCities = false;
+      notifyListeners();
+    }
   }
 
   Future<void> loadStats() async {
     loadingStats = true;
     notifyListeners();
     try {
-      final city = cityFilter?.trim();
-      String? state;
-      if (city != null && city.isNotEmpty) {
-        state = _stateForCity(city);
-      }
       stats = await api.accountsStats(
-        city: city,
-        state: state,
+        city: selectedCity?.city,
+        state: selectedCity?.state,
       );
       totalUsers = stats!.totals.users;
       totalVenues = stats!.totals.venues;
@@ -53,15 +65,6 @@ class AccountsController extends ChangeNotifier {
       loadingStats = false;
       notifyListeners();
     }
-  }
-
-  String? _stateForCity(String city) {
-    for (final item in items) {
-      if (item.city == city && item.state.trim().isNotEmpty) {
-        return item.state.trim();
-      }
-    }
-    return null;
   }
 
   Future<void> load({bool refresh = true}) async {
@@ -80,6 +83,8 @@ class AccountsController extends ChangeNotifier {
         page: refresh ? 1 : page + 1,
         role: role,
         query: query,
+        city: selectedCity?.city,
+        state: selectedCity?.state,
       );
       if (refresh) {
         items
@@ -120,15 +125,9 @@ class AccountsController extends ChangeNotifier {
     load();
   }
 
-  void setCityFilter(String? city) {
-    cityFilter = city;
-    notifyListeners();
-    loadStats();
-  }
-
-  List<AdminAccount> get visibleItems {
-    if (cityFilter == null || cityFilter!.isEmpty) return items;
-    return items.where((a) => a.city == cityFilter).toList();
+  Future<void> setCityScope(AdminCityScope? scope) async {
+    selectedCity = scope;
+    await load();
   }
 
   void setQuery(String value) {

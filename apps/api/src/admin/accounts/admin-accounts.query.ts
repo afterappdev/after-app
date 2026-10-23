@@ -31,4 +31,14 @@ export class AdminAccountsQueryDto {
   @IsString()
   @MaxLength(120)
   q?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  state?: string;
 }

@@ -11,6 +11,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import {
   countUsersByAgeBand,
   countVenuesByCategory,
+  listConsumerCityLocations,
   paidSalesSummaryInRange,
   reportsCreatedInRange,
   topCitiesNewAccountsInRange,
@@ -210,5 +211,130 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
     expect(summary.commonCredits).toBeGreaterThanOrEqual(1);
     expect(summary.vipCredits).toBeGreaterThanOrEqual(1);
     expect(summary.packages.unit1).toBeGreaterThanOrEqual(1);
+  });
+
+  it('homonymous cities stay distinct in rankings and location list', async () => {
+    const { start, end } = monthRangeUtc({ year: 2099, month: 2 });
+    const inMonth = new Date(start.getTime() + 3_600_000);
+
+    await prisma.user.createMany({
+      data: [
+        {
+          email: `${tag}-hom-sp@after.local`,
+          passwordHash: 'x',
+          name: `${tag} SP`,
+          role: Role.USER,
+          state: 'SP',
+          city: 'São Paulo',
+          createdAt: inMonth,
+        },
+        {
+          email: `${tag}-hom-mg@after.local`,
+          passwordHash: 'x',
+          name: `${tag} MG`,
+          role: Role.USER,
+          state: 'MG',
+          city: 'São Paulo',
+          createdAt: inMonth,
+        },
+      ],
+    });
+
+    const top = await topCitiesNewAccountsInRange(prisma as never, start, end, 5);
+    const sp = top.find((r) => r.city === 'São Paulo' && r.state === 'SP');
+    const mg = top.find((r) => r.city === 'São Paulo' && r.state === 'MG');
+    expect(sp?.count).toBeGreaterThanOrEqual(1);
+    expect(mg?.count).toBeGreaterThanOrEqual(1);
+
+    const locations = await listConsumerCityLocations(prisma as never);
+    expect(
+      locations.filter((l) => l.city === 'São Paulo').map((l) => l.state).sort(),
+    ).toEqual(expect.arrayContaining(['MG', 'SP']));
+
+    const spBands = await countUsersByAgeBand(prisma as never, {
+      city: 'São Paulo',
+      state: 'SP',
+    });
+    const mgBands = await countUsersByAgeBand(prisma as never, {
+      city: 'São Paulo',
+      state: 'MG',
+    });
+    const spTotal = spBands.reduce((s, b) => s + b.count, 0);
+    const mgTotal = mgBands.reduce((s, b) => s + b.count, 0);
+    expect(spTotal).toBeGreaterThanOrEqual(1);
+    expect(mgTotal).toBeGreaterThanOrEqual(1);
+  });
+
+  it('month with no fixtures returns empty rankings and zero reports', async () => {
+    const { start, end } = monthRangeUtc({ year: 2020, month: 1 });
+    const cities = await topCitiesNewAccountsInRange(prisma as never, start, end);
+    const categories = await topVenueCategoriesCreatedInRange(
+      prisma as never,
+      start,
+      end,
+    );
+    const reports = await reportsCreatedInRange(prisma as never, start, end);
+    expect(cities.length).toBe(0);
+    expect(categories.length).toBe(0);
+    expect(reports).toBe(0);
+  });
+
+  it('REFUNDED purchases are excluded from paid sales summary', async () => {
+    const owner = await prisma.user.create({
+      data: {
+        email: `${tag}-ref@after.local`,
+        passwordHash: 'x',
+        name: `${tag} Ref`,
+        role: Role.VENUE,
+        state: 'RJ',
+        city: 'Rio de Janeiro',
+        venue: {
+          create: {
+            name: `${tag} Ref Venue`,
+            state: 'RJ',
+            city: 'Rio de Janeiro',
+            wallet: { create: { balance: 0 } },
+          },
+        },
+      },
+      include: { venue: true },
+    });
+    const venueId = owner.venue!.id;
+    const { start } = monthRangeUtc({ year: 2099, month: 3 });
+    const confirmedAt = new Date(start.getTime() + 3_600_000);
+    await prisma.creditPurchase.createMany({
+      data: [
+        {
+          venueId,
+          packageKey: 'combo_5',
+          credits: 5,
+          amountPaid: 100,
+          currency: 'BRL',
+          status: 'REFUNDED',
+          provider: 'pix',
+          confirmedAt,
+        },
+        {
+          venueId,
+          packageKey: 'combo_10',
+          credits: 10,
+          amountPaid: 200,
+          currency: 'BRL',
+          status: 'PAID',
+          provider: 'pix',
+          confirmedAt,
+        },
+      ],
+    });
+    const { start: rangeStart, end } = monthRangeUtc({ year: 2099, month: 3 });
+    const summary = await paidSalesSummaryInRange(
+      prisma as never,
+      rangeStart,
+      end,
+      {},
+    );
+    expect(summary.paidPurchases).toBe(1);
+    expect(summary.packages.combo10).toBe(1);
+    expect(summary.packages.combo5).toBe(0);
   });
 });

@@ -2,6 +2,7 @@ import 'package:after_admin/core/network/api_client.dart';
 import 'package:after_admin/core/storage/secure_token_store.dart';
 import 'package:after_admin/data/admin_account.dart';
 import 'package:after_admin/data/admin_accounts_stats.dart';
+import 'package:after_admin/data/admin_city_scope.dart';
 import 'package:after_admin/data/admin_sales_summary.dart';
 import 'package:after_admin/data/admin_coupon.dart';
 import 'package:after_admin/data/admin_api.dart';
@@ -36,6 +37,7 @@ class FakeAdminApi implements AdminApi {
     this.reportsPage,
     this.reportDetail,
     this.accountsStatsData,
+    this.accountsCitiesData,
     this.salesSummaryData,
   });
 
@@ -50,7 +52,12 @@ class FakeAdminApi implements AdminApi {
   Paginated<AdminReport>? reportsPage;
   AdminReportDetail? reportDetail;
   AdminAccountsStats? accountsStatsData;
+  AdminCityScopeList? accountsCitiesData;
   AdminSalesSummary? salesSummaryData;
+  String? lastAccountsCity;
+  String? lastAccountsState;
+  String? lastAccountsStatsCity;
+  String? lastAccountsStatsState;
   String? deleteAccountError;
   final List<String> deletedAccountIds = [];
   final List<({String token, String platform})> registeredTokens = [];
@@ -76,7 +83,14 @@ class FakeAdminApi implements AdminApi {
 
   @override
   Future<AdminAccountsStats> accountsStats({String? city, String? state}) async {
-    return accountsStatsData ?? sampleAccountsStats();
+    lastAccountsStatsCity = city;
+    lastAccountsStatsState = state;
+    return accountsStatsData ?? sampleAccountsStats(city: city, state: state);
+  }
+
+  @override
+  Future<AdminCityScopeList> accountsCities() async {
+    return accountsCitiesData ?? sampleCityScopes();
   }
 
   @override
@@ -85,7 +99,11 @@ class FakeAdminApi implements AdminApi {
     int limit = 20,
     String? role,
     String? query,
+    String? city,
+    String? state,
   }) async {
+    lastAccountsCity = city;
+    lastAccountsState = state;
     return accountsPage ??
         const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0);
   }
@@ -336,16 +354,38 @@ AdminDashboard sampleDashboard({
   );
 }
 
-AdminAccountsStats sampleAccountsStats() {
-  return const AdminAccountsStats(
-    totals: AdminAccountsTotals(users: 986, venues: 298, accounts: 1284),
-    usersByAgeBand: [
-      CountBucket(key: 'AGE_19_35', count: 400),
-      CountBucket(key: 'UNKNOWN', count: 50),
+AdminCityScopeList sampleCityScopes() {
+  return const AdminCityScopeList(
+    items: [
+      AdminCityScope(city: 'São Paulo', state: 'SP', accountCount: 10),
+      AdminCityScope(city: 'São Paulo', state: 'MG', accountCount: 2),
     ],
-    venuesByCategory: [
-      CountBucket(key: 'Bar', count: 120),
-    ],
+  );
+}
+
+AdminAccountsStats sampleAccountsStats({String? city, String? state}) {
+  final scoped = city != null && state != null;
+  return AdminAccountsStats(
+    totals: const AdminAccountsTotals(users: 986, venues: 298, accounts: 1284),
+    usersByAgeBand: scoped
+        ? const [CountBucket(key: 'AGE_19_35', count: 3)]
+        : const [
+            CountBucket(key: 'AGE_19_35', count: 400),
+            CountBucket(key: 'UNKNOWN', count: 50),
+          ],
+    venuesByCategory: scoped
+        ? const [CountBucket(key: 'Bar', count: 1)]
+        : const [CountBucket(key: 'Bar', count: 120)],
+    cityScope: scoped
+        ? AdminAccountsCityScope(
+            city: city,
+            state: state,
+            users: 3,
+            venues: 1,
+            usersByAgeBand: const [CountBucket(key: 'AGE_19_35', count: 3)],
+            venuesByCategory: const [CountBucket(key: 'Bar', count: 1)],
+          )
+        : null,
   );
 }
 

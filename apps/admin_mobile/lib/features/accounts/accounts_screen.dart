@@ -8,6 +8,7 @@ import '../../core/widgets/admin_layout.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_account.dart';
 import '../../data/admin_accounts_stats.dart';
+import '../../data/admin_city_scope.dart';
 import 'account_detail_screen.dart';
 import 'accounts_controller.dart';
 
@@ -24,8 +25,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AccountsController>().load();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final c = context.read<AccountsController>();
+      await c.loadCityOptions();
+      await c.load();
     });
   }
 
@@ -44,7 +47,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
     return AdminScrollPage(
       title: 'Contas',
       subtitle: 'Usuários e estabelecimentos cadastrados',
-      onRefresh: () => controller.load(),
+      onRefresh: () async {
+        await controller.loadCityOptions();
+        await controller.load();
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -85,7 +91,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
             child: _DistributionPanel(
               loading: controller.loadingStats,
               isUsers: isUsers,
-              cityFilter: controller.cityFilter,
+              selectedCity: controller.selectedCity,
               stats: controller.stats,
             ),
           ),
@@ -111,7 +117,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   }
 
   Widget _list(AccountsController controller) {
-    final items = controller.visibleItems;
+    final items = controller.items;
     if (controller.loading && items.isEmpty) {
       return const StatusBody.loading(message: 'Carregando contas...');
     }
@@ -158,33 +164,35 @@ class _CityFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cities = {
-      for (final item in controller.items) item.city,
-    }.where((c) => c.trim().isNotEmpty).toList()
-      ..sort();
-    final selected = controller.cityFilter;
+    final options = controller.cityOptions;
+    final selectedKey = controller.selectedCity?.key;
     return AdminCard(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
       child: Row(
         children: [
           const Icon(Icons.location_on_outlined, color: AdminTheme.purple, size: 22),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Filtrar por cidade',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              controller.loadingCities ? 'Carregando cidades...' : 'Filtrar por cidade',
+              style: const TextStyle(fontWeight: FontWeight.w700),
             ),
           ),
           DropdownButtonHideUnderline(
             child: DropdownButton<String?>(
-              value: selected,
+              value: selectedKey,
               hint: const Text('Todas'),
               items: [
                 const DropdownMenuItem<String?>(value: null, child: Text('Todas')),
-                for (final city in cities)
-                  DropdownMenuItem(value: city, child: Text(city)),
+                for (final scope in options)
+                  DropdownMenuItem(
+                    value: scope.key,
+                    child: Text(scope.label),
+                  ),
               ],
-              onChanged: controller.setCityFilter,
+              onChanged: controller.loadingCities
+                  ? null
+                  : (key) => controller.setCityScope(AdminCityScope.fromKey(key)),
             ),
           ),
         ],
@@ -290,13 +298,13 @@ class _DistributionPanel extends StatelessWidget {
   const _DistributionPanel({
     required this.loading,
     required this.isUsers,
-    required this.cityFilter,
+    required this.selectedCity,
     required this.stats,
   });
 
   final bool loading;
   final bool isUsers;
-  final String? cityFilter;
+  final AdminCityScope? selectedCity;
   final AdminAccountsStats? stats;
 
   @override
@@ -317,7 +325,7 @@ class _DistributionPanel extends StatelessWidget {
     }
 
     final scope = stats!.cityScope;
-    final citySelected = cityFilter != null && cityFilter!.trim().isNotEmpty;
+    final citySelected = selectedCity != null;
     List<CountBucket> buckets;
     String title;
     String subtitle;
@@ -329,7 +337,7 @@ class _DistributionPanel extends StatelessWidget {
         subtitle = '${scope.city}, ${scope.state} · ${formatCount(scope.users)} usuários';
       } else if (citySelected) {
         buckets = const [];
-        subtitle = 'Informe estado válido para filtrar por cidade.';
+        subtitle = 'Aguardando estatísticas para ${selectedCity!.label}.';
       } else {
         buckets = stats!.usersByAgeBand;
         subtitle = 'Total no banco de dados';
@@ -341,7 +349,7 @@ class _DistributionPanel extends StatelessWidget {
         subtitle = '${scope.city}, ${scope.state} · ${formatCount(scope.venues)} locais';
       } else if (citySelected) {
         buckets = const [];
-        subtitle = 'Selecione uma cidade presente na lista carregada.';
+        subtitle = 'Aguardando estatísticas para ${selectedCity!.label}.';
       } else {
         buckets = stats!.venuesByCategory;
         subtitle = 'Total cadastrados';
