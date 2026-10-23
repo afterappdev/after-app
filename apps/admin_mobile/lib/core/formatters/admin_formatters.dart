@@ -41,6 +41,24 @@ String providerLabel(String? provider) {
   }
 }
 
+String ageBandLabel(String? key) {
+  switch ((key ?? '').trim().toUpperCase()) {
+    case 'AGE_0_18':
+      return '0 – 18';
+    case 'AGE_19_35':
+      return '19 – 35';
+    case 'AGE_36_50':
+      return '36 – 50';
+    case 'AGE_OVER_50':
+      return '50+';
+    case 'UNKNOWN':
+      return 'Não informado';
+    default:
+      final trimmed = key?.trim();
+      return trimmed != null && trimmed.isNotEmpty ? trimmed : 'Não informado';
+  }
+}
+
 String roleLabel(String? role) {
   switch ((role ?? '').trim().toUpperCase()) {
     case 'USER':

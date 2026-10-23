@@ -19,6 +19,7 @@ describe('Admin sales HTTP guards', () => {
     list: jest.fn(),
     getById: jest.fn(),
     monthly: jest.fn(),
+    summary: jest.fn(),
   };
   const prisma = {
     user: {
@@ -66,8 +67,10 @@ describe('Admin sales HTTP guards', () => {
   beforeEach(() => {
     sales.list.mockReset();
     sales.getById.mockReset();
+    sales.summary.mockReset();
     sales.list.mockResolvedValue({ items: [] });
     sales.getById.mockResolvedValue({ id: 'sale-1' });
+    sales.summary.mockResolvedValue({ paidPurchases: 0 });
   });
 
   function token(role: Role) {
@@ -100,6 +103,32 @@ describe('Admin sales HTTP guards', () => {
       expect(sales.getById).not.toHaveBeenCalled();
     },
   );
+
+  it('GET /admin/sales/summary sem token → 401', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/sales/summary')
+      .query({ yearMonth: '2026-09' })
+      .expect(401);
+    expect(sales.summary).not.toHaveBeenCalled();
+  });
+
+  it('GET /admin/sales/summary com USER → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/sales/summary')
+      .query({ yearMonth: '2026-09' })
+      .set('Authorization', `Bearer ${token(Role.USER)}`)
+      .expect(403);
+    expect(sales.summary).not.toHaveBeenCalled();
+  });
+
+  it('ADMIN consulta resumo mensal', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/sales/summary')
+      .query({ yearMonth: '2026-09' })
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .expect(200);
+    expect(sales.summary).toHaveBeenCalled();
+  });
 
   it('ADMIN consulta o histórico e o detalhe', async () => {
     await request(app.getHttpServer())

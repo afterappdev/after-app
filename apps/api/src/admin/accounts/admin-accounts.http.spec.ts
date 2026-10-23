@@ -24,6 +24,7 @@ describe('Admin accounts HTTP', () => {
     list: jest.fn(),
     getById: jest.fn(),
     remove: jest.fn(),
+    stats: jest.fn(),
   };
   const prisma = {
     user: {
@@ -72,12 +73,36 @@ describe('Admin accounts HTTP', () => {
     accounts.list.mockReset();
     accounts.getById.mockReset();
     accounts.remove.mockReset();
+    accounts.stats.mockReset();
     accounts.remove.mockResolvedValue({ success: true });
+    accounts.stats.mockResolvedValue({ totals: { users: 0, venues: 0, accounts: 0 } });
   });
 
   function token(role: Role) {
     return jwt.sign({ sub: `id-${role}`, email: `${role}@after.local`, role });
   }
+
+  it('GET /admin/accounts/stats sem autenticação → 401', async () => {
+    await request(app.getHttpServer()).get('/admin/accounts/stats').expect(401);
+    expect(accounts.stats).not.toHaveBeenCalled();
+  });
+
+  it('GET /admin/accounts/stats com USER → 403', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/accounts/stats')
+      .set('Authorization', `Bearer ${token(Role.USER)}`)
+      .expect(403);
+    expect(accounts.stats).not.toHaveBeenCalled();
+  });
+
+  it('GET /admin/accounts/stats com ADMIN → 200', async () => {
+    await request(app.getHttpServer())
+      .get('/admin/accounts/stats')
+      .query({ city: 'Curitiba', state: 'PR' })
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .expect(200);
+    expect(accounts.stats).toHaveBeenCalled();
+  });
 
   it('DELETE /admin/accounts/:id sem autenticação → 401', async () => {
     await request(app.getHttpServer())

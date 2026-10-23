@@ -13,7 +13,12 @@ import {
   salesByProviderInRange,
 } from '../finance';
 import { toMoneyNumber } from '../money';
-import { formatYearMonth, monthRangeUtc } from '../timezone';
+import {
+  reportsCreatedInRange,
+  topCitiesNewAccountsInRange,
+  topVenueCategoriesCreatedInRange,
+} from '../aggregates';
+import { formatYearMonth, monthRangeUtc, type YearMonth } from '../timezone';
 
 const CONSUMER_ROLES: Role[] = [Role.USER, Role.VENUE];
 const RECENT_LIMIT = 10;
@@ -27,8 +32,8 @@ export type AdminDashboardWarning = {
 export class AdminDashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDashboard(now = new Date()) {
-    const ym = currentYearMonth(now);
+  async getDashboard(now = new Date(), selected?: YearMonth) {
+    const ym = selected ?? currentYearMonth(now);
     const { start, end } = monthRangeUtc(ym);
 
     const [
@@ -42,6 +47,9 @@ export class AdminDashboardService {
       fullRefunds,
       partialRefunds,
       refundReviewsOpen,
+      topCities,
+      topCategories,
+      reportsCreated,
     ] = await Promise.all([
       this.prisma.user.groupBy({
         by: ['role'],
@@ -96,6 +104,9 @@ export class AdminDashboardService {
       fullRefundsInRange(this.prisma, start, end),
       partialRefundsInRange(this.prisma, start, end),
       openRefundReviewsInRange(this.prisma, start, end),
+      topCitiesNewAccountsInRange(this.prisma, start, end),
+      topVenueCategoriesCreatedInRange(this.prisma, start, end),
+      reportsCreatedInRange(this.prisma, start, end),
     ]);
 
     const users =
@@ -156,6 +167,11 @@ export class AdminDashboardService {
         venueName: sale.venue.name,
       })),
       warnings,
+      insights: {
+        topCitiesNewAccounts: topCities,
+        topVenueCategories: topCategories,
+        reportsCreated,
+      },
     };
   }
 }

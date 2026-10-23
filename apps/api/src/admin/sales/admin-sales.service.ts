@@ -6,14 +6,20 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { paidSalesSummaryInRange } from '../aggregates';
 import { monthlySalesHistory, saleHistoryWhere } from '../finance';
 import { toMoneyNumber } from '../money';
 import { paginate, paginationMeta } from '../pagination';
-import { inclusiveDateRangeUtc } from '../timezone';
+import {
+  inclusiveDateRangeUtc,
+  monthRangeUtc,
+  parseYearMonthParam,
+} from '../timezone';
 import {
   AdminSalesMonthlyQueryDto,
   AdminSalesQueryDto,
 } from './admin-sales.query';
+import { AdminSalesSummaryQueryDto } from './admin-sales.summary.query';
 
 const SALE_SELECT = {
   id: true,
@@ -84,6 +90,39 @@ export class AdminSalesService {
       items: rows.map((row) => this.toSaleListItem(row, audits.get(row.id) ?? [])),
       ...paginationMeta(page, limit, total),
     };
+  }
+
+  async summary(query: AdminSalesSummaryQueryDto) {
+    let start: Date;
+    let end: Date;
+    let yearMonth: string | undefined;
+    let from: string | undefined;
+    let to: string | undefined;
+
+    if (query.yearMonth) {
+      yearMonth = query.yearMonth;
+      const ym = parseYearMonthParam(query.yearMonth);
+      ({ start, end } = monthRangeUtc(ym));
+    } else if (query.from && query.to) {
+      from = query.from;
+      to = query.to;
+      const range = inclusiveDateRangeUtc(from, to);
+      if (!range.start || !range.end) {
+        throw new BadRequestException('Informe from e to válidos.');
+      }
+      start = range.start;
+      end = range.end;
+    } else {
+      throw new BadRequestException(
+        'Informe yearMonth ou o par from/to para o resumo.',
+      );
+    }
+
+    return paidSalesSummaryInRange(this.prisma, start, end, {
+      yearMonth,
+      from,
+      to,
+    });
   }
 
   async monthly(query: AdminSalesMonthlyQueryDto, now = new Date()) {

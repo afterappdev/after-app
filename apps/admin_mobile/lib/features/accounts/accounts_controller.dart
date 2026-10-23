@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/network/api_client.dart';
 import '../../data/admin_account.dart';
+import '../../data/admin_accounts_stats.dart';
 import '../../data/admin_api.dart';
 
 class AccountsController extends ChangeNotifier {
@@ -21,20 +22,46 @@ class AccountsController extends ChangeNotifier {
   int totalPages = 1;
   bool loading = false;
   bool loadingMore = false;
+  bool loadingStats = false;
   String? error;
+  AdminAccountsStats? stats;
 
   Timer? _debounce;
 
   Future<void> loadTotals() async {
+    await loadStats();
+  }
+
+  Future<void> loadStats() async {
+    loadingStats = true;
+    notifyListeners();
     try {
-      final users = await api.accounts(role: 'USER', limit: 1);
-      final venues = await api.accounts(role: 'VENUE', limit: 1);
-      totalUsers = users.total;
-      totalVenues = venues.total;
-      notifyListeners();
+      final city = cityFilter?.trim();
+      String? state;
+      if (city != null && city.isNotEmpty) {
+        state = _stateForCity(city);
+      }
+      stats = await api.accountsStats(
+        city: city,
+        state: state,
+      );
+      totalUsers = stats!.totals.users;
+      totalVenues = stats!.totals.venues;
     } on ApiException {
-      // keep previous totals
+      // keep previous totals/stats
+    } finally {
+      loadingStats = false;
+      notifyListeners();
     }
+  }
+
+  String? _stateForCity(String city) {
+    for (final item in items) {
+      if (item.city == city && item.state.trim().isNotEmpty) {
+        return item.state.trim();
+      }
+    }
+    return null;
   }
 
   Future<void> load({bool refresh = true}) async {
@@ -72,6 +99,9 @@ class AccountsController extends ChangeNotifier {
       loadingMore = false;
       notifyListeners();
     }
+    if (refresh && error == null) {
+      await loadStats();
+    }
   }
 
   Future<void> accountDeleted(String id) async {
@@ -93,6 +123,7 @@ class AccountsController extends ChangeNotifier {
   void setCityFilter(String? city) {
     cityFilter = city;
     notifyListeners();
+    loadStats();
   }
 
   List<AdminAccount> get visibleItems {

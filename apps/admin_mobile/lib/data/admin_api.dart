@@ -1,7 +1,9 @@
 import '../core/network/api_client.dart';
 import 'admin_account.dart';
+import 'admin_accounts_stats.dart';
 import 'admin_coupon.dart';
 import 'admin_dashboard.dart';
+import 'admin_sales_summary.dart';
 import 'admin_report.dart';
 import 'admin_sale.dart';
 import 'admin_session.dart';
@@ -15,7 +17,9 @@ abstract class AdminApi {
 
   Future<AdminMe> me();
 
-  Future<AdminDashboard> dashboard();
+  Future<AdminDashboard> dashboard({String? yearMonth});
+
+  Future<AdminAccountsStats> accountsStats({String? city, String? state});
 
   Future<Paginated<AdminAccount>> accounts({
     int page = 1,
@@ -38,6 +42,12 @@ abstract class AdminApi {
   });
 
   Future<AdminSaleDetail> sale(String id);
+
+  Future<AdminSalesSummary> salesSummary({
+    String? yearMonth,
+    String? from,
+    String? to,
+  });
 
   Future<void> registerPushToken({
     required String token,
@@ -114,9 +124,26 @@ class HttpAdminApi implements AdminApi {
   }
 
   @override
-  Future<AdminDashboard> dashboard() async {
-    final data = await client.get('/admin/dashboard');
+  Future<AdminDashboard> dashboard({String? yearMonth}) async {
+    final data = await client.get(
+      '/admin/dashboard',
+      query: {
+        if (yearMonth != null && yearMonth.isNotEmpty) 'yearMonth': yearMonth,
+      },
+    );
     return AdminDashboard.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminAccountsStats> accountsStats({String? city, String? state}) async {
+    final data = await client.get(
+      '/admin/accounts/stats',
+      query: {
+        if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+        if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
+      },
+    );
+    return AdminAccountsStats.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   @override
@@ -183,6 +210,23 @@ class HttpAdminApi implements AdminApi {
   Future<AdminSaleDetail> sale(String id) async {
     final data = await client.get('/admin/sales/$id');
     return AdminSaleDetail.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminSalesSummary> salesSummary({
+    String? yearMonth,
+    String? from,
+    String? to,
+  }) async {
+    final data = await client.get(
+      '/admin/sales/summary',
+      query: {
+        if (yearMonth != null && yearMonth.isNotEmpty) 'yearMonth': yearMonth,
+        if (from != null && from.isNotEmpty) 'from': from,
+        if (to != null && to.isNotEmpty) 'to': to,
+      },
+    );
+    return AdminSalesSummary.fromJson(Map<String, dynamic>.from(data as Map));
   }
 
   @override

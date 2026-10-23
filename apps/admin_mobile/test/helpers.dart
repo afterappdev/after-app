@@ -1,6 +1,8 @@
 import 'package:after_admin/core/network/api_client.dart';
 import 'package:after_admin/core/storage/secure_token_store.dart';
 import 'package:after_admin/data/admin_account.dart';
+import 'package:after_admin/data/admin_accounts_stats.dart';
+import 'package:after_admin/data/admin_sales_summary.dart';
 import 'package:after_admin/data/admin_coupon.dart';
 import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/data/admin_dashboard.dart';
@@ -33,6 +35,8 @@ class FakeAdminApi implements AdminApi {
     this.accountDetail,
     this.reportsPage,
     this.reportDetail,
+    this.accountsStatsData,
+    this.salesSummaryData,
   });
 
   Future<AdminLoginResult> Function(String email, String password)?
@@ -45,6 +49,8 @@ class FakeAdminApi implements AdminApi {
   AdminAccountDetail? accountDetail;
   Paginated<AdminReport>? reportsPage;
   AdminReportDetail? reportDetail;
+  AdminAccountsStats? accountsStatsData;
+  AdminSalesSummary? salesSummaryData;
   String? deleteAccountError;
   final List<String> deletedAccountIds = [];
   final List<({String token, String platform})> registeredTokens = [];
@@ -64,8 +70,13 @@ class FakeAdminApi implements AdminApi {
   Future<AdminMe> me() => meHandler!();
 
   @override
-  Future<AdminDashboard> dashboard() async {
+  Future<AdminDashboard> dashboard({String? yearMonth}) async {
     return dashboardData!;
+  }
+
+  @override
+  Future<AdminAccountsStats> accountsStats({String? city, String? state}) async {
+    return accountsStatsData ?? sampleAccountsStats();
   }
 
   @override
@@ -126,6 +137,15 @@ class FakeAdminApi implements AdminApi {
   Future<AdminSaleDetail> sale(String id) async {
     if (saleDetail != null) return saleDetail!;
     throw UnimplementedError();
+  }
+
+  @override
+  Future<AdminSalesSummary> salesSummary({
+    String? yearMonth,
+    String? from,
+    String? to,
+  }) async {
+    return salesSummaryData ?? sampleSalesSummary();
   }
 
   @override
@@ -304,6 +324,45 @@ AdminDashboard sampleDashboard({
     recentAccounts: const [],
     recentSales: const [],
     warnings: const [],
+    insights: AdminDashboardInsights(
+      topCitiesNewAccounts: const [
+        RankedCity(city: 'São Paulo', state: 'SP', count: 12),
+      ],
+      topVenueCategories: const [
+        RankedCategory(category: 'Bar', count: 5),
+      ],
+      reportsCreated: 3,
+    ),
+  );
+}
+
+AdminAccountsStats sampleAccountsStats() {
+  return const AdminAccountsStats(
+    totals: AdminAccountsTotals(users: 986, venues: 298, accounts: 1284),
+    usersByAgeBand: [
+      CountBucket(key: 'AGE_19_35', count: 400),
+      CountBucket(key: 'UNKNOWN', count: 50),
+    ],
+    venuesByCategory: [
+      CountBucket(key: 'Bar', count: 120),
+    ],
+  );
+}
+
+AdminSalesSummary sampleSalesSummary() {
+  return AdminSalesSummary(
+    yearMonth: '2026-09',
+    paidPurchases: 83,
+    creditsSold: 347,
+    grossRevenueBrl: 7825,
+    revenueByProvider: const ProviderRevenue(
+      googlePlay: 2000,
+      appStore: 1500,
+      pix: 4325,
+    ),
+    commonCredits: 300,
+    vipCredits: 47,
+    packages: const SalesPackageCounts(unit1: 10, combo5: 20, combo10: 5),
   );
 }
 
@@ -367,4 +426,13 @@ const sampleDashboardJson = {
     },
   ],
   'warnings': [],
+  'insights': {
+    'topCitiesNewAccounts': [
+      {'city': 'Curitiba', 'state': 'PR', 'count': 4},
+    ],
+    'topVenueCategories': [
+      {'category': 'Restaurante', 'count': 2},
+    ],
+    'reportsCreated': 7,
+  },
 };

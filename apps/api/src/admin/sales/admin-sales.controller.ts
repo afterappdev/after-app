@@ -4,6 +4,7 @@ import {
   AdminSalesMonthlyQueryDto,
   AdminSalesQueryDto,
 } from './admin-sales.query';
+import { AdminSalesSummaryQueryDto } from './admin-sales.summary.query';
 import { AdminSalesService } from './admin-sales.service';
 
 @Controller('admin/sales')
@@ -19,6 +20,11 @@ export class AdminSalesController {
   @Get('monthly')
   monthly(@Query() query: AdminSalesMonthlyQueryDto) {
     return this.sales.monthly(query);
+  }
+
+  @Get('summary')
+  summary(@Query() query: AdminSalesSummaryQueryDto) {
+    return this.sales.summary(query);
   }
 
   @Get(':id')

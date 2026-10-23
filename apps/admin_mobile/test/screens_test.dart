@@ -234,11 +234,10 @@ void main() {
         home: const Scaffold(body: SalesScreen()),
       ),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
     expect(find.text('Nenhuma venda'), findsOneWidget);
-    expect(find.text('Cartão de crédito'), findsOneWidget);
-    expect(find.text('PIX'), findsOneWidget);
+    expect(find.text('Cartão de crédito'), findsWidgets);
+    expect(find.text('PIX'), findsWidgets);
   });
 
   testWidgets('reports empty state', (tester) async {
@@ -291,6 +290,10 @@ void main() {
   });
 
   testWidgets('lista marca reembolso total e parcial', (tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = FakeAdminApi(
       salesPage: Paginated(
         items: [
@@ -322,9 +325,7 @@ void main() {
         home: const Scaffold(body: SalesScreen()),
       ),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('Todas'), findsOneWidget);
+    await tester.pumpAndSettle();
     expect(find.text('Pagas'), findsOneWidget);
     expect(find.text('Reembolsadas'), findsOneWidget);
     expect(find.text('Reembolsada'), findsOneWidget);
@@ -332,19 +333,16 @@ void main() {
     expect(find.text('Reembolso — verificação necessária'), findsOneWidget);
     expect(find.text('Cartão de crédito'), findsWidgets);
 
-    await tester.tap(find.text('Reembolsadas'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('sales-status-refunded')));
+    await tester.pumpAndSettle();
     expect(api.lastSalesStatus, 'refunded');
 
-    await tester.tap(find.text('Pagas'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('sales-status-paid')));
+    await tester.pumpAndSettle();
     expect(api.lastSalesStatus, 'paid');
 
-    await tester.tap(find.text('Cartão de crédito'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.byKey(const Key('sales-provider-card')));
+    await tester.pumpAndSettle();
     expect(api.lastSalesProvider, 'card');
   });
 

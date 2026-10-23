@@ -53,7 +53,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ..sort();
 
     final selectedYm = _selectedYm!;
-    final monthRevenue = selectedYm == data.month.yearMonth
+    final monthSynced = selectedYm == data.month.yearMonth;
+    final monthRevenue = monthSynced
         ? data.month.grossRevenueBrl
         : data.history
                 .where((h) => h.yearMonth == selectedYm)
@@ -62,15 +63,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 .firstOrNull ??
             0.0;
 
-    final reportsLabel = selectedYm == data.month.yearMonth &&
-            controller.reportsPendingTotal != null
-        ? formatCount(controller.reportsPendingTotal!)
+    final reportsLabel = monthSynced
+        ? formatCount(data.insights.reportsCreated)
         : '—';
 
     return AdminScrollPage(
       title: 'Dashboard',
       subtitle: 'Visão geral do After',
-      onRefresh: () => controller.load(silent: true),
+      onRefresh: () => controller.load(
+            silent: true,
+            yearMonth: _selectedYm,
+          ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 720;
@@ -84,19 +87,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   compact: constraints.maxWidth < 420,
                   value: selectedYm,
                   options: monthOptions,
-                  onChanged: (v) => setState(() => _selectedYm = v),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _selectedYm = v);
+                    context.read<DashboardController>().load(
+                          yearMonth: v,
+                          silent: true,
+                        );
+                  },
                 ),
                 const SizedBox(height: 16),
                 _KpiGrid(
                   wide: wide,
-                  newAccounts: selectedYm == data.month.yearMonth
+                  newAccounts: monthSynced
                       ? formatCount(data.month.newAccounts)
                       : '—',
                   salesTotal: formatBrl(monthRevenue),
                   reportsLabel: reportsLabel,
                   reportsSubtitle: reportsLabel == '—'
-                      ? 'Sem agregação mensal na API'
-                      : 'Pendentes · total no sistema',
+                      ? 'Carregue o mês selecionado'
+                      : 'Denúncias criadas no mês',
                 ),
                 const SizedBox(height: 16),
                 if (wide)
@@ -114,7 +124,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Expanded(
                         child: _SalesDonut(
                           compact: false,
-                          revenue: data.month.revenueByProvider,
+                          revenue: monthSynced
+                              ? data.month.revenueByProvider
+                              : ProviderRevenue.zero,
                         ),
                       ),
                     ],
@@ -128,23 +140,93 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   _SalesDonut(
                     compact: constraints.maxWidth < 420,
-                    revenue: data.month.revenueByProvider,
+                    revenue: monthSynced
+                        ? data.month.revenueByProvider
+                        : ProviderRevenue.zero,
                   ),
                 ],
                 const SizedBox(height: 16),
                 if (wide)
-                  const Row(
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: AdminUnavailablePanel(title: 'Top 3 cidades')),
-                      SizedBox(width: 12),
-                      Expanded(child: AdminUnavailablePanel(title: 'Top 3 categorias')),
+                      Expanded(
+                        child: _TopRankingCard(
+                          title: 'Top 3 cidades',
+                          subtitle: monthSynced
+                              ? 'Novas contas no mês'
+                              : 'Selecione e aguarde o carregamento',
+                          emptyMessage: 'Nenhum cadastro no período.',
+                          rows: monthSynced
+                              ? data.insights.topCitiesNewAccounts
+                                    .map(
+                                      (row) => (
+                                        label: '${row.city}, ${row.state}',
+                                        count: row.count,
+                                      ),
+                                    )
+                                    .toList()
+                              : const [],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _TopRankingCard(
+                          title: 'Top 3 categorias',
+                          subtitle: monthSynced
+                              ? 'Novos estabelecimentos no mês'
+                              : 'Selecione e aguarde o carregamento',
+                          emptyMessage: 'Nenhum local cadastrado no período.',
+                          rows: monthSynced
+                              ? data.insights.topVenueCategories
+                                    .map(
+                                      (row) => (
+                                        label: row.category,
+                                        count: row.count,
+                                      ),
+                                    )
+                                    .toList()
+                              : const [],
+                        ),
+                      ),
                     ],
                   )
                 else ...[
-                  const AdminUnavailablePanel(title: 'Top 3 cidades'),
+                  _TopRankingCard(
+                    title: 'Top 3 cidades',
+                    subtitle: monthSynced
+                        ? 'Novas contas no mês'
+                        : 'Selecione e aguarde o carregamento',
+                    emptyMessage: 'Nenhum cadastro no período.',
+                    rows: monthSynced
+                        ? data.insights.topCitiesNewAccounts
+                              .map(
+                                (row) => (
+                                  label: '${row.city}, ${row.state}',
+                                  count: row.count,
+                                ),
+                              )
+                              .toList()
+                        : const [],
+                  ),
                   const SizedBox(height: 12),
-                  const AdminUnavailablePanel(title: 'Top 3 categorias'),
+                  _TopRankingCard(
+                    title: 'Top 3 categorias',
+                    subtitle: monthSynced
+                        ? 'Novos estabelecimentos no mês'
+                        : 'Selecione e aguarde o carregamento',
+                    emptyMessage: 'Nenhum local cadastrado no período.',
+                    rows: monthSynced
+                        ? data.insights.topVenueCategories
+                              .map(
+                                (row) => (
+                                  label: row.category,
+                                  count: row.count,
+                                ),
+                              )
+                              .toList()
+                        : const [],
+                  ),
                 ],
                 const SizedBox(height: 20),
                 ExpansionTile(
@@ -713,6 +795,80 @@ class _HistoryChart extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TopRankingCard extends StatelessWidget {
+  const _TopRankingCard({
+    required this.title,
+    required this.subtitle,
+    required this.emptyMessage,
+    required this.rows,
+  });
+
+  final String title;
+  final String subtitle;
+  final String emptyMessage;
+  final List<({String label, int count})> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: AdminTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: AdminTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (rows.isEmpty)
+            Text(emptyMessage, style: const TextStyle(color: AdminTheme.muted, fontSize: 13))
+          else
+            for (var i = 0; i < rows.length; i++) ...[
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AdminTheme.orange.withValues(alpha: 0.12),
+                    child: Text(
+                      '${i + 1}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AdminTheme.orange,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      rows[i].label,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    formatCount(rows[i].count),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
+                ],
+              ),
+              if (i != rows.length - 1) const SizedBox(height: 10),
+            ],
         ],
       ),
     );

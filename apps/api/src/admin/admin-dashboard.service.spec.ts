@@ -71,6 +71,9 @@ function createPrisma(
       findMany: jest.fn(),
       count: jest.fn(),
     },
+    report: {
+      count: jest.fn().mockResolvedValue(0),
+    },
     $queryRaw: jest.fn(),
   };
 
@@ -113,6 +116,7 @@ function createPrisma(
 
   prisma.creditPurchase.groupBy.mockImplementation(
     (args: {
+      by?: string[];
       where: {
         status?: string;
         packageKey?: { not?: string };
@@ -122,16 +126,22 @@ function createPrisma(
     }) => {
       const where = args.where;
       const filtered = sales.filter((sale) => purchaseMatches(sale, where));
+      const dimension = args.by?.[0] ?? 'provider';
       const grouped = new Map<string, Sale[]>();
       for (const sale of filtered) {
-        const key = sale.provider ?? 'null';
+        const key =
+          dimension === 'packageKey'
+            ? sale.packageKey
+            : (sale.provider ?? 'null');
         const list = grouped.get(key) ?? [];
         list.push(sale);
         grouped.set(key, list);
       }
       return Promise.resolve(
-        [...grouped.entries()].map(([provider, rows]) => ({
-          provider: provider === 'null' ? null : provider,
+        [...grouped.entries()].map(([key, rows]) => ({
+          ...(dimension === 'packageKey'
+            ? { packageKey: key }
+            : { provider: key === 'null' ? null : key }),
           _count: { _all: rows.length },
           _sum: {
             credits: rows.reduce((sum, row) => sum + row.credits, 0),
@@ -163,6 +173,9 @@ function createPrisma(
   prisma.$queryRaw.mockImplementation(
     (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = Array.from(strings).join(' ');
+      if (sql.includes('FROM "User" u') || sql.includes('FROM "Venue" v')) {
+        return Promise.resolve([]);
+      }
       if (!sql.includes('CreditRefundAudit')) return Promise.resolve([]);
       const dates = values.filter(
         (value): value is Date => value instanceof Date,

@@ -31,5 +31,8 @@ void main() {
     expect(dashboard.recentAccounts.last.venueName, 'Bar Central');
     expect(dashboard.recentSales.first.provider, 'pix');
     expect(dashboard.warnings, isEmpty);
+    expect(dashboard.insights.reportsCreated, 7);
+    expect(dashboard.insights.topCitiesNewAccounts.first.city, 'Curitiba');
+    expect(dashboard.insights.topVenueCategories.first.category, 'Restaurante');
   });
 }

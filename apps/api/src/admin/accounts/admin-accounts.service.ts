@@ -6,8 +6,14 @@ import {
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from '../../users/users.service';
+import {
+  consumerTotals,
+  countUsersByAgeBand,
+  countVenuesByCategory,
+} from '../aggregates';
 import { paginate, paginationMeta } from '../pagination';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
+import { AdminAccountsStatsQueryDto } from './admin-accounts.stats.query';
 
 const CONSUMER_ROLES: Role[] = [Role.USER, Role.VENUE];
 
@@ -116,6 +122,48 @@ export class AdminAccountsService {
             creditBalance: user.venue.wallet?.balance ?? 0,
           }
         : null,
+    };
+  }
+
+  async stats(query: AdminAccountsStatsQueryDto) {
+    const totals = await consumerTotals(this.prisma);
+    const city = query.city?.trim();
+    const state = query.state?.trim()?.toUpperCase();
+
+    const usersByAgeBand = await countUsersByAgeBand(this.prisma, {});
+    const venuesByCategory = await countVenuesByCategory(this.prisma);
+
+    let cityScope: {
+      city: string;
+      state: string;
+      users: number;
+      venues: number;
+      usersByAgeBand: Awaited<ReturnType<typeof countUsersByAgeBand>>;
+      venuesByCategory: Awaited<ReturnType<typeof countVenuesByCategory>>;
+    } | null = null;
+
+    if (city && state) {
+      const [users, venues] = await Promise.all([
+        this.prisma.user.count({
+          where: { role: Role.USER, city, state },
+        }),
+        this.prisma.venue.count({ where: { city, state } }),
+      ]);
+      cityScope = {
+        city,
+        state,
+        users,
+        venues,
+        usersByAgeBand: await countUsersByAgeBand(this.prisma, { city, state }),
+        venuesByCategory: await countVenuesByCategory(this.prisma, city, state),
+      };
+    }
+
+    return {
+      totals,
+      usersByAgeBand,
+      venuesByCategory,
+      cityScope,
     };
   }
 

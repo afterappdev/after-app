@@ -102,6 +102,72 @@ class MonthlySales {
   }
 }
 
+class RankedCity {
+  const RankedCity({
+    required this.city,
+    required this.state,
+    required this.count,
+  });
+
+  final String city;
+  final String state;
+  final int count;
+
+  factory RankedCity.fromJson(Map<String, dynamic> json) {
+    return RankedCity(
+      city: asString(json['city']),
+      state: asString(json['state']),
+      count: asInt(json['count']),
+    );
+  }
+}
+
+class RankedCategory {
+  const RankedCategory({required this.category, required this.count});
+
+  final String category;
+  final int count;
+
+  factory RankedCategory.fromJson(Map<String, dynamic> json) {
+    return RankedCategory(
+      category: asString(json['category']),
+      count: asInt(json['count']),
+    );
+  }
+}
+
+class AdminDashboardInsights {
+  const AdminDashboardInsights({
+    required this.topCitiesNewAccounts,
+    required this.topVenueCategories,
+    required this.reportsCreated,
+  });
+
+  final List<RankedCity> topCitiesNewAccounts;
+  final List<RankedCategory> topVenueCategories;
+  final int reportsCreated;
+
+  static const empty = AdminDashboardInsights(
+    topCitiesNewAccounts: [],
+    topVenueCategories: [],
+    reportsCreated: 0,
+  );
+
+  factory AdminDashboardInsights.fromJson(Map<String, dynamic> json) {
+    return AdminDashboardInsights(
+      topCitiesNewAccounts: AdminDashboard._list(
+        json['topCitiesNewAccounts'],
+        RankedCity.fromJson,
+      ),
+      topVenueCategories: AdminDashboard._list(
+        json['topVenueCategories'],
+        RankedCategory.fromJson,
+      ),
+      reportsCreated: asInt(json['reportsCreated']),
+    );
+  }
+}
+
 class AdminDashboardWarning {
   const AdminDashboardWarning({required this.code, required this.count});
 
@@ -238,6 +304,7 @@ class AdminDashboard {
     required this.recentAccounts,
     required this.recentSales,
     required this.warnings,
+    this.insights = AdminDashboardInsights.empty,
   });
 
   final AdminDashboardTotals totals;
@@ -247,8 +314,10 @@ class AdminDashboard {
   final List<RecentAccount> recentAccounts;
   final List<RecentSale> recentSales;
   final List<AdminDashboardWarning> warnings;
+  final AdminDashboardInsights insights;
 
   factory AdminDashboard.fromJson(Map<String, dynamic> json) {
+    final insightsRaw = json['insights'];
     return AdminDashboard(
       totals: AdminDashboardTotals.fromJson(asMap(json['totals'])),
       month: AdminDashboardMonth.fromJson(asMap(json['month'])),
@@ -257,6 +326,11 @@ class AdminDashboard {
       recentAccounts: _list(json['recentAccounts'], RecentAccount.fromJson),
       recentSales: _list(json['recentSales'], RecentSale.fromJson),
       warnings: _list(json['warnings'], AdminDashboardWarning.fromJson),
+      insights: insightsRaw is Map
+          ? AdminDashboardInsights.fromJson(
+              Map<String, dynamic>.from(insightsRaw),
+            )
+          : AdminDashboardInsights.empty,
     );
   }
 

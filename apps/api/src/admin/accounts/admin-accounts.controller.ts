@@ -1,6 +1,7 @@
 import { Controller, Delete, Get, HttpCode, Param, Query } from '@nestjs/common';
 import { AdminOnly } from '../guards/admin-only.decorator';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
+import { AdminAccountsStatsQueryDto } from './admin-accounts.stats.query';
 import { AdminAccountsService } from './admin-accounts.service';
 
 @Controller('admin/accounts')
@@ -11,6 +12,11 @@ export class AdminAccountsController {
   @Get()
   list(@Query() query: AdminAccountsQueryDto) {
     return this.accounts.list(query);
+  }
+
+  @Get('stats')
+  stats(@Query() query: AdminAccountsStatsQueryDto) {
+    return this.accounts.stats(query);
   }
 
   @Get(':id')

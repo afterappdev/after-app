@@ -7,6 +7,7 @@ import '../../core/theme/admin_theme.dart';
 import '../../core/widgets/admin_layout.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_account.dart';
+import '../../data/admin_accounts_stats.dart';
 import 'account_detail_screen.dart';
 import 'accounts_controller.dart';
 
@@ -24,9 +25,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = context.read<AccountsController>();
-      c.loadTotals();
-      c.load();
+      context.read<AccountsController>().load();
     });
   }
 
@@ -45,10 +44,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
     return AdminScrollPage(
       title: 'Contas',
       subtitle: 'Usuários e estabelecimentos cadastrados',
-      onRefresh: () async {
-        await controller.loadTotals();
-        await controller.load();
-      },
+      onRefresh: () => controller.load(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -84,22 +80,15 @@ class _AccountsScreenState extends State<AccountsScreen> {
             child: _CityFilter(controller: controller),
           ),
           const SizedBox(height: 12),
-          if (isUsers)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: AdminUnavailablePanel(
-                title: 'Usuários por faixa etária',
-                message: 'Distribuição por faixa etária ainda não está disponível na API admin.',
-              ),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: AdminUnavailablePanel(
-                title: 'Locais por categoria',
-                message: 'Distribuição por categoria por cidade será exibida quando a API expor agregados.',
-              ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _DistributionPanel(
+              loading: controller.loadingStats,
+              isUsers: isUsers,
+              cityFilter: controller.cityFilter,
+              stats: controller.stats,
             ),
+          ),
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -294,5 +283,153 @@ class _AccountTile extends StatelessWidget {
         const SnackBar(content: Text('Conta excluída com sucesso')),
       );
     }
+  }
+}
+
+class _DistributionPanel extends StatelessWidget {
+  const _DistributionPanel({
+    required this.loading,
+    required this.isUsers,
+    required this.cityFilter,
+    required this.stats,
+  });
+
+  final bool loading;
+  final bool isUsers;
+  final String? cityFilter;
+  final AdminAccountsStats? stats;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading && stats == null) {
+      return const AdminCard(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      );
+    }
+    if (stats == null) {
+      return AdminUnavailablePanel(
+        title: isUsers ? 'Usuários por faixa etária' : 'Locais por categoria',
+        message: 'Não foi possível carregar os agregados de contas.',
+      );
+    }
+
+    final scope = stats!.cityScope;
+    final citySelected = cityFilter != null && cityFilter!.trim().isNotEmpty;
+    List<CountBucket> buckets;
+    String title;
+    String subtitle;
+
+    if (isUsers) {
+      title = 'Usuários por faixa etária';
+      if (citySelected && scope != null) {
+        buckets = scope.usersByAgeBand;
+        subtitle = '${scope.city}, ${scope.state} · ${formatCount(scope.users)} usuários';
+      } else if (citySelected) {
+        buckets = const [];
+        subtitle = 'Informe estado válido para filtrar por cidade.';
+      } else {
+        buckets = stats!.usersByAgeBand;
+        subtitle = 'Total no banco de dados';
+      }
+    } else {
+      title = 'Locais por categoria';
+      if (citySelected && scope != null) {
+        buckets = scope.venuesByCategory;
+        subtitle = '${scope.city}, ${scope.state} · ${formatCount(scope.venues)} locais';
+      } else if (citySelected) {
+        buckets = const [];
+        subtitle = 'Selecione uma cidade presente na lista carregada.';
+      } else {
+        buckets = stats!.venuesByCategory;
+        subtitle = 'Total cadastrados';
+      }
+    }
+
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: AdminTheme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: AdminTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (buckets.isEmpty)
+            const Text(
+              'Sem dados para exibir.',
+              style: TextStyle(color: AdminTheme.muted, fontSize: 13),
+            )
+          else
+            for (var i = 0; i < buckets.length; i++) ...[
+              _DistributionRow(
+                label: isUsers
+                    ? ageBandLabel(buckets[i].key)
+                    : buckets[i].key,
+                count: buckets[i].count,
+                max: buckets.first.count,
+              ),
+              if (i != buckets.length - 1) const SizedBox(height: 8),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DistributionRow extends StatelessWidget {
+  const _DistributionRow({
+    required this.label,
+    required this.count,
+    required this.max,
+  });
+
+  final String label;
+  final int count;
+  final int max;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = max > 0 ? count / max : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+            Text(
+              formatCount(count),
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: 6,
+            backgroundColor: AdminTheme.purple.withValues(alpha: 0.08),
+            color: AdminTheme.purple,
+          ),
+        ),
+      ],
+    );
   }
 }

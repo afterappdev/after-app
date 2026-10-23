@@ -82,6 +82,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     onTap: () => controller.setProvider('pix'),
                   ),
                   AdminFilterChip(
+                    key: const Key('sales-provider-card'),
                     label: 'Cartão de crédito',
                     selected: controller.provider == 'card',
                     onTap: () => controller.setProvider('card'),
@@ -117,11 +118,13 @@ class _SalesScreenState extends State<SalesScreen> {
                     onTap: () => controller.setStatus(null),
                   ),
                   AdminFilterChip(
+                    key: const Key('sales-status-paid'),
                     label: 'Pagas',
                     selected: controller.status == 'paid',
                     onTap: () => controller.setStatus('paid'),
                   ),
                   AdminFilterChip(
+                    key: const Key('sales-status-refunded'),
                     label: 'Reembolsadas',
                     selected: controller.status == 'refunded',
                     onTap: () => controller.setStatus('refunded'),

@@ -21,6 +21,16 @@ export function formatYearMonth(ym: YearMonth): string {
   return `${ym.year}-${String(ym.month).padStart(2, '0')}`;
 }
 
+const YM_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+export function parseYearMonthParam(value: string): YearMonth {
+  const match = YM_RE.exec(value.trim());
+  if (!match) {
+    throw new Error('yearMonth inválido. Use YYYY-MM.');
+  }
+  return { year: Number(match[1]), month: Number(match[2]) };
+}
+
 export function addMonths(ym: YearMonth, delta: number): YearMonth {
   const index = ym.year * 12 + (ym.month - 1) + delta;
   const year = Math.floor(index / 12);

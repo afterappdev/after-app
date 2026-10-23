@@ -102,54 +102,22 @@ class SalesController extends ChangeNotifier {
     loadingMetrics = true;
     notifyListeners();
     try {
-      final dash = await api.dashboard();
       final range = _range();
-      var commonCredits = 0;
-      var vipCredits = 0;
-      var unit1 = 0;
-      var combo5 = 0;
-      var combo10 = 0;
-      var p = 1;
-      while (true) {
-        final batch = await api.sales(
-          page: p,
-          limit: 100,
-          from: range.$1,
-          to: range.$2,
-          status: 'paid',
-        );
-        for (final sale in batch.items) {
-          final key = sale.packageKey.toLowerCase();
-          final vip = key.startsWith('vip') || key.contains('vip_');
-          if (vip) {
-            vipCredits += sale.credits;
-          } else {
-            commonCredits += sale.credits;
-          }
-          switch (key) {
-            case 'unit_1':
-              unit1 += 1;
-            case 'combo_5':
-              combo5 += 1;
-            case 'combo_10':
-              combo10 += 1;
-            default:
-              break;
-          }
-        }
-        if (p >= batch.totalPages) break;
-        p += 1;
-      }
+      final summary = period == 'month'
+          ? await api.salesSummary(
+              yearMonth: _currentYearMonth(),
+            )
+          : await api.salesSummary(from: range.$1, to: range.$2);
       monthMetrics = SalesMonthMetrics(
-        yearMonth: dash.month.yearMonth,
-        revenue: dash.month.revenueByProvider,
-        creditsSold: dash.month.creditsSold,
-        paidPurchases: dash.month.paidPurchases,
-        commonCredits: commonCredits,
-        vipCredits: vipCredits,
-        purchasesUnit1: unit1,
-        purchasesCombo5: combo5,
-        purchasesCombo10: combo10,
+        yearMonth: summary.yearMonth ?? _currentYearMonth(),
+        revenue: summary.revenueByProvider,
+        creditsSold: summary.creditsSold,
+        paidPurchases: summary.paidPurchases,
+        commonCredits: summary.commonCredits,
+        vipCredits: summary.vipCredits,
+        purchasesUnit1: summary.packages.unit1,
+        purchasesCombo5: summary.packages.combo5,
+        purchasesCombo10: summary.packages.combo10,
       );
     } catch (_) {
       monthMetrics = null;
@@ -172,6 +140,11 @@ class SalesController extends ChangeNotifier {
   void setPeriod(String value) {
     period = value;
     load();
+  }
+
+  String _currentYearMonth() {
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}';
   }
 
   (String?, String?) _range() {
