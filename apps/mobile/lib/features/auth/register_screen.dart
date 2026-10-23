@@ -5,6 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/validation/br_document_validator.dart';
+import '../credits/fiscal_invoice_controller.dart';
+import '../profile/age_band.dart';
 import '../../core/widgets/after_logo.dart';
 import '../public/public_chrome.dart';
 import 'auth_controller.dart';
@@ -39,9 +42,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
   final _cityQuery = TextEditingController();
+  final _document = TextEditingController();
 
   /// Exactly one role: USER or VENUE. Never both. Empty until chosen on social.
   String _role = 'USER';
+  String _documentType = 'CPF';
+  /// Null until the person picks one option. Never preselected.
+  String? _ageBand;
   bool _loading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -64,6 +71,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _email.addListener(_onFormChanged);
     _password.addListener(_onFormChanged);
     _confirmPassword.addListener(_onFormChanged);
+    _document.addListener(_onFormChanged);
   }
 
   @override
@@ -97,6 +105,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _confirmPassword
       ..removeListener(_onFormChanged)
       ..dispose();
+    _document
+      ..removeListener(_onFormChanged)
+      ..dispose();
     _cityDebounce?.cancel();
     _cityQuery.dispose();
     super.dispose();
@@ -107,6 +118,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   bool get _isSocial => _social != null;
+
+  String? _venueDocumentError() {
+    if (_role != 'VENUE') return null;
+    final digits = BrDocumentValidator.digitsOnly(_document.text);
+    if (digits.isEmpty) return 'Informe um CPF ou CNPJ.';
+    if (_documentType == 'CNPJ') {
+      if (!BrDocumentValidator.isValidCnpj(digits)) return 'CNPJ inválido.';
+      return null;
+    }
+    if (!BrDocumentValidator.isValidCpf(digits)) return 'CPF inválido.';
+    return null;
+  }
 
   bool get _canSubmit {
     final passwordOk = _isSocial
@@ -125,6 +148,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void _selectRole(String role) {
     if (role != 'USER' && role != 'VENUE') return;
     setState(() => _role = role);
+  }
+
+  void _selectDocumentType(String type) {
+    final digits = BrDocumentValidator.digitsOnly(_document.text);
+    setState(() {
+      _documentType = type;
+      _document.text = type == 'CNPJ'
+          ? BrDocumentValidator.formatCnpj(digits)
+          : BrDocumentValidator.formatCpf(digits);
+    });
   }
 
   void _showErrorSnackBar(String message) {
@@ -264,6 +297,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _showErrorSnackBar('Selecione uma cidade da lista de sugestões.');
       return;
     }
+    final documentError = _venueDocumentError();
+    if (documentError != null) {
+      _showErrorSnackBar(documentError);
+      return;
+    }
+    if (_role == 'USER' && _ageBand == null) {
+      _showErrorSnackBar(kAgeBandRequiredMessage);
+      return;
+    }
 
     setState(() => _loading = true);
     try {
@@ -275,6 +317,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           name: name,
           state: _selectedUf!,
           city: _selectedCity!,
+          documentType: _role == 'VENUE' ? _documentType : null,
+          documentNumber: _role == 'VENUE' ? _document.text : null,
+          ageBand: _role == 'USER' ? _ageBand : null,
         );
       } else {
         await auth.register(
@@ -284,6 +329,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           state: _selectedUf!,
           city: _selectedCity!,
           role: _role,
+          documentType: _role == 'VENUE' ? _documentType : null,
+          documentNumber: _role == 'VENUE' ? _document.text : null,
+          ageBand: _role == 'USER' ? _ageBand : null,
         );
       }
       if (!mounted) return;
@@ -370,7 +418,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(40, 4, 40, 32),
+              padding: EdgeInsets.fromLTRB(
+                MediaQuery.sizeOf(context).width < 360 ? 16 : 40,
+                4,
+                MediaQuery.sizeOf(context).width < 360 ? 16 : 40,
+                32,
+              ),
               children: [
                 const AfterLogo(height: 48),
                 const SizedBox(height: 16),
@@ -463,6 +516,86 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ],
                 ),
+                if (_role == 'USER') ...[
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Qual é a sua faixa etária?',
+                    key: Key('register-age-question'),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Color(0xFF282829),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final option in kAgeBandOptions) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _AgeBandChoice(
+                        key: Key('register-age-${option.value}'),
+                        label: option.label,
+                        selected: _ageBand == option.value,
+                        onTap: () => setState(() => _ageBand = option.value),
+                      ),
+                    ),
+                  ],
+                ],
+                if (_role == 'VENUE') ...[
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Tipo de documento',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Color(0xFF282829),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _AccountTypeButton(
+                          key: const Key('register-document-cpf'),
+                          label: 'CPF',
+                          icon: Icons.badge_outlined,
+                          selected: _documentType == 'CPF',
+                          onTap: () => _selectDocumentType('CPF'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _AccountTypeButton(
+                          key: const Key('register-document-cnpj'),
+                          label: 'CNPJ',
+                          icon: Icons.apartment_outlined,
+                          selected: _documentType == 'CNPJ',
+                          onTap: () => _selectDocumentType('CNPJ'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('register-document'),
+                    controller: _document,
+                    style: _inputTextStyle,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    inputFormatters: [
+                      BrDocumentInputFormatter(cnpj: _documentType == 'CNPJ'),
+                    ],
+                    decoration: _fieldDecoration(
+                      hint: _documentType == 'CNPJ'
+                          ? '00.000.000/0000-00'
+                          : '000.000.000-00',
+                      icon: Icons.pin_outlined,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
                 TextField(
                   key: const Key('register-email'),
@@ -688,6 +821,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     ),
+    );
+  }
+}
+
+class _AgeBandChoice extends StatelessWidget {
+  const _AgeBandChoice({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFFF58634);
+    const border = Color(0xFFD1D5DB);
+    const text = Color(0xFF282829);
+
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        color: selected ? accent : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: selected ? accent : border),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: selected ? Colors.white : text,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

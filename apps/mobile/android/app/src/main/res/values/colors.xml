@@ -2,5 +2,6 @@
 <resources>
     <color name="intro_background">#FFFFFF</color>
     <color name="after_scaffold">#F6F8F7</color>
-	<color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="promo_notification">#F58634</color>
 </resources>

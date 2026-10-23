@@ -31,11 +31,55 @@ enum PurchaseStatus {
   CANCELLED
 }
 
+/// Fiscal identity of a venue. Null on accounts created before the field existed.
+enum VenueDocumentType {
+  CPF
+  CNPJ
+}
+
+/// SIGNUP is a new grant of 1 common credit.
+/// HISTORICAL records a welcome purchase that already happened, often 2 credits,
+/// and does not move any balance.
+enum WelcomeCreditSource {
+  SIGNUP
+  HISTORICAL
+}
+
+/// Self-reported age band. It is not proof of majority and does not grant access.
+enum AgeBand {
+  AGE_0_18
+  AGE_19_35
+  AGE_36_50
+  AGE_OVER_50
+}
+
 enum BannerStatus {
   DRAFT
   ACTIVE
   EXPIRED
   CANCELLED
+}
+
+/// Optional explicit kind. Null means the publication was not classified.
+enum BannerContentKind {
+  PROMOTION
+  EVENT
+}
+
+enum PromoPushEventStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum PromoPushDeliveryStatus {
+  CLAIMED
+  SENT
+  FAILED
+  INVALID
+  SKIPPED
 }
 
 model User {
@@ -67,14 +111,29 @@ model User {
   reportsReviewed          Report[]             @relation("ReportReviewer")
   reportsContentRestored   Report[]             @relation("ReportContentRestorer")
   creditCouponsCreated     CreditCoupon[]       @relation("CreditCouponCreator")
+  /// IBGE municipality id of the registered city. Null when name+UF is ambiguous.
+  ibgeCityId                Int?
+  /// Product consent for promotional pushes. Independent of the OS permission.
+  promoNotificationsEnabled Boolean              @default(false)
+  /// Null on accounts created before the field existed. Not used for ads or pushes.
+  ageBand                   AgeBand?
+  lastAuthorizedIbgeCityId  Int?
+  lastAuthorizedCityAt      DateTime?
+  devicePushTokens          DevicePushToken[]
+  promoPushDeliveries       PromoPushDelivery[]
 
   @@index([role, createdAt])
+  @@index([ibgeCityId])
+  @@index([promoNotificationsEnabled, ibgeCityId])
+  @@index([lastAuthorizedIbgeCityId, lastAuthorizedCityAt])
 }
 
 enum AdminPushEventType {
   ACCOUNT_CREATED
   VENUE_CREATED
   PURCHASE_PAID
+  REPORT_CREATED
+  COUPON_REDEEMED
 }
 
 /// FCM registration tokens for After Admin devices. Not used by the consumer app.
@@ -157,6 +216,11 @@ model Venue {
   coverUrl      String?
   city          String
   state         String
+  /// IBGE municipality id. Null when the stored name and UF do not resolve uniquely.
+  ibgeCityId    Int?
+  /// CPF or CNPJ. Null until an older venue informs it. Stored as digits only.
+  documentType   VenueDocumentType?
+  documentDigits String?
   lat           Float?
   lng           Float?
   contacts      Json?
@@ -175,8 +239,14 @@ model Venue {
   blockedByUsers      UserVenueBlock[]
   moderationHiddenAt  DateTime?
   couponRedemptions   CreditCouponRedemption[]
+  creditObligations   CreditObligation[]
+  creditLedgerEntries CreditLedgerEntry[]
+  vipCreditEntries    VipCreditEntry[]
+  welcomeCreditVenueProvision WelcomeCreditVenueProvision?
 
+  @@unique([documentType, documentDigits])
   @@index([moderationHiddenAt])
+  @@index([ibgeCityId])
 }
 
 model VenuePhoto {
@@ -221,10 +291,66 @@ model Review {
 }
 
 model CreditWallet {
-  venueId   String   @id
-  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  balance   Int      @default(0)
-  updatedAt DateTime @updatedAt
+  venueId    String   @id
+  venue      Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  balance    Int      @default(0)
+  /// VIP credits. Separate from balance. Existing rows start at 0.
+  vipBalance Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+/// Proof that a CPF or CNPJ already received the one-time welcome credit.
+/// documentKey is HMAC-SHA256 of `v1:{CPF|CNPJ}:{digits}` using
+/// WELCOME_CREDIT_HMAC_SECRET. The document itself is not stored.
+/// originVenueId is a historical id with no foreign key: deleting the venue
+/// or the account must not erase this proof and must not be blocked by it.
+///
+/// Purpose: stop a second welcome grant for the same document.
+/// Period: while the welcome benefit exists. A calendar expiry would reopen it.
+/// Basis: LGPD art. 7, IX and art. 10 (legitimate interest in preventing
+/// repeated benefit fraud). The row is the digest, the type, the quantity,
+/// the grant time and the origin venue id. Other personal data still follows
+/// account deletion. Do not rotate the secret or the `v1` prefix: old digests
+/// would miss and the same document could receive the benefit again.
+/// HISTORICAL rows copy the welcome purchase quantity. They do not grant credit.
+/// A deleted account that left no welcome purchase and no claim cannot be linked.
+model WelcomeCreditClaim {
+  id             String               @id
+  documentKey    String               @unique
+  documentType   VenueDocumentType
+  /// SIGNUP is always 1. HISTORICAL keeps the purchase quantity, including 2.
+  creditsGranted Int
+  source         WelcomeCreditSource  @default(SIGNUP)
+  grantedAt      DateTime             @default(now())
+  originVenueId  String?
+}
+
+/// Venue received welcome credit before a fiscal document existed.
+/// One row per venue. Does not replace document-based proof after linking.
+model WelcomeCreditVenueProvision {
+  venueId        String   @id
+  venue          Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  creditsGranted Int
+  grantedAt      DateTime @default(now())
+}
+
+/// Append-only VIP movement. operationKey is the idempotency identity.
+/// A consume row is the persisted proof that a VIP day was paid.
+model VipCreditEntry {
+  id           String           @id @default(cuid())
+  venueId      String
+  venue        Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  operationKey String           @unique
+  /// grant, consume, or refund.
+  kind         String
+  credits      Int
+  balanceDelta Int
+  bannerId     String?
+  scheduleId   String?          @unique
+  createdAt    DateTime         @default(now())
+  schedule     BannerSchedule?
+
+  @@index([venueId, createdAt])
 }
 
 model CreditPurchase {
@@ -248,7 +374,10 @@ model CreditPurchase {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   refundAudits        CreditRefundAudit[]
+  creditObligation    CreditObligation?
+  creditLedgerEntries CreditLedgerEntry[]
 
+  @@unique([id, venueId])
   @@index([venueId, createdAt])
   @@index([status, confirmedAt])
   @@index([provider, status, confirmedAt])
@@ -276,11 +405,70 @@ model CreditRefundAudit {
   @@index([venueId, createdAt])
 }
 
+/// One debt per refunded purchase. Unused until a later phase writes it.
+/// The purchase relation includes venueId, so the debt cannot point at another venue.
+/// Venue and purchase deletes are restricted so the row is not cascaded away.
+/// Cross-field checks live in the migration; Prisma 5 cannot express them here.
+model CreditObligation {
+  id               String         @id @default(cuid())
+  venueId          String
+  venue            Venue          @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  purchaseId       String         @unique
+  purchase         CreditPurchase @relation(fields: [purchaseId, venueId], references: [id, venueId], onDelete: Restrict)
+  creditsOriginal  Int
+  creditsRecovered Int
+  creditsOpened    Int
+  creditsSettled   Int            @default(0)
+  /// open while creditsSettled < creditsOpened; settled when they are equal.
+  status           String
+  /// pix_full_refund or card_full_refund.
+  source           String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  ledgerEntries    CreditLedgerEntry[]
+
+  @@unique([purchaseId, venueId])
+  @@unique([id, venueId])
+  @@index([venueId, status, createdAt])
+}
+
+/// Append-only credit movement. operationKey is the idempotency identity.
+/// Optional links use Restrict. A composite delete action that nulls every
+/// foreign-key column would clear venueId, and Prisma 5.22 cannot null only the optional id.
+/// No service writes this table yet.
+model CreditLedgerEntry {
+  id             String                  @id @default(cuid())
+  venueId        String
+  venue          Venue                   @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  operationKey   String                  @unique
+  kind           String
+  purchaseId     String?
+  purchase       CreditPurchase?         @relation(fields: [purchaseId, venueId], references: [id, venueId], onDelete: Restrict)
+  obligationId   String?
+  obligation     CreditObligation?       @relation(fields: [obligationId, venueId], references: [id, venueId], onDelete: Restrict)
+  redemptionId   String?
+  redemption     CreditCouponRedemption? @relation(fields: [redemptionId, venueId], references: [id, venueId], onDelete: Restrict)
+  bannerId       String?
+  banner         Banner?                 @relation(fields: [bannerId, venueId], references: [id, venueId], onDelete: Restrict)
+  credits        Int
+  availableDelta Int
+  debtDelta      Int
+  createdAt      DateTime                @default(now())
+
+  @@index([venueId, createdAt])
+}
+
 /// Single lease row so paid-card reconciliation cannot run twice at once.
+/// The cursor remembers the last concluded attempt so the next run continues
+/// after it. Null means the next run starts at the oldest eligible purchase.
+/// cooldownUntil pauses new Orders API calls after HTTP 429. It is not the lease.
 model CardReconcileLock {
-  id          Int      @id
-  lockedUntil DateTime
-  lockedBy    String
+  id                 Int       @id
+  lockedUntil        DateTime
+  lockedBy           String
+  cursorConfirmedAt  DateTime?
+  cursorPurchaseId   String?
+  cooldownUntil      DateTime?
 }
 
 /// Bonus credits granted by an admin code. Not a store discount.
@@ -316,7 +504,9 @@ model CreditCouponRedemption {
   venueCitySnapshot String?
   creditAmount Int
   redeemedAt   DateTime     @default(now())
+  ledgerEntries CreditLedgerEntry[]
 
+  @@unique([id, venueId])
   @@index([couponId, redeemedAt])
   @@index([venueId, redeemedAt])
   @@index([couponId, venueId])
@@ -329,13 +519,18 @@ model Banner {
   imageUrl      String
   title         String?
   description   String?
-  creditsCost   Int
+  creditsCost    Int
+  vipCreditsCost Int             @default(0)
   status        BannerStatus     @default(ACTIVE)
+  /// Null on every publication created before an explicit kind existed.
+  contentKind   BannerContentKind?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   schedules     BannerSchedule[]
   notifications Notification[]
+  ledgerEntries CreditLedgerEntry[]
 
+  @@unique([id, venueId])
   @@index([venueId, createdAt])
 }
 
@@ -343,11 +538,18 @@ model BannerSchedule {
   id           String   @id @default(cuid())
   bannerId     String
   banner       Banner   @relation(fields: [bannerId], references: [id], onDelete: Cascade)
-  displayDate  DateTime @db.Date
-  citySnapshot String
+  displayDate      DateTime         @db.Date
+  citySnapshot     String
+  ibgeCityId       Int?
+  /// Existing rows stay common. VIP requires a persisted credit proof.
+  tier             PublicationTier  @default(COMMON)
+  vipCreditEntryId String?          @unique
+  vipCreditEntry   VipCreditEntry?  @relation(fields: [vipCreditEntryId], references: [id], onDelete: SetNull)
+  promoPushEvents  PromoPushEvent[]
 
   @@index([citySnapshot, displayDate])
   @@index([bannerId])
+  @@index([ibgeCityId, displayDate])
 }
 
 model Notification {
@@ -427,6 +629,86 @@ model Report {
   @@index([status, createdAt])
   @@index([targetType, targetId])
   @@index([reporterId, createdAt])
+}
+
+/// Consumer FCM token. Not an admin token. Logout disables the row; it is not deleted.
+model DevicePushToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  platform   String
+  disabledAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId, disabledAt])
+}
+
+/// One row per VIP schedule slot. Common schedules no longer create rows.
+model PromoPushEvent {
+  id               String               @id @default(cuid())
+  bannerScheduleId String
+  slot             Int                  @default(1)
+  bannerSchedule   BannerSchedule       @relation(fields: [bannerScheduleId], references: [id], onDelete: Cascade)
+  bannerId         String
+  venueId          String
+  ibgeCityId       Int
+  displayDate      DateTime             @db.Date
+  contentKind      BannerContentKind?
+  status           PromoPushEventStatus @default(PENDING)
+  availableAt      DateTime
+  expiresAt        DateTime
+  lockedUntil      DateTime?
+  lockedBy         String?
+  attempts         Int                  @default(0)
+  sentAt           DateTime?
+  error            String?
+  targetedUsers    Int                  @default(0)
+  targetedTokens   Int                  @default(0)
+  sentCount        Int                  @default(0)
+  failedCount      Int                  @default(0)
+  skippedCount     Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deliveries       PromoPushDelivery[]
+
+  @@unique([bannerScheduleId, slot])
+  @@index([status, availableAt])
+  @@index([expiresAt, status])
+  @@index([bannerId, status])
+}
+
+enum PublicationTier {
+  COMMON
+  VIP
+}
+
+/// One attempt row per event and device. tokenId is not a foreign key so disabling a token keeps the cap history.
+model PromoPushDelivery {
+  id        String                  @id @default(cuid())
+  eventId   String
+  event     PromoPushEvent          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tokenId   String
+  userId    String
+  user      User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    PromoPushDeliveryStatus
+  attempts  Int                     @default(0)
+  error     String?
+  sentAt    DateTime?
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@unique([eventId, tokenId])
+  @@index([userId, status, sentAt])
+  @@index([eventId, status])
+}
+
+/// Lease so only one API instance dispatches promotional pushes at a time.
+model PromoPushWorkerLock {
+  id          Int      @id
+  lockedUntil DateTime
+  lockedBy    String
 }
 
 model UserVenueBlock {

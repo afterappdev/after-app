@@ -10,6 +10,7 @@ import { HomeModule } from './home/home.module';
 import { LocationsModule } from './locations/locations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { PromoPushModule } from './promo-push/promo-push.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
@@ -17,8 +18,15 @@ import { VenuesModule } from './venues/venues.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath:
+        process.env.AFTER_CARD_TEST === '1'
+          ? ['.env.card-test', '.env']
+          : undefined,
+    }),
     PrismaModule,
+    PromoPushModule,
     AuthModule,
     AdminModule,
     UsersModule,

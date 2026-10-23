@@ -120,13 +120,22 @@ class ApiClient {
     );
   }
 
-  Future<dynamic> delete(String path) {
+  Future<dynamic> delete(String path, {Object? body}) {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
+    final encoded = body == null ? null : jsonEncode(body);
     return _request(
       'DELETE',
       path,
-      () => _client.delete(uri, headers: _jsonHeaders(omitAuth: false)),
-      () => _client.delete(uri, headers: _jsonHeaders(omitAuth: true)),
+      () => _client.delete(
+        uri,
+        headers: _jsonHeaders(omitAuth: false),
+        body: encoded,
+      ),
+      () => _client.delete(
+        uri,
+        headers: _jsonHeaders(omitAuth: true),
+        body: encoded,
+      ),
     );
   }
 

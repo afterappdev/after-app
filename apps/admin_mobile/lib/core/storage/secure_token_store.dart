@@ -1,10 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-abstract class TokenStore {
-  Future<void> saveToken(String token);
-  Future<String?> readToken();
-  Future<void> clear();
-}
+import 'token_store.dart';
+
+export 'token_store.dart';
 
 class SecureTokenStore implements TokenStore {
   SecureTokenStore({FlutterSecureStorage? storage})

@@ -18,6 +18,15 @@ void main() {
     expect(dashboard.month.revenueByProvider.googlePlay, 25);
     expect(dashboard.month.revenueByProvider.appStore, 200);
     expect(dashboard.month.revenueByProvider.pix, 115);
+    expect(dashboard.month.revenueByProvider.card, 0);
+    expect(dashboard.refundPosition.paidSalesBrl, 340);
+    expect(dashboard.refundPosition.fullRefundsBrl, 34.9);
+    expect(dashboard.refundPosition.partialRefundsBrl, 10.1);
+    expect(dashboard.refundPosition.partialsWithoutAmount, 1);
+    expect(dashboard.refundPosition.refundReviewsOpen, 0);
+    expect(dashboard.refundPosition.revenueAfterRefundsBrl, 329.9);
+    expect(dashboard.refundPosition.revenueComplete, isFalse);
+    expect(dashboard.month.grossRevenueBrl, 340);
     expect(dashboard.history.first.yearMonth, '2026-08');
     expect(dashboard.recentAccounts.last.venueName, 'Bar Central');
     expect(dashboard.recentSales.first.provider, 'pix');

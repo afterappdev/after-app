@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/router/admin_navigation.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_coupon.dart';
 import 'coupon_detail_screen.dart';
@@ -35,8 +36,10 @@ class _CouponsScreenState extends State<CouponsScreen> {
             width: double.infinity,
             child: FilledButton.icon(
               onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(builder: (_) => const CouponFormScreen()),
+                final created = await pushAdminPage<bool>(
+                  context,
+                  location: '/cupons/novo',
+                  builder: (_) => const CouponFormScreen(),
                 );
                 if (created == true && context.mounted) {
                   await context.read<CouponsController>().load();
@@ -105,10 +108,10 @@ class _CouponsScreenState extends State<CouponsScreen> {
                 ),
                 isThreeLine: true,
                 onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => CouponDetailScreen(id: coupon.id),
-                    ),
+                  await pushAdminPage<void>(
+                    context,
+                    location: '/cupons/${Uri.encodeComponent(coupon.id)}',
+                    builder: (_) => CouponDetailScreen(id: coupon.id),
                   );
                   if (context.mounted) {
                     await context.read<CouponsController>().load();

@@ -5,12 +5,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
+import '../promo_push/promo_push_message.dart';
 import 'push_notifications.dart';
 
 class NotificationsController extends ChangeNotifier {
-  NotificationsController({required this.api});
+  NotificationsController({
+    required this.api,
+    this.deliveryLedger,
+    this.presentInbox,
+  });
 
   final ApiClient api;
+  final PromoDeliveryLedger? deliveryLedger;
+  final Future<void> Function({required String title, required String body})?
+      presentInbox;
 
   static const _lastPushedKey = AuthStorage.notificationsLastPushedKey;
 
@@ -102,7 +110,12 @@ class NotificationsController extends ChangeNotifier {
       _lastPushedId = id;
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_lastPushedKey, id);
-      await showPushNotification(
+      if (deliveryLedger?.alreadyShown(latest['bannerId']?.toString()) ==
+          true) {
+        return;
+      }
+      final present = presentInbox ?? showPushNotification;
+      await present(
         title: latest['title']?.toString() ?? 'Nova publicação',
         body: latest['body']?.toString() ?? 'Um local favorito publicou no After',
       );

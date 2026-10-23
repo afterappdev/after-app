@@ -12,6 +12,8 @@ class AdminSale {
     required this.confirmedAt,
     required this.venueId,
     required this.venueName,
+    this.refundKinds = const [],
+    this.refundAudits = const [],
   });
 
   final String id;
@@ -24,6 +26,30 @@ class AdminSale {
   final DateTime? confirmedAt;
   final String venueId;
   final String venueName;
+  final List<String> refundKinds;
+  final List<AdminRefundAudit> refundAudits;
+
+  bool get hasPartialReview =>
+      status.toUpperCase() != 'REFUNDED' &&
+      refundKinds.contains('partial_review');
+
+  bool get hasOpenRefundReview {
+    if (status.toUpperCase() != 'PAID' || !refundKinds.contains('refund_review')) {
+      return false;
+    }
+    if (!refundKinds.contains('partial_review')) return true;
+    final reviewAt = _recordedAt('refund_review');
+    final partialAt = _recordedAt('partial_review');
+    if (reviewAt == null || partialAt == null) return false;
+    return reviewAt.isAfter(partialAt);
+  }
+
+  DateTime? _recordedAt(String kind) {
+    for (final audit in refundAudits) {
+      if (audit.kind == kind) return audit.recordedAt;
+    }
+    return null;
+  }
 
   factory AdminSale.fromJson(Map<String, dynamic> json) {
     return AdminSale(
@@ -37,8 +63,73 @@ class AdminSale {
       confirmedAt: asDateTime(json['confirmedAt']),
       venueId: asString(json['venueId']),
       venueName: asString(json['venueName']),
+      refundKinds: _strings(json['refundKinds']),
+      refundAudits: _audits(json['refundAudits']),
     );
   }
+}
+
+class AdminRefundAudit {
+  const AdminRefundAudit({
+    required this.kind,
+    required this.recordedAt,
+    this.refundedAmount,
+    this.creditsRecovered,
+    this.creditsUnrecovered,
+    this.refundId,
+  });
+
+  final String kind;
+  final DateTime? recordedAt;
+  final double? refundedAmount;
+  final int? creditsRecovered;
+  final int? creditsUnrecovered;
+  final String? refundId;
+
+  factory AdminRefundAudit.fromJson(Map<String, dynamic> json) {
+    return AdminRefundAudit(
+      kind: asString(json['kind']),
+      recordedAt: asDateTime(json['recordedAt']),
+      refundedAmount: _moneyOrNull(json['refundedAmount']),
+      creditsRecovered: _intOrNull(json['creditsRecovered']),
+      creditsUnrecovered: _intOrNull(json['creditsUnrecovered']),
+      refundId: _textOrNull(json['refundId']),
+    );
+  }
+}
+
+List<String> _strings(Object? value) {
+  if (value is! List) return const [];
+  return value.map((item) => item.toString()).toList();
+}
+
+List<AdminRefundAudit> _audits(Object? value) {
+  if (value is! List) return const [];
+  return value
+      .whereType<Map>()
+      .map(
+        (item) => AdminRefundAudit.fromJson(Map<String, dynamic>.from(item)),
+      )
+      .toList();
+}
+
+double? _moneyOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse('$value');
+}
+
+int? _intOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse('$value');
+}
+
+String? _textOrNull(Object? value) {
+  if (value == null) return null;
+  final text = value.toString().trim();
+  return text.isEmpty ? null : text;
 }
 
 class AdminSaleVenue {

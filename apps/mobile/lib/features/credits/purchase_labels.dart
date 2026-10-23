@@ -36,6 +36,8 @@ String purchaseProviderLabel(String? provider) {
       return 'App Store';
     case 'pix':
       return 'PIX';
+    case 'card':
+      return 'Cartão de crédito';
     case 'stub':
       return 'Desenvolvimento';
     default:

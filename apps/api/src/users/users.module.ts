@@ -4,12 +4,13 @@ import { AccountDeletionMailer } from './account-deletion.mailer';
 import { AccountDeletionService } from './account-deletion.service';
 import { ResendAccountDeletionMailer } from './resend-account-deletion.mailer';
 import { AuthModule } from '../auth/auth.module';
+import { LocationsModule } from '../locations/locations.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
 @Module({
-  imports: [UploadsModule, AuthModule],
+  imports: [UploadsModule, AuthModule, LocationsModule],
   controllers: [UsersController, AccountDeletionController],
   providers: [
     UsersService,

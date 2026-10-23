@@ -5,11 +5,12 @@ import {
   HttpCode,
   Post,
   Query,
+  Req,
   Res,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { AppleWebExchangeDto } from './dto/apple-web-exchange.dto';
@@ -36,8 +37,8 @@ export class AuthController {
   }
 
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  register(@Body() dto: RegisterDto, @Req() req: Request) {
+    return this.authService.register(dto, req.headers.origin);
   }
 
   @Post('login')
@@ -56,8 +57,11 @@ export class AuthController {
   }
 
   @Post('social/complete-registration')
-  completeSocialRegistration(@Body() dto: CompleteSocialRegistrationDto) {
-    return this.authService.completeSocialRegistration(dto);
+  completeSocialRegistration(
+    @Body() dto: CompleteSocialRegistrationDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.completeSocialRegistration(dto, req.headers.origin);
   }
 
   @Get('google/start')

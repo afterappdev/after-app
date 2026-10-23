@@ -25,10 +25,12 @@ class VenuePublicScreen extends StatefulWidget {
     super.key,
     required this.venueId,
     this.navIndex = 0,
+    this.focusBannerId,
   });
 
   final String venueId;
   final int navIndex;
+  final String? focusBannerId;
 
   @override
   State<VenuePublicScreen> createState() => _VenuePublicScreenState();
@@ -43,7 +45,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
   bool _favoriting = false;
   bool _favorited = false;
   bool _descExpanded = false;
-  bool _showAllPromos = false;
+  late bool _showAllPromos = widget.focusBannerId?.trim().isNotEmpty ?? false;
   bool _submittingReview = false;
   String? _submittingReplyId;
   int _tab = 0;

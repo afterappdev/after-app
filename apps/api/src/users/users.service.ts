@@ -1,15 +1,12 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import * as bcrypt from 'bcrypt';
 import { AppleAuthTokensService } from '../auth/apple-auth-tokens.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
+import { LocationsService } from '../locations/locations.service';
+import { resolveUserAgeBand } from './age-band';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +14,9 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly mediaCleanup: MediaCleanupService,
     private readonly appleTokens: AppleAuthTokensService,
+    @Optional()
+    @Inject(LocationsService)
+    private readonly locations?: LocationsService,
   ) {}
 
   async getMe(userId: string) {
@@ -30,6 +30,7 @@ export class UsersService {
         state: true,
         city: true,
         avatarUrl: true,
+        ageBand: true,
         venue: { select: { id: true, name: true } },
       },
     });
@@ -49,16 +50,30 @@ export class UsersService {
       city?: string;
       state?: string;
       avatarUrl?: string | null;
+      ageBand?: string | null;
     },
   ) {
     const current = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, avatarUrl: true },
+      select: { id: true, avatarUrl: true, city: true, state: true, role: true },
     });
     if (!current) {
       throw new NotFoundException('Usuário não encontrado');
     }
 
+    let ibgeCityId: number | null | undefined;
+    if (data.city !== undefined || data.state !== undefined) {
+      const city = data.city ?? current.city;
+      const state = data.state ?? current.state;
+      ibgeCityId = this.locations
+        ? await this.locations.resolveMunicipalityId(city, state)
+        : null;
+    }
+
+    const ageBand =
+      data.ageBand === undefined || current.role !== Role.USER
+        ? undefined
+        : resolveUserAgeBand(data.ageBand);
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -67,6 +82,8 @@ export class UsersService {
         state: data.state,
         avatarUrl:
           data.avatarUrl === undefined ? undefined : data.avatarUrl || null,
+        ...(ibgeCityId !== undefined ? { ibgeCityId } : {}),
+        ...(ageBand !== undefined ? { ageBand } : {}),
       },
       select: {
         id: true,
@@ -76,6 +93,7 @@ export class UsersService {
         state: true,
         city: true,
         avatarUrl: true,
+        ageBand: true,
       },
     });
 
@@ -263,6 +281,7 @@ export class UsersService {
       appleId: user.appleId,
       googleId: user.googleId,
     });
+    // WelcomeCreditClaim has no foreign key, so the one-time welcome proof stays.
     await db.user.delete({ where: { id: userId } });
     return urls;
   }

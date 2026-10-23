@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import 'core/auth/auth_storage.dart';
 import 'core/auth/oauth_callback.dart';
+import 'core/location/device_locator.dart';
+import 'core/location/origin_cache.dart';
 import 'core/network/api_client.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
@@ -19,6 +21,12 @@ import 'features/home/home_screen.dart';
 import 'features/intro/app_startup.dart';
 import 'features/notifications/notifications_controller.dart';
 import 'features/notifications/notifications_screen.dart';
+import 'features/promo_push/municipality_geocoder.dart';
+import 'features/promo_push/promo_push_api.dart';
+import 'features/promo_push/promo_push_coordinator.dart';
+import 'features/promo_push/promo_push_message.dart';
+import 'features/promo_push/promo_push_messaging_factory.dart';
+import 'features/promo_push/promo_push_router.dart';
 import 'features/profile/blocked_venues_screen.dart';
 import 'features/profile/favorites_screen.dart';
 import 'features/profile/user_profile_screen.dart';
@@ -37,8 +45,27 @@ Future<void> main() async {
   final api = ApiClient();
   final storage = AuthStorage();
   final auth = AuthController(api: api, storage: storage);
-  final notifications = NotificationsController(api: api);
+  final ledger = PromoDeliveryLedger();
+  final notifications = NotificationsController(
+    api: api,
+    deliveryLedger: ledger,
+  );
+  final navigatorKey = GlobalKey<NavigatorState>();
+  final promoApi = PromoPushApi(api);
+  final androidPromo =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  final promo = PromoPushCoordinator(
+    api: promoApi,
+    messaging: createPromoPushMessaging(),
+    ledger: ledger,
+    router: PromoPushRouter(navigatorKey: navigatorKey, api: promoApi),
+    cityMemory: PreferencesPromoCityMemory(),
+    geocoder: androidPromo ? NominatimMunicipalityGeocoder() : null,
+    locator: androidPromo ? const GeolocatorDeviceLocator() : null,
+    onSessionEnd: () => OriginCache().clear(),
+  );
   await auth.bootstrap();
+  await promo.start(auth);
   await _consumePendingOAuthToken(auth);
   void syncInbox() {
     final user = auth.user;
@@ -58,8 +85,9 @@ Future<void> main() async {
         Provider.value(value: api),
         ChangeNotifierProvider.value(value: auth),
         ChangeNotifierProvider.value(value: notifications),
+        ChangeNotifierProvider.value(value: promo),
       ],
-      child: AfterApp(auth: auth),
+      child: AfterApp(auth: auth, navigatorKey: navigatorKey, promo: promo),
     ),
   );
 }
@@ -109,9 +137,16 @@ Future<void> _consumeOAuthUri(AuthController auth, Uri uri) async {
 }
 
 class AfterApp extends StatefulWidget {
-  const AfterApp({super.key, required this.auth});
+  const AfterApp({
+    super.key,
+    required this.auth,
+    this.navigatorKey,
+    this.promo,
+  });
 
   final AuthController auth;
+  final GlobalKey<NavigatorState>? navigatorKey;
+  final PromoPushCoordinator? promo;
 
   @override
   State<AfterApp> createState() => _AfterAppState();
@@ -121,6 +156,9 @@ class _AfterAppState extends State<AfterApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.promo?.consumeLaunchMessage();
+    });
     if (!kIsWeb) {
       AppLinks().uriLinkStream.listen((uri) async {
         try {
@@ -133,6 +171,7 @@ class _AfterAppState extends State<AfterApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: widget.navigatorKey,
       title: 'After | O que tem pra hoje?',
       theme: AppTheme.light,
       debugShowCheckedModeBanner: false,
@@ -221,10 +260,14 @@ class _AfterAppState extends State<AfterApp> {
             return null;
           }
           if (venueId.isEmpty) return null;
+          final focusBannerId = args is Map
+              ? args['focusBannerId']?.toString()
+              : null;
           return MaterialPageRoute(
             builder: (_) => VenuePublicScreen(
               venueId: venueId,
               navIndex: navIndex,
+              focusBannerId: focusBannerId,
             ),
             settings: settings,
           );

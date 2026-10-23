@@ -32,6 +32,13 @@ class OriginCache {
     }
   }
 
+  Future<void> clear() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(storageKey);
+    } catch (_) {}
+  }
+
   Future<void> write(GeoOrigin origin, {DateTime? now}) async {
     if (!origin.isValid) return;
     try {

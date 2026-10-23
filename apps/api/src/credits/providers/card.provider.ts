@@ -25,6 +25,13 @@ import {
 /** Card Payment Brick stays at 1x until a later phase decides who pays interest. */
 export const CARD_MAX_INSTALLMENTS = 1;
 
+/**
+ * Soft descriptor for After Web card charges.
+ * Mercado Pago prefixes the card statement with "MP *"; that prefix is not sent.
+ * Brazil Orders API field: transactions.payments[].payment_method.statement_descriptor.
+ */
+export const CARD_STATEMENT_DESCRIPTOR = 'CREDITOAFTER';
+
 export const CARD_INVALID_PAYER_EMAIL_MESSAGE =
   'E-mail do pagador ausente ou inválido no perfil. Atualize o cadastro com um e-mail real para pagar com cartão.';
 
@@ -218,6 +225,7 @@ export class CardPaymentProvider implements PaymentProvider {
               type: 'credit_card',
               token: input.token,
               installments: CARD_MAX_INSTALLMENTS,
+              statement_descriptor: CARD_STATEMENT_DESCRIPTOR,
             },
           },
         ],

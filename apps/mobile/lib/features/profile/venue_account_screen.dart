@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
 import 'delete_account_button.dart';
+import 'venue_document_card.dart';
 
 class VenueAccountScreen extends StatefulWidget {
   const VenueAccountScreen({super.key});
@@ -203,7 +204,9 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 28),
+                          const SizedBox(height: 20),
+                          if (user?.venueId != null)
+                            VenueDocumentCard(venueId: user!.venueId!),
                           const _SectionLabel('GERENCIAR'),
                           const SizedBox(height: 8),
                           _InfoCard(

@@ -1,0 +1,9 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": "welcome-credit\\.isolated-pg\\.ts$",
+  "transform": {
+    "^.+\\.ts$": "ts-jest"
+  }
+}

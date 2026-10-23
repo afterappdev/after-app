@@ -6,6 +6,7 @@ import {
   AdminPushSendResult,
   FirebaseMessagingPort,
   NoopFirebaseMessaging,
+  buildFcmMulticast,
   isInvalidFcmTokenCode,
 } from './firebase-messaging.port';
 
@@ -51,24 +52,9 @@ class FirebaseAdminMessaging implements FirebaseMessagingPort {
   ): Promise<AdminPushSendResult[]> {
     if (tokens.length === 0) return [];
     const messaging = getMessaging(this.app);
-    const response = await messaging.sendEachForMulticast({
-      tokens,
-      notification: {
-        title: message.title,
-        body: message.body,
-      },
-      data: message.data,
-      android: {
-        priority: 'high',
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: 'default',
-          },
-        },
-      },
-    });
+    const response = await messaging.sendEachForMulticast(
+      buildFcmMulticast(tokens, message),
+    );
 
     return tokens.map((token, index) => {
       const item = response.responses[index];

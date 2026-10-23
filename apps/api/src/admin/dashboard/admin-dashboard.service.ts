@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  buildRefundPosition,
   currentYearMonth,
+  fullRefundsInRange,
   monthlySalesHistory,
+  openRefundReviewsInRange,
+  partialRefundsInRange,
+  REAL_SALE_PROVIDERS,
   realSaleWhere,
   salesByProviderInRange,
 } from '../finance';
@@ -34,6 +39,9 @@ export class AdminDashboardService {
       recentAccounts,
       recentSales,
       missingConfirmedAt,
+      fullRefunds,
+      partialRefunds,
+      refundReviewsOpen,
     ] = await Promise.all([
       this.prisma.user.groupBy({
         by: ['role'],
@@ -81,10 +89,13 @@ export class AdminDashboardService {
         where: {
           status: 'PAID',
           packageKey: { not: 'welcome' },
-          provider: { in: ['google_play', 'app_store', 'pix'] },
+          provider: { in: [...REAL_SALE_PROVIDERS] },
           confirmedAt: null,
         },
       }),
+      fullRefundsInRange(this.prisma, start, end),
+      partialRefundsInRange(this.prisma, start, end),
+      openRefundReviewsInRange(this.prisma, start, end),
     ]);
 
     const users =
@@ -114,6 +125,14 @@ export class AdminDashboardService {
         grossRevenueBrl: monthSales.grossRevenueBrl,
         revenueByProvider: monthSales.byProvider,
       },
+      refundPosition: buildRefundPosition({
+        yearMonth: formatYearMonth(ym),
+        paid: new Prisma.Decimal(monthSales.grossRevenueBrl.toFixed(2)),
+        fullRefunds,
+        partialKnown: partialRefunds.known,
+        partialsWithoutAmount: partialRefunds.unknown,
+        refundReviewsOpen,
+      }),
       history,
       recentAccounts: recentAccounts.map((user) => ({
         id: user.id,

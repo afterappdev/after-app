@@ -8,7 +8,9 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
+import 'age_band.dart';
 import '../notifications/notifications_controller.dart';
+import '../promo_push/promo_alerts_preference.dart';
 import '../notifications/push_notifications.dart';
 import 'delete_account_button.dart';
 
@@ -33,6 +35,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _saving = false;
   bool _uploadingPhoto = false;
   String? _avatarUrl;
+  String? _ageBand;
+  String? _savedAgeBand;
+  bool _ageTouched = false;
   final _picker = ImagePicker();
 
   @override
@@ -50,6 +55,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<NotificationsController>().refresh();
+      _loadAgeBand();
     });
   }
 
@@ -65,7 +71,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return _name.text.trim() != user.name ||
         (_selectedUf ?? '') != user.state ||
         (_selectedCity ?? '') != user.city ||
-        (_avatarUrl ?? '') != (user.avatarUrl ?? '');
+        (_avatarUrl ?? '') != (user.avatarUrl ?? '') ||
+        _ageBand != _savedAgeBand;
+  }
+
+  Future<void> _loadAgeBand() async {
+    try {
+      final data = await context.read<ApiClient>().get('/users/me');
+      if (!mounted || data is! Map || _ageTouched) return;
+      final raw = data['ageBand'];
+      final band = raw == null || '$raw'.isEmpty ? null : '$raw';
+      setState(() {
+        _ageBand = band;
+        _savedAgeBand = band;
+      });
+    } on ApiException {
+      // An old session can still edit name and city without this field.
+    }
   }
 
   String _stateLabel(String? uf) {
@@ -233,7 +255,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             state: _selectedUf!,
             city: _selectedCity!,
             avatarUrl: _avatarUrl,
+            ageBand: _ageBand,
           );
+      _savedAgeBand = _ageBand;
       if (!mounted) return;
       Navigator.of(context).maybePop();
     } on ApiException catch (e) {
@@ -278,6 +302,51 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (result != null && result.isNotEmpty) {
       setState(() => _name.text = result);
     }
+  }
+
+  Future<void> _pickAgeBand() async {
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Text(
+                  'Qual é a sua faixa etária?',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+              ),
+              for (final option in kAgeBandOptions)
+                ListTile(
+                  key: Key('profile-age-${option.value}'),
+                  title: Text(
+                    option.label,
+                    style: const TextStyle(fontFamily: AppTheme.fontFamily),
+                  ),
+                  trailing: option.value == _ageBand
+                      ? const Icon(Icons.check, color: _accent)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, option.value),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _ageTouched = true;
+      _ageBand = selected;
+    });
   }
 
   Future<void> _pickState() async {
@@ -638,6 +707,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               : (_selectedCity ?? 'Selecione sua cidade'),
                           onTap: _pickCity,
                         ),
+                        const _RowDivider(),
+                        _ProfileRow(
+                          key: const Key('profile-age-band'),
+                          icon: Icons.accessibility_new_outlined,
+                          label: 'Faixa etária',
+                          value: ageBandLabel(_ageBand),
+                          onTap: _pickAgeBand,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 22),
@@ -661,6 +738,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                       ],
                     ),
+                    if (user?.isVenue != true) ...[
+                      const SizedBox(height: 22),
+                      const PromoAlertsPreference(),
+                    ],
                     const SizedBox(height: 22),
                     const _SectionLabel('SEGURANÇA'),
                     const SizedBox(height: 8),
@@ -792,6 +873,7 @@ class _RowDivider extends StatelessWidget {
 
 class _ProfileRow extends StatelessWidget {
   const _ProfileRow({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,

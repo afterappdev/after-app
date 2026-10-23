@@ -483,6 +483,9 @@ describe('PixPaymentProvider Mercado Pago Orders', () => {
     };
     expect(tx.payments[0].amount).toBe('34.90');
     expect(tx.payments[0].payment_method.id).toBe('pix');
+    expect(tx.payments[0].payment_method).not.toHaveProperty('statement_descriptor');
+    expect(body).not.toHaveProperty('config');
+    expect(JSON.stringify(body)).not.toContain('CREDITOAFTER');
     expect((body.payer as { email: string }).email).toBe('venue@test.com');
     expect((body.payer as { email: string }).email).not.toContain('@testuser.com');
     expect(result.qrCodeText).toBe('00020126copia-e-cola');

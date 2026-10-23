@@ -1961,6 +1961,7 @@ describe('CreditsService billing', () => {
     expect(rejected.status).toBe('FAILED');
     expect(memory.balance()).toBe(0);
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
+    expect(adminPush.notifyPurchasePaid).not.toHaveBeenCalled();
 
     createCharge.mockClear();
     const again = await service.payCard(USER_ID, cardInput());
@@ -2346,6 +2347,7 @@ describe('CreditsService billing', () => {
     expect(memory.balance()).toBe(1);
     expect(createCharge).not.toHaveBeenCalled();
     expect(memory.rows.get(purchaseId)?.providerTxId).toBe('card:ORD01CARD');
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
   });
 
   it('webhook e GET simultâneos não duplicam crédito do cartão', async () => {
@@ -2360,6 +2362,7 @@ describe('CreditsService billing', () => {
 
     expect(memory.balance()).toBe(1);
     expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
   });
 
   it('duas confirmações simultâneas do mesmo cartão creditam uma vez', async () => {
@@ -2378,6 +2381,7 @@ describe('CreditsService billing', () => {
     expect(a.status).toBe('PAID');
     expect(b.status).toBe('PAID');
     expect(memory.balance()).toBe(1);
+    expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
   });
 
   it('divergência de valor ou moeda no webhook não credita o cartão', async () => {

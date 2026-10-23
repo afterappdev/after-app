@@ -157,12 +157,20 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
             controller: _maxTotal,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Limite total',
-              helperText: 'Deixe vazio para não limitar',
+            decoration: const InputDecoration(labelText: 'Limite total'),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(18, 6, 18, 0),
+            child: Text(
+              'Deixe vazio para não limitar',
+              style: TextStyle(
+                color: AdminTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           TextField(
             controller: _maxPerVenue,
             keyboardType: TextInputType.number,

@@ -11,5 +11,9 @@ export const CREDIT_PACKAGES = [
 
 export type CreditPackageKey = (typeof CREDIT_PACKAGES)[number]['key'];
 
-/** Free credits granted when a venue account is created. */
-export const VENUE_SIGNUP_BONUS_CREDITS = 2;
+/**
+ * Common credits for a new venue, and only when that CPF or CNPJ has never
+ * received the welcome benefit. VIP balance is not part of this grant.
+ */
+/** One common credit for every eligible new venue signup. Never VIP. */
+export const VENUE_SIGNUP_BONUS_CREDITS = 1;

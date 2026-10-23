@@ -91,6 +91,10 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
             ],
           ),
         ),
+        if (_showsRefund(sale)) ...[
+          const SizedBox(height: 16),
+          _refundCard(sale),
+        ],
         const SizedBox(height: 16),
         AdminCard(
           child: Column(
@@ -110,6 +114,61 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
     );
   }
 
+  bool _showsRefund(AdminSale sale) {
+    return sale.status.toUpperCase() == 'REFUNDED' ||
+        sale.refundAudits.isNotEmpty ||
+        sale.hasPartialReview;
+  }
+
+  Widget _refundCard(AdminSale sale) {
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            sale.hasPartialReview
+                ? 'Reembolso parcial — revisão necessária'
+                : sale.hasOpenRefundReview
+                    ? 'Reembolso — verificação necessária'
+                    : 'Estorno',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          _row('Valor original', formatBrl(sale.amountPaid)),
+          _row('Créditos adquiridos', formatCount(sale.credits)),
+          for (final audit in sale.refundAudits) ...[
+            if (audit.kind == 'refund_review')
+              _row(
+                sale.hasOpenRefundReview ? 'Situação' : 'Verificação anterior',
+                sale.hasOpenRefundReview
+                    ? 'Sinal recebido sem comprovação suficiente. A compra continua paga.'
+                    : 'Resolvida',
+              ),
+            if (audit.kind != 'refund_review' && audit.refundedAmount != null)
+              _row('Valor reembolsado', formatBrl(audit.refundedAmount!)),
+            if (audit.recordedAt != null)
+              _row(
+                'Registrado na auditoria em',
+                formatDateTime(audit.recordedAt),
+              ),
+            if (audit.creditsRecovered != null)
+              _row(
+                'Créditos recuperados',
+                formatCount(audit.creditsRecovered!),
+              ),
+            if (audit.creditsUnrecovered != null)
+              _row(
+                'Créditos não recuperados',
+                formatCount(audit.creditsUnrecovered!),
+              ),
+            if (audit.refundId != null)
+              _row('Identificador do reembolso', audit.refundId!),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _row(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -117,7 +176,7 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 168,
             child: Text(
               label,
               style: const TextStyle(

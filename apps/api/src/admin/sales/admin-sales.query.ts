@@ -2,6 +2,8 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
 import { REAL_SALE_PROVIDERS } from '../finance';
 
+export const ADMIN_SALE_STATUS_FILTERS = ['all', 'paid', 'refunded'] as const;
+
 export class AdminSalesQueryDto {
   @IsOptional()
   @Type(() => Number)
@@ -19,6 +21,11 @@ export class AdminSalesQueryDto {
   @IsOptional()
   @IsIn([...REAL_SALE_PROVIDERS])
   provider?: (typeof REAL_SALE_PROVIDERS)[number];
+
+  /** all = PAID and REFUNDED. paid = PAID, including partial reviews. refunded = REFUNDED. */
+  @IsOptional()
+  @IsIn([...ADMIN_SALE_STATUS_FILTERS])
+  status?: (typeof ADMIN_SALE_STATUS_FILTERS)[number];
 
   /** Inclusive calendar date in America/Sao_Paulo. Format YYYY-MM-DD. */
   @IsOptional()

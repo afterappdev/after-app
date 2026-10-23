@@ -10,6 +10,7 @@ import '../auth/auth_controller.dart';
 import 'billing_channel.dart';
 import 'credits_ui.dart';
 import 'fiscal_invoice_controller.dart';
+import 'venue_fiscal_document.dart';
 import 'fiscal_invoice_section.dart';
 import 'pix_charge.dart';
 import 'pix_poller.dart';
@@ -54,7 +55,16 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     try {
-      _fiscal.applyAccountEmail(context.read<AuthController>().user?.email);
+      final auth = context.read<AuthController>();
+      _fiscal.applyAccountEmail(auth.user?.email);
+      loadVenueFiscalDocument(
+        api: context.read<ApiClient>(),
+        auth: auth,
+        fiscal: _fiscal,
+        onLoaded: () {
+          if (mounted) setState(() {});
+        },
+      );
     } catch (_) {}
   }
 

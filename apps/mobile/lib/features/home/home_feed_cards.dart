@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'home_visual.dart';
@@ -318,6 +319,7 @@ class HomePromoCard extends StatelessWidget {
     required this.onTap,
     this.distanceLabel,
     this.onImageTap,
+    this.featured = false,
   });
 
   final String imageUrl;
@@ -331,6 +333,7 @@ class HomePromoCard extends StatelessWidget {
   final String validUntil;
   final VoidCallback onTap;
   final VoidCallback? onImageTap;
+  final bool featured;
 
   @override
   Widget build(BuildContext context) {
@@ -344,9 +347,19 @@ class HomePromoCard extends StatelessWidget {
       imageUrl: imageUrl,
       onImageTap: onImageTap,
       offerMark: showOffer,
+      vipFrame: featured,
       emptyIcon: Icons.local_offer_outlined,
       children: [
-        _VenueName(venueName),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _VenueName(venueName)),
+            if (featured) ...[
+              const SizedBox(width: 8),
+              const HomeVipBadge(),
+            ],
+          ],
+        ),
         const SizedBox(height: 4),
         _StatusRow(
           hasOpenInfo: hasOpenInfo,
@@ -572,6 +585,44 @@ class _MetaLine extends StatelessWidget {
   }
 }
 
+class HomeVipBadge extends StatelessWidget {
+  const HomeVipBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: HomeVisual.vipBadgeGradient,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FaIcon(
+              FontAwesomeIcons.crown,
+              size: 10,
+              color: HomeVisual.vipCrown,
+            ),
+            SizedBox(width: 4),
+            Text(
+              'VIP',
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+                height: 1,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _FeedCard extends StatelessWidget {
   const _FeedCard({
     required this.tone,
@@ -581,6 +632,7 @@ class _FeedCard extends StatelessWidget {
     required this.children,
     this.onImageTap,
     this.offerMark = false,
+    this.vipFrame = false,
   });
 
   final HomeAccentTone tone;
@@ -590,55 +642,80 @@ class _FeedCard extends StatelessWidget {
   final List<Widget> children;
   final VoidCallback? onImageTap;
   final bool offerMark;
+  final bool vipFrame;
 
   @override
   Widget build(BuildContext context) {
+    final body = _body();
+    if (!vipFrame) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(HomeVisual.cardRadius),
+          boxShadow: HomeVisual.cardShadow,
+        ),
+        child: Material(
+          color: HomeVisual.cardBackground(tone),
+          borderRadius: BorderRadius.circular(HomeVisual.cardRadius),
+          clipBehavior: Clip.antiAlias,
+          child: body,
+        ),
+      );
+    }
+    final innerRadius = HomeVisual.cardRadius - HomeVisual.vipBorderWidth;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(HomeVisual.cardRadius),
         boxShadow: HomeVisual.cardShadow,
+        gradient: HomeVisual.vipBorderGradient,
       ),
-      child: Material(
-        color: HomeVisual.cardBackground(tone),
-        borderRadius: BorderRadius.circular(HomeVisual.cardRadius),
-        clipBehavior: Clip.antiAlias,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              HomeAccentBar(tone: tone),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _CardImage(
-                        imageUrl: imageUrl,
-                        emptyIcon: emptyIcon,
-                        iconColor: HomeVisual.accent(tone),
-                        offerMark: offerMark,
-                        onTap: onImageTap ?? onTap,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap: onTap,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: children,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(HomeVisual.vipBorderWidth),
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(innerRadius),
+          clipBehavior: Clip.antiAlias,
+          child: body,
         ),
+      ),
+    );
+  }
+
+  Widget _body() {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!vipFrame) HomeAccentBar(tone: tone),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _CardImage(
+                    imageUrl: imageUrl,
+                    emptyIcon: emptyIcon,
+                    iconColor: HomeVisual.accent(tone),
+                    offerMark: offerMark,
+                    onTap: onImageTap ?? onTap,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: children,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -85,6 +85,10 @@ void main() {
   });
 
   testWidgets('formulário bloqueia créditos inválidos antes de criar', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final api = _CouponApi(
       const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0),
     );

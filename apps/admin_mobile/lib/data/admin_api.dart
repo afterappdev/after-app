@@ -32,6 +32,7 @@ abstract class AdminApi {
     int page = 1,
     int limit = 20,
     String? provider,
+    String? status,
     String? from,
     String? to,
   });
@@ -155,6 +156,7 @@ class HttpAdminApi implements AdminApi {
     int page = 1,
     int limit = 20,
     String? provider,
+    String? status,
     String? from,
     String? to,
   }) async {
@@ -164,6 +166,8 @@ class HttpAdminApi implements AdminApi {
         'page': '$page',
         'limit': '$limit',
         if (provider != null && provider.isNotEmpty) 'provider': provider,
+        if (status != null && status.isNotEmpty && status != 'all')
+          'status': status,
         if (from != null && from.isNotEmpty) 'from': from,
         if (to != null && to.isNotEmpty) 'to': to,
       },

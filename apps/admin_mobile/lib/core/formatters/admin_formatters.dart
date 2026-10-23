@@ -34,6 +34,8 @@ String providerLabel(String? provider) {
       return 'Apple';
     case 'pix':
       return 'PIX';
+    case 'card':
+      return 'Cartão de crédito';
     default:
       return provider?.trim().isNotEmpty == true ? provider!.trim() : '—';
   }
@@ -130,6 +132,17 @@ String reportReasonLabel(String? reason) {
   }
 }
 
+String saleHistoryLabel(
+  String? status, {
+  bool partialReview = false,
+  bool refundReview = false,
+}) {
+  if ((status ?? '').trim().toUpperCase() == 'REFUNDED') return 'Reembolsada';
+  if (partialReview) return 'Reembolso parcial — revisão necessária';
+  if (refundReview) return 'Reembolso — verificação necessária';
+  return statusLabel(status);
+}
+
 String statusLabel(String? status) {
   switch ((status ?? '').trim().toUpperCase()) {
     case 'PAID':
@@ -141,7 +154,7 @@ String statusLabel(String? status) {
     case 'CANCELLED':
       return 'Cancelado';
     case 'REFUNDED':
-      return 'Reembolsado';
+      return 'Reembolsada';
     default:
       return status?.trim().isNotEmpty == true ? status!.trim() : '—';
   }

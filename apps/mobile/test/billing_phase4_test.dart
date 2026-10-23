@@ -393,6 +393,7 @@ void main() {
     expect(purchaseProviderLabel('app_store'), 'App Store');
     expect(purchaseProviderLabel('apple_app_store'), 'App Store');
     expect(purchaseProviderLabel('pix'), 'PIX');
+    expect(purchaseProviderLabel('card'), 'Cartão de crédito');
     expect(purchaseProviderLabel('stub'), 'Desenvolvimento');
     expect(purchaseStatusLabel('PENDING'), 'Aguardando pagamento');
     expect(purchaseStatusLabel('PAID'), 'Pago');
@@ -625,7 +626,7 @@ void main() {
     expect(find.text('R\$ 19,99 por crédito'), findsOneWidget);
     expect(find.text('Economize R\$ 24,60'), findsOneWidget);
     expect(find.text('Economize R\$ 149,10'), findsOneWidget);
-    expect(find.text('Total: R\$ 199,90'), findsOneWidget);
+    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
     expect(find.text('R\$ 25,00'), findsNothing);
     expect(find.text('R\$ 115,00'), findsNothing);
     expect(find.text('R\$ 200,00'), findsNothing);
@@ -639,6 +640,10 @@ void main() {
     await tester.tap(find.text('5 créditos'));
     await tester.pump();
     expect(find.text('Total: R\$ 149,90'), findsOneWidget);
+
+    await tester.tap(find.text('10 créditos'));
+    await tester.pump();
+    expect(find.text('Total: R\$ 199,90'), findsOneWidget);
   });
 
   testWidgets('iOS oculta o resgate de cupom na compra de créditos',

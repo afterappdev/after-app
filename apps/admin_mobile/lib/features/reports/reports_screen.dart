@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/router/admin_navigation.dart';
 import '../../core/widgets/status_body.dart';
 import 'report_detail_screen.dart';
 import 'reports_controller.dart';
@@ -138,10 +139,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
                 isThreeLine: true,
                 onTap: () async {
-                  final updated = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute(
-                      builder: (_) => ReportDetailScreen(id: report.id),
-                    ),
+                  final updated = await pushAdminPage<bool>(
+                    context,
+                    location: '/denuncias/${Uri.encodeComponent(report.id)}',
+                    builder: (_) => ReportDetailScreen(id: report.id),
                   );
                   if (!context.mounted) return;
                   if (updated == true) {

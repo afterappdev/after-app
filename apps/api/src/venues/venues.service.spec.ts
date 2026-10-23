@@ -317,6 +317,39 @@ describe('VenuesService geolocation', () => {
       expect(payload.city).toBe('São José do Rio Preto');
     });
 
+    it('resolves IBGE when the city changes and clears it when the pair is ambiguous', async () => {
+      const locations = {
+        resolveMunicipalityId: jest.fn(async () => 3549805),
+      };
+      const local = new VenuesService(
+        prisma as never,
+        mediaCleanup as unknown as MediaCleanupService,
+        locations as never,
+      );
+      prisma.venue.findUnique.mockResolvedValue(venueRecord({ ibgeCityId: 3550308 }));
+
+      await local.updateOwned(OWNER_ID, VENUE_ID, {
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      });
+      expect(locations.resolveMunicipalityId).toHaveBeenCalledWith(
+        'São José do Rio Preto',
+        'SP',
+      );
+      expect(prisma.venue.update.mock.calls.at(-1)?.[0].data.ibgeCityId).toBe(3549805);
+
+      locations.resolveMunicipalityId.mockResolvedValueOnce(null);
+      await local.updateOwned(OWNER_ID, VENUE_ID, { city: 'Bom Jesus' });
+      expect(prisma.venue.update.mock.calls.at(-1)?.[0].data.ibgeCityId).toBeNull();
+    });
+
+    it('does not touch IBGE when only hours change', async () => {
+      await service.updateOwned(OWNER_ID, VENUE_ID, {
+        hoursJson: { mon: { open: '18:00', close: '23:00' } },
+      });
+      expect(prisma.venue.update.mock.calls.at(-1)?.[0].data.ibgeCityId).toBeUndefined();
+    });
+
     it('does not overwrite a saved pair when only one coordinate is sent', async () => {
       await service.updateOwned(OWNER_ID, VENUE_ID, {
         lat: -23.5,

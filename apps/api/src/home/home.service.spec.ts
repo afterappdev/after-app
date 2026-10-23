@@ -112,6 +112,8 @@ describe('HomeService geolocation', () => {
           description: 'Happy hour',
           venue: venueRow(),
         },
+        id: 'schedule-1',
+        tier: 'COMMON',
         displayDate: new Date('2026-09-14T00:00:00.000Z'),
       },
     ]);
@@ -129,6 +131,9 @@ describe('HomeService geolocation', () => {
     expect(result[0].venue.lat).toBe(SAVED_LAT);
     expect(result[0].venue.lng).toBe(SAVED_LNG);
     expect(result[0].distanceKm).toEqual(expect.any(Number));
+    expect(result[0].tier).toBe('COMMON');
+    expect(result[0].featured).toBe(false);
+    expect(result[0].scheduleId).toBe('schedule-1');
   });
 
   it('venues autenticado omite estabelecimentos bloqueados', async () => {

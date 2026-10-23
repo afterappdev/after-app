@@ -22,6 +22,7 @@ import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
 import '../venue/promo_validity.dart';
 import 'home_feed_cards.dart';
+import 'home_promotions.dart';
 import 'home_visual.dart';
 import 'venue_filter_sheet_layout.dart';
 
@@ -143,7 +144,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final prepared = _sortOpenThenDistance(items);
     _stampGpsDistances(prepared, nestedVenue: nestedVenue);
-    return _sortOpenThenDistance(prepared);
+    final sorted = _sortOpenThenDistance(prepared);
+    if (!nestedVenue) return sorted;
+    return orderHomePromotions(sorted, selectedDay: _selectedDay);
   }
 
   void _startBackgroundGps() {
@@ -802,6 +805,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               if (_promotions.isNotEmpty)
                                 _PromotionCards(
                                   items: _promotions,
+                                  selectedDay: _selectedDay,
                                   onOpenVenue: _openVenueById,
                                 ),
                               SliverToBoxAdapter(
@@ -1237,9 +1241,14 @@ class _VenueSearchField extends StatelessWidget {
 }
 
 class _PromotionCards extends StatelessWidget {
-  const _PromotionCards({required this.items, required this.onOpenVenue});
+  const _PromotionCards({
+    required this.items,
+    required this.selectedDay,
+    required this.onOpenVenue,
+  });
 
   final List<dynamic> items;
+  final DateTime selectedDay;
   final ValueChanged<String> onOpenVenue;
 
   @override
@@ -1282,6 +1291,7 @@ class _PromotionCards extends StatelessWidget {
                 : 'Promoção do dia',
             dealDetail: item['description']?.toString() ?? '',
             validUntil: formatStoredCalendarDate(item['displayDate']),
+            featured: homePromotionIsFeatured(item, selectedDay: selectedDay),
             onTap: () {
               final id = venue['id']?.toString();
               if (id != null && id.isNotEmpty) {

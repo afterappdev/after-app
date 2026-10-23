@@ -1,0 +1,10 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "../..",
+  "testEnvironment": "node",
+  "testRegex": "test/isolated-pg/promo-push\\.isolated-pg\\.ts$",
+  "transform": {
+    "^.+\\.ts$": "ts-jest"
+  },
+  "maxWorkers": 1
+}

@@ -52,6 +52,52 @@ class FiscalInvoiceController {
   String get documentDigits =>
       BrDocumentValidator.digitsOnly(documentMasked);
 
+  String? _venueDocumentType;
+  String? _venueDocumentDigits;
+  String? _venueLegalName;
+  bool _venueLoadStarted = false;
+
+  bool beginVenueDocumentLoad() {
+    if (_venueLoadStarted) return false;
+    _venueLoadStarted = true;
+    return true;
+  }
+
+  void cancelVenueDocumentLoad() => _venueLoadStarted = false;
+
+  /// Remembers the venue identity so a later invoice request can prefill it.
+  /// The document alone does not mean an invoice can be issued.
+  void rememberVenueDocument({
+    String? type,
+    String? digits,
+    String? legalName,
+  }) {
+    _venueDocumentType = type;
+    _venueDocumentDigits = BrDocumentValidator.digitsOnly(digits);
+    _venueLegalName = legalName?.trim();
+    if (invoiceRequested) applyRememberedVenueDocument();
+  }
+
+  void applyRememberedVenueDocument() {
+    final type = _venueDocumentType;
+    final digits = _venueDocumentDigits ?? '';
+    if (type != 'CPF' && type != 'CNPJ') return;
+    if (digits.isEmpty || documentDigits.isNotEmpty) {
+      _applyVenueName();
+      return;
+    }
+    personType = type!;
+    documentMasked = type == 'CNPJ'
+        ? BrDocumentValidator.formatCnpj(digits)
+        : BrDocumentValidator.formatCpf(digits);
+    _applyVenueName();
+  }
+
+  void _applyVenueName() {
+    final legalName = _venueLegalName ?? '';
+    if (name.trim().isEmpty && legalName.length >= 2) name = legalName;
+  }
+
   Map<String, dynamic> toApiPayload() {
     if (!invoiceRequested) {
       return {'invoiceRequested': false};

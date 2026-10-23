@@ -1,0 +1,13 @@
+# Disposable PostgreSQL for a future authorized run. Do not start it in phase 13.12S.
+# Bind is loopback only. Database name is not `after`.
+services:
+  after-credit-ledger-pg:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: after_credit_ledger_test
+      POSTGRES_PASSWORD: disposable-local-only
+      POSTGRES_DB: after_credit_ledger_test
+    ports:
+      - "127.0.0.1:55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data

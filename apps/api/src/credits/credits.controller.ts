@@ -26,6 +26,8 @@ import {
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { CREDIT_PACKAGES } from '../common/constants/credits';
+import { VIP_CREDIT_PACKAGES } from './vip-catalog';
+import { WEB_CREDIT_PACKAGE_KEYS } from './vip-web-checkout';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CreditsService } from './credits.service';
 import { STORE_PROVIDER_INPUTS } from './providers/payment-provider';
@@ -88,14 +90,14 @@ class StoreConfirmDto extends FiscalFieldsDto {
 
 class PixCreateDto extends FiscalFieldsDto {
   @IsString()
-  @IsIn(PACKAGE_KEYS)
-  packageKey!: (typeof PACKAGE_KEYS)[number];
+  @IsIn(WEB_CREDIT_PACKAGE_KEYS)
+  packageKey!: (typeof WEB_CREDIT_PACKAGE_KEYS)[number];
 }
 
 export class CardPayDto extends FiscalFieldsDto {
   @IsString()
-  @IsIn(PACKAGE_KEYS)
-  packageKey!: (typeof PACKAGE_KEYS)[number];
+  @IsIn(WEB_CREDIT_PACKAGE_KEYS)
+  packageKey!: (typeof WEB_CREDIT_PACKAGE_KEYS)[number];
 
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{16,64}$/)
@@ -127,6 +129,11 @@ export class CreditsController {
   @Get('packages')
   packages() {
     return this.creditsService.packages();
+  }
+
+  @Get('vip-packages')
+  vipPackages() {
+    return VIP_CREDIT_PACKAGES;
   }
 
   @Get('wallet')

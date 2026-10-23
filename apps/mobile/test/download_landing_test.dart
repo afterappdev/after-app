@@ -29,10 +29,11 @@ void main() {
     expect(page, contains('Google Play'));
     expect(page, contains('BAIXE PELA'));
     expect(page, contains('App Store'));
-    expect(page, contains('Acesse nosso site'));
+    expect(page, contains('Conheça o After'));
     expect(page, contains('WhatsApp'));
     expect(page, contains('icon_after.png'));
     expect(page.contains('chrome.svg'), isFalse);
+    expect(page.contains('Acesse nosso site'), isFalse);
     expect(page.contains('Acessar pelo'), isFalse);
     expect(page.contains('navegador'), isFalse);
     expect(page.contains('Falar conosco'), isFalse);

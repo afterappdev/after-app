@@ -1,4 +1,4 @@
-import { CreditPurchase } from '@prisma/client';
+import { CreditPurchase, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import {
   CARD_PAID_RECONCILE_BATCH,
@@ -71,6 +71,18 @@ import {
 } from './providers/pix.provider';
 import { asMoney, toPublicPurchase } from './purchase-public';
 import { AdminPushService } from '../admin/push/admin-push.service';
+import { VipCreditsService } from './vip-credits.service';
+import {
+  VIP_WEB_CREDITS,
+  decideVipSettlement,
+  futureVipBenefitRevoked,
+  planVipPurchaseClawback,
+  purchaseWalletTarget,
+  saoPauloCivilDate,
+  vipGrantOperationKey,
+  vipRefundOperationKey,
+  webSaleByKey,
+} from './vip-web-checkout';
 import {
   FiscalPurchaseInput,
   FiscalSnapshot,
@@ -132,6 +144,7 @@ export class CreditsService {
     private readonly prisma: PrismaService,
     private readonly payments: PaymentProviderRegistry,
     @Optional() private readonly adminPush?: AdminPushService,
+    @Optional() private readonly vipCredits?: VipCreditsService,
   ) {}
 
   packages() {
@@ -146,6 +159,7 @@ export class CreditsService {
     return {
       venueId: venue.id,
       balance: wallet?.balance ?? 0,
+      vipBalance: wallet?.vipBalance ?? 0,
     };
   }
 
@@ -309,7 +323,7 @@ export class CreditsService {
     fiscalInput?: FiscalPurchaseInput,
   ) {
     const fiscal = resolveFiscalSnapshot(fiscalInput);
-    const pack = CREDIT_PACKAGES.find((p) => p.key === packageKey);
+    const pack = webSaleByKey(packageKey);
     if (!pack) {
       throw new BadRequestException('Pacote inválido');
     }
@@ -338,7 +352,7 @@ export class CreditsService {
       data: {
         venueId: venue.id,
         packageKey: pack.key,
-        productId: null,
+        productId: pack.productId,
         amountPaid: pack.priceBrl,
         currency: 'BRL',
         credits: pack.credits,
@@ -561,6 +575,21 @@ export class CreditsService {
     order: PixVerifiedOrder,
   ): Promise<CreditPurchase> {
     if (order.status === 'PAID') {
+      if (purchaseWalletTarget(purchase) === 'vip') {
+        const effect = decideVipSettlement({
+          status: purchase.status,
+          packageKey: purchase.packageKey,
+          productId: purchase.productId,
+          credits: purchase.credits,
+          amountPaid: purchase.amountPaid,
+          next: 'PAID',
+          orderAmountBrl: order.amountBrl,
+        });
+        if (effect !== 'grant') {
+          this.logger.warn(`PIX VIP recusado para compra ${purchase.id}`);
+          return purchase;
+        }
+      }
       if (order.currency != null && order.currency !== 'BRL') {
         this.logger.warn(`PIX currency mismatch for purchase ${purchase.id}`);
         return purchase;
@@ -689,7 +718,7 @@ export class CreditsService {
   }
 
   private requireCardPack(input: CardPayInput) {
-    const pack = CREDIT_PACKAGES.find((item) => item.key === input.packageKey);
+    const pack = webSaleByKey(input.packageKey);
     if (!pack) {
       throw new BadRequestException('Pacote inválido');
     }
@@ -705,7 +734,12 @@ export class CreditsService {
     idempotencyKey: string;
     token: string;
     paymentMethodId: string;
-    pack: (typeof CREDIT_PACKAGES)[number];
+    pack: {
+      key: string;
+      credits: number;
+      priceBrl: number;
+      productId: string | null;
+    };
     fiscal: ReturnType<typeof resolveFiscalSnapshot>;
   }): Promise<CardPayResponse> {
     const opTxId = cardOperationProviderTxId(input.purchaseId, input.fingerprint);
@@ -720,7 +754,7 @@ export class CreditsService {
             id: input.purchaseId,
             venueId: input.venueId,
             packageKey: input.pack.key,
-            productId: null,
+            productId: input.pack.productId,
             amountPaid: input.pack.priceBrl,
             currency: 'BRL',
             credits: input.pack.credits,
@@ -913,6 +947,21 @@ export class CreditsService {
     }
 
     if (order.status === 'PAID') {
+      if (purchaseWalletTarget(purchase) === 'vip') {
+        const effect = decideVipSettlement({
+          status: purchase.status,
+          packageKey: purchase.packageKey,
+          productId: purchase.productId,
+          credits: purchase.credits,
+          amountPaid: purchase.amountPaid,
+          next: 'PAID',
+          orderAmountBrl: order.amountBrl,
+        });
+        if (effect !== 'grant') {
+          this.logger.warn(`Card VIP recusado para compra ${purchase.id}`);
+          return { purchase, outcome: 'pending' };
+        }
+      }
       const paid = await this.confirmPendingPurchaseAtomic(
         purchase.id,
         buildProviderTxId('card', order.orderId),
@@ -935,7 +984,12 @@ export class CreditsService {
         refundedAmountBrl: order.refundedAmountBrl ?? null,
         refundId: order.refundId ?? null,
       });
-      if (refundAction === 'full' && purchase.status === 'PAID' && next?.status === 'REFUNDED') {
+      if (
+        refundAction === 'full' &&
+        purchase.status === 'PAID' &&
+        next?.status === 'REFUNDED' &&
+        purchaseWalletTarget(purchase) !== 'vip'
+      ) {
         this.noteCreditLedger({
           kind: 'card_full_refund',
           purchaseId: purchase.id,
@@ -1045,8 +1099,41 @@ export class CreditsService {
     providerTxId: string,
   ): Promise<{ purchase: CreditPurchase | null; newlyPaid: boolean }> {
     return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.creditPurchase.findUnique({
+        where: { id: purchaseId },
+      });
+      if (!existing) return { purchase: null, newlyPaid: false };
+      if (purchaseWalletTarget(existing) === 'vip') {
+        const effect = decideVipSettlement({
+          status: existing.status,
+          packageKey: existing.packageKey,
+          productId: existing.productId,
+          credits: existing.credits,
+          amountPaid: existing.amountPaid,
+          next: 'PAID',
+          orderAmountBrl: asMoney(existing.amountPaid),
+        });
+        if (effect === 'reject') {
+          await tx.creditPurchase.updateMany({
+            where: { id: purchaseId, status: 'PENDING' },
+            data: { status: 'FAILED' },
+          });
+          const failed = await tx.creditPurchase.findUnique({
+            where: { id: purchaseId },
+          });
+          return { purchase: failed, newlyPaid: false };
+        }
+        if (effect !== 'grant') {
+          return { purchase: existing, newlyPaid: false };
+        }
+      }
+
+      const claimStatus =
+        purchaseWalletTarget(existing) === 'vip' && existing.status === 'CANCELLED'
+          ? 'CANCELLED'
+          : 'PENDING';
       const claimed = await tx.creditPurchase.updateMany({
-        where: { id: purchaseId, status: 'PENDING' },
+        where: { id: purchaseId, status: claimStatus },
         data: {
           status: 'PAID',
           confirmedAt: new Date(),
@@ -1054,10 +1141,10 @@ export class CreditsService {
         },
       });
       if (claimed.count === 0) {
-        const existing = await tx.creditPurchase.findUnique({
+        const current = await tx.creditPurchase.findUnique({
           where: { id: purchaseId },
         });
-        return { purchase: existing, newlyPaid: false };
+        return { purchase: current, newlyPaid: false };
       }
 
       const paid = await tx.creditPurchase.findUnique({
@@ -1065,11 +1152,38 @@ export class CreditsService {
       });
       if (!paid) return { purchase: null, newlyPaid: false };
 
-      await tx.creditWallet.upsert({
-        where: { venueId: paid.venueId },
-        create: { venueId: paid.venueId, balance: paid.credits },
-        update: { balance: { increment: paid.credits } },
-      });
+      if (purchaseWalletTarget(paid) === 'vip') {
+        if (!this.vipCredits) {
+          throw new ServiceUnavailableException('Checkout VIP indisponível.');
+        }
+        const granted = await this.vipCredits.grant(
+          {
+            venueId: paid.venueId,
+            operationKey: vipGrantOperationKey(paid.id),
+            credits: VIP_WEB_CREDITS,
+          },
+          tx,
+        );
+        if (!granted.applied) {
+          const prior = await tx.vipCreditEntry.findUnique({
+            where: { operationKey: vipGrantOperationKey(paid.id) },
+          });
+          if (
+            !prior ||
+            prior.venueId !== paid.venueId ||
+            prior.kind !== 'grant' ||
+            prior.balanceDelta < 1
+          ) {
+            throw new ServiceUnavailableException('Crédito VIP não registrado.');
+          }
+        }
+      } else {
+        await tx.creditWallet.upsert({
+          where: { venueId: paid.venueId },
+          create: { venueId: paid.venueId, balance: paid.credits },
+          update: { balance: { increment: paid.credits } },
+        });
+      }
       return { purchase: paid, newlyPaid: true };
     });
   }
@@ -1083,8 +1197,143 @@ export class CreditsService {
       refundId: string | null;
     },
   ) {
-    return this.prisma.$transaction((tx) =>
-      settleCardTerminalStatus(tx, { purchaseId, ...input }),
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.creditPurchase.findUnique({
+        where: { id: purchaseId },
+      });
+      if (
+        current &&
+        purchaseWalletTarget(current) === 'vip' &&
+        input.status === 'REFUNDED' &&
+        input.refundScope === 'full'
+      ) {
+        return this.refundVipPurchaseIn(tx, current);
+      }
+      return settleCardTerminalStatus(tx, { purchaseId, ...input });
+    });
+  }
+
+  private async recordVipShortfall(
+    tx: Prisma.TransactionClient,
+    purchase: CreditPurchase,
+    recovered: number,
+    unrecovered: number,
+  ) {
+    const source = purchase.provider === 'card' ? 'card_full_refund' : 'pix_full_refund';
+    await this.insertOnce(() =>
+      tx.creditRefundAudit.create({
+        data: {
+          purchaseId: purchase.id,
+          venueId: purchase.venueId,
+          kind: 'shortfall',
+          creditsRecovered: recovered,
+          creditsUnrecovered: unrecovered,
+          originalAmount: asMoney(purchase.amountPaid),
+        },
+      }),
+    );
+    await this.insertOnce(() =>
+      tx.creditObligation.create({
+        data: {
+          venueId: purchase.venueId,
+          purchaseId: purchase.id,
+          creditsOriginal: VIP_WEB_CREDITS,
+          creditsRecovered: recovered,
+          creditsOpened: unrecovered,
+          creditsSettled: 0,
+          status: unrecovered > 0 ? 'open' : 'settled',
+          source,
+        },
+      }),
+    );
+  }
+
+  private async insertOnce(write: () => Promise<unknown>) {
+    try {
+      await write();
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'P2002') throw error;
+    }
+  }
+
+  private async revokeFutureVipBenefit(tx: Prisma.TransactionClient, scheduleId: string) {
+    const schedule = await tx.bannerSchedule.findUnique({
+      where: { id: scheduleId },
+    });
+    if (!schedule || schedule.tier !== 'VIP') return;
+    if (!futureVipBenefitRevoked(schedule.displayDate, saoPauloCivilDate())) return;
+    await tx.bannerSchedule.update({
+      where: { id: schedule.id },
+      data: { tier: 'COMMON' },
+    });
+    await tx.promoPushEvent.updateMany({
+      where: { bannerScheduleId: schedule.id, status: 'PENDING' },
+      data: { status: 'SKIPPED' },
+    });
+  }
+
+  private refundVipPurchase(purchase: CreditPurchase): Promise<CreditPurchase> {
+    return this.prisma.$transaction((tx) => this.refundVipPurchaseIn(tx, purchase));
+  }
+
+  private async refundVipPurchaseIn(
+    tx: Prisma.TransactionClient,
+    purchase: CreditPurchase,
+  ): Promise<CreditPurchase> {
+    const effect = decideVipSettlement({
+      status: purchase.status,
+      packageKey: purchase.packageKey,
+      productId: purchase.productId,
+      credits: purchase.credits,
+      amountPaid: purchase.amountPaid,
+      next: 'REFUNDED',
+    });
+    const claimed = await tx.creditPurchase.updateMany({
+      where: { id: purchase.id, status: 'PAID' },
+      data: { status: 'REFUNDED' },
+    });
+    if (claimed.count === 0) {
+      await tx.creditPurchase.updateMany({
+        where: { id: purchase.id, status: 'PENDING' },
+        data: { status: 'REFUNDED' },
+      });
+      return (
+        (await tx.creditPurchase.findUnique({ where: { id: purchase.id } })) ??
+        purchase
+      );
+    }
+    if (effect === 'refund') {
+      if (!this.vipCredits) {
+        throw new ServiceUnavailableException('Checkout VIP indisponível.');
+      }
+      await this.vipCredits.lockWallet(tx, purchase.venueId);
+      const entries = await tx.vipCreditEntry.findMany({
+        where: { venueId: purchase.venueId },
+        orderBy: { createdAt: 'asc' },
+      });
+      const wallet = await tx.creditWallet.findUnique({
+        where: { venueId: purchase.venueId },
+      });
+      const plan = planVipPurchaseClawback({
+        purchaseId: purchase.id,
+        vipBalance: wallet?.vipBalance ?? 0,
+        entries,
+      });
+      await this.vipCredits.applyPlannedRefund(tx, {
+        venueId: purchase.venueId,
+        operationKey: vipRefundOperationKey(purchase.id),
+        balanceDelta: -plan.recover,
+      });
+      if (plan.unrecovered > 0) {
+        await this.recordVipShortfall(tx, purchase, plan.recover, plan.unrecovered);
+      }
+      if (plan.scheduleId) {
+        await this.revokeFutureVipBenefit(tx, plan.scheduleId);
+      }
+    }
+    return (
+      (await tx.creditPurchase.findUnique({ where: { id: purchase.id } })) ??
+      purchase
     );
   }
 
@@ -1398,6 +1647,9 @@ export class CreditsService {
     const next = order.status;
     if (purchase.status === 'PAID') {
       if (next !== 'REFUNDED') return purchase;
+      if (purchaseWalletTarget(purchase) === 'vip') {
+        return this.refundVipPurchase(purchase);
+      }
       let settled = false;
       const result = await this.prisma.$transaction(async (tx) => {
         const claimed = await tx.creditPurchase.updateMany({

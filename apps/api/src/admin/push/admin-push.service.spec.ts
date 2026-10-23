@@ -11,6 +11,7 @@ import {
   isRealPaidSale,
   providerLabel,
   purchasePaidCopy,
+  reportCreatedCopy,
 } from './admin-push.copy';
 
 function purchase(overrides: Record<string, unknown> = {}) {
@@ -88,6 +89,9 @@ function createPrisma() {
       findMany: jest.fn(() => Promise.resolve(tokens)),
       deleteMany: jest.fn(() => Promise.resolve({ count: 1 })),
     },
+    userDeviceToken: {
+      findMany: jest.fn(() => Promise.resolve([{ token: 'consumer-token' }])),
+    },
     venue: {
       findUnique: jest.fn(() =>
         Promise.resolve({ name: 'Refúgio do Chef' }),
@@ -102,6 +106,7 @@ describe('Admin push copy', () => {
     expect(providerLabel('google_play')).toBe('Google Play');
     expect(providerLabel('app_store')).toBe('Apple');
     expect(providerLabel('pix')).toBe('PIX');
+    expect(providerLabel('card')).toBe('Cartão de crédito');
   });
 
   it('formata BRL sem perder centavos', () => {
@@ -121,6 +126,16 @@ describe('Admin push copy', () => {
       purchasePaidCopy({ credits: 10, amountPaid: 200, provider: 'app_store' })
         .body,
     ).toMatch(/10 créditos vendidos por R\$\s*200,00 via Apple\./);
+    const card = purchasePaidCopy({
+      credits: 1,
+      amountPaid: '34.90',
+      provider: 'card',
+      venueName: 'Bar Central',
+    });
+    expect(card.title).toBe('Nova compra de créditos 💳');
+    expect(card.body).toMatch(
+      /^Bar Central comprou 1 crédito por R\$\s*34,90 via cartão de crédito\.$/,
+    );
   });
 
   it('inclui o nome do local nas vendas Google Play, Apple e PIX', () => {
@@ -187,6 +202,64 @@ describe('Admin push copy', () => {
         purchase({ status: PurchaseStatus.PENDING, confirmedAt: null }),
       ),
     ).toBe(false);
+    expect(isRealPaidSale(purchase({ provider: 'card' }))).toBe(true);
+    expect(
+      isRealPaidSale(
+        purchase({ provider: 'card', status: PurchaseStatus.REFUNDED }),
+      ),
+    ).toBe(false);
+    expect(
+      isRealPaidSale(
+        purchase({
+          provider: 'card',
+          status: PurchaseStatus.FAILED,
+          confirmedAt: null,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('texto da denúncia cita o tipo e o motivo, sem dados sensíveis', () => {
+    const copy = reportCreatedCopy({
+      targetType: 'VENUE',
+      reason: 'SPAM',
+      snapshot: {
+        name: 'Bar Central',
+        description: 'descrição completa secreta',
+        authorName: 'Ana Silva',
+        testimonial: 'texto da avaliação',
+      },
+    });
+    expect(copy).toEqual({
+      title: 'Nova denúncia recebida 🚩',
+      body: 'Uma nova denúncia de estabelecimento foi registrada no After. Motivo: spam.',
+    });
+    expect(JSON.stringify(copy)).not.toContain('descrição completa');
+    expect(JSON.stringify(copy)).not.toContain('Ana Silva');
+    expect(JSON.stringify(copy)).not.toContain('texto da avaliação');
+    expect(JSON.stringify(copy)).not.toContain('Bar Central');
+
+    expect(
+      reportCreatedCopy({
+        targetType: 'BANNER',
+        reason: 'MISLEADING',
+        snapshot: { venueName: 'Bar Central', title: 'Happy hour secreto' },
+      }).body,
+    ).toBe(
+      'Uma nova denúncia de promoção foi registrada no After. Motivo: informação enganosa.',
+    );
+    expect(
+      reportCreatedCopy({ targetType: 'PHOTO', reason: 'OTHER', snapshot: {} }).body,
+    ).toBe('Uma nova denúncia de foto foi registrada no After. Motivo: outro.');
+    expect(reportCreatedCopy({ targetType: 'VIDEO', reason: 'VIOLENCE' }).body).toContain(
+      'vídeo',
+    );
+    expect(reportCreatedCopy({ targetType: 'REVIEW', reason: 'HATE' }).body).toContain(
+      'comentário',
+    );
+    expect(reportCreatedCopy({ targetType: 'EVENT', reason: 'UNKNOWN' }).body).toContain(
+      'outro',
+    );
   });
 });
 
@@ -245,7 +318,10 @@ describe('AdminPushService', () => {
     expect(messaging.calls[0].data.type).toBe(AdminPushEventType.VENUE_CREATED);
     expect(messaging.calls[0].data.entityId).toBe('venue-9');
     expect(messaging.calls[0].data.accountId).toBe('user-2');
-    expect(messaging.calls[0].title).toBe('Novo estabelecimento');
+    expect(messaging.calls[0].title).toBe('Novo estabelecimento cadastrado 🏪');
+    expect(messaging.calls[0].body).toBe(
+      'Bar Central acabou de se cadastrar no After.',
+    );
     expect(messaging.calls.map((item) => item.data.type)).not.toContain(
       AdminPushEventType.ACCOUNT_CREATED,
     );
@@ -408,5 +484,141 @@ describe('AdminPushService', () => {
       venue: null,
     });
     expect(prisma.adminPushEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('cartão pago usa o push financeiro existente', async () => {
+    await service.notifyPurchasePaid(
+      purchase({
+        id: 'sale-card',
+        credits: 1,
+        amountPaid: new Prisma.Decimal('34.90'),
+        provider: 'card',
+        providerTxId: 'card:ORD1',
+      }),
+    );
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0].title).toBe('Nova compra de créditos 💳');
+    expect(messaging.calls[0].body).toMatch(
+      /^Refúgio do Chef comprou 1 crédito por R\$\s*34,90 via cartão de crédito\.$/,
+    );
+    expect(messaging.calls[0].body).not.toContain('MP *');
+    expect(messaging.calls[0].tokens).toEqual([
+      'fcm-android-token-1',
+      'fcm-ios-token-2xxxx',
+    ]);
+  });
+
+  it('cartão pendente, recusado ou estornado não envia push financeiro', async () => {
+    await service.notifyPurchasePaid(
+      purchase({ provider: 'card', status: PurchaseStatus.PENDING, confirmedAt: null }),
+    );
+    await service.notifyPurchasePaid(
+      purchase({ provider: 'card', status: PurchaseStatus.FAILED, confirmedAt: null }),
+    );
+    await service.notifyPurchasePaid(
+      purchase({ provider: 'card', status: PurchaseStatus.REFUNDED }),
+    );
+    expect(messaging.calls).toHaveLength(0);
+  });
+
+  it('denúncia notifica os administradores uma única vez', async () => {
+    await service.notifyReportCreated({
+      id: 'report-1',
+      targetType: 'VENUE',
+      reason: 'SPAM',
+      snapshot: {
+        name: 'Bar Central',
+        description: 'não pode ir no push',
+        reporterEmail: 'pessoa@after.local',
+      },
+    });
+    await service.notifyReportCreated({
+      id: 'report-1',
+      targetType: 'VENUE',
+      reason: 'SPAM',
+      snapshot: { name: 'Bar Central' },
+    });
+
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0]).toMatchObject({
+      tokens: ['fcm-android-token-1', 'fcm-ios-token-2xxxx'],
+      title: 'Nova denúncia recebida 🚩',
+      body: 'Uma nova denúncia de estabelecimento foi registrada no After. Motivo: spam.',
+      data: { type: 'REPORT_CREATED', entityId: 'report-1' },
+    });
+    expect(JSON.stringify(messaging.calls[0])).not.toContain('não pode ir');
+    expect(JSON.stringify(messaging.calls[0])).not.toContain('pessoa@after.local');
+    expect(JSON.stringify(messaging.calls[0])).not.toContain('Bar Central');
+    expect(prisma.userDeviceToken.findMany).not.toHaveBeenCalled();
+  });
+
+  it('falha do FCM não desfaz o evento e token inválido é removido', async () => {
+    messaging.results = (tokens) =>
+      tokens.map((token, index) => ({
+        token,
+        success: index === 1,
+        invalid: index === 0,
+      }));
+    await expect(
+      service.notifyReportCreated({ id: 'report-2', targetType: 'PHOTO' }),
+    ).resolves.toBeUndefined();
+    expect(prisma.adminDeviceToken.deleteMany).toHaveBeenCalledWith({
+      where: { token: { in: ['fcm-android-token-1'] } },
+    });
+    expect(prisma.adminPushEvent.update).toHaveBeenCalled();
+  });
+
+  it('FCM indisponível depois da denúncia grava o erro e não relança', async () => {
+    messaging.sendToTokens = () => Promise.reject(new Error('fcm down'));
+    await expect(
+      service.notifyReportCreated({ id: 'report-3', targetType: 'REVIEW' }),
+    ).resolves.toBeUndefined();
+    expect(prisma.adminPushEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ error: expect.any(String) }),
+      }),
+    );
+  });
+
+  it('sem token administrativo não envia push', async () => {
+    prisma.adminDeviceToken.findMany.mockResolvedValue([]);
+    await service.notifyReportCreated({ id: 'report-4', targetType: 'VIDEO' });
+    expect(messaging.calls).toHaveLength(0);
+    expect(prisma.userDeviceToken.findMany).not.toHaveBeenCalled();
+  });
+
+  it('cupom resgatado notifica uma vez e a repetição não duplica', async () => {
+    const input = {
+      redemptionId: 'red-1',
+      couponId: 'coupon-1',
+      code: 'AFTER2',
+      venueName: 'Bar Central',
+    };
+    await service.notifyCouponRedeemed(input);
+    await service.notifyCouponRedeemed(input);
+    expect(messaging.calls).toHaveLength(1);
+    expect(messaging.calls[0]).toMatchObject({
+      tokens: ['fcm-android-token-1', 'fcm-ios-token-2xxxx'],
+      title: 'Cupom utilizado 🎟️',
+      body: 'O cupom AFTER2 foi utilizado no estabelecimento Bar Central.',
+      data: {
+        type: 'COUPON_REDEEMED',
+        entityId: 'red-1',
+        couponId: 'coupon-1',
+      },
+    });
+  });
+
+  it('falha do FCM no cupom não relança', async () => {
+    messaging.sendToTokens = () => Promise.reject(new Error('fcm down'));
+    await expect(
+      service.notifyCouponRedeemed({
+        redemptionId: 'red-2',
+        couponId: 'coupon-1',
+        code: 'AFTER2',
+        venueName: 'Bar Central',
+      }),
+    ).resolves.toBeUndefined();
+    expect(prisma.adminPushEvent.update).toHaveBeenCalled();
   });
 });

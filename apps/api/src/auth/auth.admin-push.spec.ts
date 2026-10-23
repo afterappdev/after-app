@@ -71,6 +71,13 @@ function createAuthPrisma() {
       create: jest.fn(),
       updateMany: jest.fn(),
     },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    welcomeCreditClaim: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    creditPurchase: {
+      create: jest.fn().mockResolvedValue({ id: 'purchase-1' }),
+    },
     $transaction: jest.fn(),
   };
   prisma.$transaction.mockImplementation(async (arg: unknown) => {
@@ -128,6 +135,7 @@ describe('Eventos administrativos de criação de conta', () => {
       new JwtService({ secret: 'test-secret' }),
       config({
         JWT_SECRET: 'test-secret',
+        WELCOME_CREDIT_HMAC_SECRET: 'welcome-credit-hmac-test-secret-32',
         GOOGLE_CLIENT_ID: 'web.apps.googleusercontent.com',
       }),
       push,
@@ -195,6 +203,7 @@ describe('Eventos administrativos de criação de conta', () => {
       state: 'SP',
       city: 'São Paulo',
       role: 'USER',
+      ageBand: 'AGE_19_35',
     });
     await flushPush();
 
@@ -212,6 +221,7 @@ describe('Eventos administrativos de criação de conta', () => {
       state: 'SP',
       city: 'São Paulo',
       role: 'USER',
+      ageBand: 'AGE_19_35',
     });
     await flushPush();
 
@@ -229,6 +239,8 @@ describe('Eventos administrativos de criação de conta', () => {
       state: 'SP',
       city: 'São Paulo',
       role: 'VENUE',
+      documentType: 'CPF',
+      documentNumber: '123.456.789-09',
     });
     await flushPush();
 
@@ -246,6 +258,7 @@ describe('Eventos administrativos de criação de conta', () => {
     await auth.completeSocialRegistration({
       onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nova Silva',
       state: 'SP',
       city: 'São Paulo',
@@ -268,6 +281,8 @@ describe('Eventos administrativos de criação de conta', () => {
       name: 'Bar da Ada',
       state: 'SP',
       city: 'São Paulo',
+      documentType: 'CNPJ',
+      documentNumber: '11.444.777/0001-61',
     });
     await flushPush();
 
@@ -288,6 +303,8 @@ describe('Eventos administrativos de criação de conta', () => {
       state: 'SP',
       city: 'São Paulo',
       role: 'VENUE',
+      documentType: 'CPF',
+      documentNumber: '123.456.789-09',
     });
     await auth.register({
       name: 'Bar da Ada',
@@ -296,6 +313,8 @@ describe('Eventos administrativos de criação de conta', () => {
       state: 'SP',
       city: 'São Paulo',
       role: 'VENUE',
+      documentType: 'CPF',
+      documentNumber: '123.456.789-09',
     });
     await flushPush();
 

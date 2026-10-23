@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { matchIbgeMunicipality } from '../promo-push/ibge-city';
 
 type IbgeState = {
   id: number;
@@ -117,6 +118,28 @@ export class LocationsService {
       .sort((a, b) => b.score - a.score || a.city.name.localeCompare(b.city.name, 'pt-BR'))
       .slice(0, 20)
       .map((item) => item.city);
+  }
+
+  async resolveMunicipalityId(
+    city: string,
+    state: string,
+  ): Promise<number | null> {
+    try {
+      const cities = await this.loadAllCities();
+      return matchIbgeMunicipality(cities, city, state);
+    } catch {
+      return null;
+    }
+  }
+
+  async hasMunicipality(id: number): Promise<boolean> {
+    if (!Number.isInteger(id) || id <= 0) return false;
+    try {
+      const cities = await this.loadAllCities();
+      return cities.some((city) => city.id === id);
+    } catch {
+      return false;
+    }
   }
 
   private async loadAllCities(): Promise<CitySearchDto[]> {

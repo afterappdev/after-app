@@ -44,16 +44,96 @@ String packageSubtitle(int credits) {
   }
 }
 
+/// Official reference offer. Mirrors `VIP_CREDIT_PACKAGES` in
+/// `apps/api/src/credits/vip-catalog.ts`. Display only: it is not a
+/// checkout body and it does not grant credit.
+const officialVipReferenceOffer = <String, dynamic>{
+  'key': 'vip_unit_1',
+  'modality': 'VIP',
+  'credits': 1,
+  'referencePriceBrl': 99.9,
+  'currency': 'BRL',
+  'storeProductId': 'after.credits.vip.1',
+  'storePriceBrl': null,
+};
+
+const vipCatalogUnavailableMessage =
+    'Não foi possível carregar o pacote VIP. '
+    'Nenhum pagamento foi iniciado e nenhum crédito foi adicionado.';
+
+Map<String, dynamic> copyOfficialVipReferenceOffer() =>
+    Map<String, dynamic>.from(officialVipReferenceOffer);
+
+bool isDisplayableVipOffer(Map<dynamic, dynamic> record) {
+  if (!isVipCreditRecord(record)) return false;
+  if (asInt(record['credits']) != 1) return false;
+  if ((record['key']?.toString() ?? '').isEmpty) return false;
+  final store = record['storePriceBrl'];
+  if (store is num && store > 0) return true;
+  final reference = record['referencePriceBrl'];
+  return reference is num && reference > 0;
+}
+
+const vipWebPriceBrl = 99.9;
+
+Map<String, dynamic>? vipWebCheckoutPack(Map<dynamic, dynamic> record) {
+  if (!isDisplayableVipOffer(record)) return null;
+  if (record['key']?.toString() != 'vip_unit_1') return null;
+  if (asInt(record['credits']) != 1) return null;
+  final product = record['storeProductId']?.toString() ??
+      record['productId']?.toString() ??
+      '';
+  if (product != 'after.credits.vip.1') return null;
+  final store = record['storePriceBrl'];
+  final reference = record['referencePriceBrl'];
+  final price = store is num && store > 0
+      ? store.toDouble()
+      : reference is num
+          ? reference.toDouble()
+          : null;
+  if (price == null || (price - vipWebPriceBrl).abs() > 0.001) return null;
+  return {
+    ...Map<String, dynamic>.from(record),
+    'priceBrl': price,
+    'productId': 'after.credits.vip.1',
+    'storeProductId': 'after.credits.vip.1',
+  };
+}
+
+Map<String, dynamic>? firstDisplayableVipOffer(dynamic body) {
+  if (body is! List) return null;
+  for (final item in body) {
+    if (item is! Map) continue;
+    final map = Map<String, dynamic>.from(item);
+    if (isDisplayableVipOffer(map)) return map;
+  }
+  return null;
+}
+
+bool isVipCreditRecord(Map<dynamic, dynamic> record) {
+  final modality = record['modality']?.toString().toUpperCase() ?? '';
+  if (modality == 'VIP') return true;
+  for (final field in ['key', 'packageKey']) {
+    final value = record[field]?.toString() ?? '';
+    if (value.startsWith('vip_')) return true;
+  }
+  for (final field in ['storeProductId', 'productId']) {
+    final value = record[field]?.toString() ?? '';
+    if (value.contains('.vip.')) return true;
+  }
+  return false;
+}
+
 double? packageSavings(Map<String, dynamic> pack, List<dynamic> packages) {
   final credits = asInt(pack['credits']);
   if (credits <= 1) return null;
   Map<String, dynamic>? unit;
   for (final item in packages) {
     final map = item as Map<String, dynamic>;
-    if (asInt(map['credits']) == 1) {
-      unit = map;
-      break;
-    }
+    if (asInt(map['credits']) != 1 || isVipCreditRecord(map)) continue;
+    if (map['priceBrl'] == null) continue;
+    unit = map;
+    break;
   }
   if (unit == null) return null;
   final save = asMoney(unit['priceBrl']) * credits - asMoney(pack['priceBrl']);

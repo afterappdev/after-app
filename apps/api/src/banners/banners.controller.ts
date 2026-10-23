@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ArrayMinSize, IsArray, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import {
   AuthUser,
   CurrentUser,
@@ -11,10 +11,15 @@ class CreateBannerDto {
   @IsUrl({ require_tld: false })
   imageUrl!: string;
 
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @IsString({ each: true })
-  dates!: string[];
+  dates?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  vipDates?: string[];
 
   @IsOptional()
   @IsString()
@@ -25,6 +30,10 @@ class CreateBannerDto {
   @IsString()
   @MaxLength(180)
   description?: string;
+
+  @IsOptional()
+  @IsIn(['PROMOTION', 'EVENT'])
+  contentKind?: 'PROMOTION' | 'EVENT';
 }
 
 @Controller('banners')
@@ -52,9 +61,11 @@ export class BannersController {
     return this.bannersService.create(
       user.userId,
       dto.imageUrl,
-      dto.dates,
+      dto.dates ?? [],
       dto.title,
       dto.description,
+      dto.contentKind ?? null,
+      dto.vipDates ?? [],
     );
   }
 }

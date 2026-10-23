@@ -4,12 +4,13 @@ import 'package:provider/provider.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'billing_channel.dart';
+import 'buy_credits_layout.dart';
 import 'checkout_screen.dart';
 import 'coupon_redeem_section.dart';
 import 'credits_ui.dart';
-import 'pix_checkout.dart';
 import 'pix_pending_reconcile.dart';
 import 'purchase_labels.dart';
+import 'web_checkout_screen.dart';
 
 class BuyCreditsScreen extends StatefulWidget {
   const BuyCreditsScreen({
@@ -29,13 +30,18 @@ class BuyCreditsScreen extends StatefulWidget {
 }
 
 class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
+  final _historyKey = GlobalKey();
+  final _scroll = ScrollController();
   bool _loading = true;
   String? _error;
   int _balance = 0;
+  int _vipBalance = 0;
   List<dynamic> _packages = [];
+  Map<String, dynamic>? _vipPack;
+  String? _vipCatalogError;
+  bool _vipCheckoutReady = false;
   List<dynamic> _purchases = [];
   String? _selectedKey;
-  bool _showAllPurchases = false;
 
   bool get _reconcilePendingPix =>
       widget.reconcilePendingPix ?? billingUsesPix();
@@ -48,6 +54,12 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -58,14 +70,30 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
       final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
       final packages = await api.get('/credits/packages') as List<dynamic>;
       final purchases = await api.get('/credits/purchases') as List<dynamic>;
+      final vip = await _loadVipOffer(api);
       if (!mounted) return;
+      final common = [
+        for (final item in packages)
+          if (item is Map && !isVipCreditRecord(item))
+            Map<String, dynamic>.from(item),
+      ];
+      final known = <String>{
+        for (final item in common) item['key']?.toString() ?? '',
+        if (vip.offer != null) vip.offer!['key']?.toString() ?? '',
+      };
+      var selected = _selectedKey;
+      if (selected == null || !known.contains(selected)) {
+        selected = _preferredCommonKey(common);
+      }
       setState(() {
-        _balance = wallet['balance'] as int? ?? 0;
-        _packages = packages;
+        _balance = asInt(wallet['balance']);
+        _vipBalance = asInt(wallet['vipBalance']);
+        _packages = common;
+        _vipPack = vip.offer;
+        _vipCatalogError = vip.error;
+        _vipCheckoutReady = vip.checkoutReady;
         _purchases = purchases;
-        _selectedKey ??= packages.isNotEmpty
-            ? (packages.last as Map)['key']?.toString()
-            : null;
+        _selectedKey = selected;
         _loading = false;
       });
       if (_reconcilePendingPix) {
@@ -74,11 +102,28 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.statusCode == 401
-            ? friendlyPixError(e)
-            : e.message;
+        _error = e.statusCode == 401 ? friendlyPixError(e) : e.message;
         _loading = false;
       });
+    }
+  }
+
+  Future<_VipOfferLoad> _loadVipOffer(ApiClient api) async {
+    try {
+      final body = await api.get('/credits/vip-packages');
+      final offer = firstDisplayableVipOffer(body);
+      if (offer == null) {
+        return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
+      }
+      final payable = vipWebCheckoutPack(offer);
+      return _VipOfferLoad(offer: offer, checkoutReady: payable != null);
+    } on ApiException catch (error) {
+      if (error.statusCode == 404) {
+        return _VipOfferLoad(offer: copyOfficialVipReferenceOffer());
+      }
+      return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
+    } catch (_) {
+      return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
     }
   }
 
@@ -98,16 +143,33 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
     if (!mounted) return;
     setState(() {
-      _balance = wallet['balance'] as int? ?? 0;
+      _balance = asInt(wallet['balance']);
+      _vipBalance = asInt(wallet['vipBalance']);
     });
   }
 
   Map<String, dynamic>? get _selected {
+    if (_vipPack != null && _vipPack!['key']?.toString() == _selectedKey) {
+      return _vipPack;
+    }
     for (final item in _packages) {
       final map = item as Map<String, dynamic>;
       if (map['key']?.toString() == _selectedKey) return map;
     }
-    return _packages.isEmpty ? null : _packages.last as Map<String, dynamic>;
+    for (final item in _packages) {
+      final map = item as Map<String, dynamic>;
+      if (asInt(map['credits']) == 1) return map;
+    }
+    if (_packages.isEmpty) return null;
+    return _packages.first as Map<String, dynamic>;
+  }
+
+  String? _preferredCommonKey(List<Map<String, dynamic>> common) {
+    for (final item in common) {
+      if (asInt(item['credits']) == 1) return item['key']?.toString();
+    }
+    if (common.isEmpty) return null;
+    return common.first['key']?.toString();
   }
 
   Future<int> _redeemCoupon(String code) async {
@@ -117,7 +179,12 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
       final map = Map<String, dynamic>.from(body as Map);
       final balance = map['balance'];
       if (balance is num && mounted) {
-        setState(() => _balance = balance.round());
+        setState(() {
+          _balance = balance.round();
+          if (map['vipBalance'] is num) {
+            _vipBalance = (map['vipBalance'] as num).round();
+          }
+        });
       }
       final credits = map['creditAmount'];
       return credits is num ? credits.round() : 0;
@@ -126,11 +193,83 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     }
   }
 
+  String? _offerPriceLabel(Map<String, dynamic> pack) {
+    if (!isVipCreditRecord(pack)) return formatBrl(asMoney(pack['priceBrl']));
+    final store = pack['storePriceBrl'];
+    if (store is num && store > 0) return formatBrl(store.toDouble());
+    final reference = pack['referencePriceBrl'];
+    if (reference == null) return null;
+    return formatBrl(asMoney(reference));
+  }
+
+  String? _totalLabel(Map<String, dynamic>? pack) {
+    if (pack == null) return null;
+    final price = _offerPriceLabel(pack);
+    if (price == null) return 'Total indisponível';
+    return 'Total: $price';
+  }
+
+  String _purchaseTitle(Map<String, dynamic> purchase) {
+    final credits = asInt(purchase['credits']);
+    if (isVipCreditRecord(purchase)) {
+      return credits == 1 ? '1 crédito VIP' : '$credits créditos VIP';
+    }
+    return credits == 1 ? '1 crédito' : '$credits créditos';
+  }
+
+  Future<void> _blockVipCheckout() {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            'Crédito VIP',
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: const Text(
+            'A compra de créditos VIP ainda não está disponível. '
+            'Nenhum pagamento foi iniciado e nenhum crédito VIP foi adicionado.',
+            style: TextStyle(fontFamily: AppTheme.fontFamily, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Entendi'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _continue() async {
     final pack = _selected;
     if (pack == null) return;
+    if (isVipCreditRecord(pack)) {
+      final payable = _vipCheckoutReady && _usePixCheckout
+          ? vipWebCheckoutPack(pack)
+          : null;
+      if (payable == null) {
+        await _blockVipCheckout();
+        return;
+      }
+      final paid = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => WebCheckoutScreen(pack: payable)),
+      );
+      if (!mounted) return;
+      if (paid == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Crédito VIP adicionado à sua carteira.')),
+        );
+      }
+      await _load();
+      return;
+    }
     final dest = _usePixCheckout
-        ? PixCheckoutScreen(pack: pack)
+        ? WebCheckoutScreen(pack: pack)
         : CheckoutScreen(pack: pack);
     final paid = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => dest),
@@ -144,19 +283,47 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     await _load();
   }
 
-  void _scrollToPurchases() {
-    setState(() => _showAllPurchases = true);
+  Future<void> _scrollToPurchases() async {
+    final visible = _historyKey.currentContext;
+    if (visible != null) {
+      await Scrollable.ensureVisible(
+        visible,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+        alignment: 0.05,
+      );
+      return;
+    }
+    if (!_scroll.hasClients) return;
+    await _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
+    );
+    if (!mounted) return;
+    final built = _historyKey.currentContext;
+    if (built == null || !built.mounted) return;
+    await Scrollable.ensureVisible(
+      built,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      alignment: 0.05,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
-    final visiblePurchases = _showAllPurchases ? _purchases : _purchases.take(3).toList();
+    final offers = <Map<String, dynamic>>[
+      ?_vipPack,
+      for (final item in _packages) item as Map<String, dynamic>,
+    ];
 
     return Scaffold(
-      backgroundColor: kCreditsBg,
+      backgroundColor: buyCreditsPage,
       appBar: AppBar(
-        backgroundColor: kCreditsBg,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
@@ -179,295 +346,136 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 430),
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: kCreditsAccent))
+              ? const Center(
+                  child: CircularProgressIndicator(color: buyCreditsOrange),
+                )
               : _error != null
-                  ? Center(child: Text(_error!, style: const TextStyle(fontFamily: AppTheme.fontFamily)))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                color: kCreditsInk,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextButton(
+                              onPressed: _load,
+                              child: const Text('Tentar novamente'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   : Column(
                       children: [
                         Expanded(
                           child: RefreshIndicator(
-                            color: kCreditsAccent,
+                            color: buyCreditsOrange,
                             onRefresh: _load,
                             child: ListView(
+                              controller: _scroll,
                               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                               children: [
-                                _BalanceCard(
-                                  balance: _balance,
-                                  onHistory: _purchases.isEmpty ? null : _scrollToPurchases,
+                                BuyCreditsBalanceCard(
+                                  commonBalance: _balance,
+                                  vipBalance: _vipBalance,
+                                  onHistory: _scrollToPurchases,
                                 ),
-                                if (creditsCouponAvailable()) ...[
-                                  const SizedBox(height: 16),
-                                  CouponRedeemSection(onRedeem: _redeemCoupon),
-                                ],
                                 const SizedBox(height: 22),
-                                const Text(
-                                  'Escolha um pacote',
-                                  style: TextStyle(
-                                    fontFamily: AppTheme.fontFamily,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                    color: kCreditsInk,
+                                const BuyCreditsSectionTitle('Escolha um pacote'),
+                                const SizedBox(height: 12),
+                                if (_vipCatalogError != null) ...[
+                                  Text(
+                                    _vipCatalogError!,
+                                    key: const Key('vip-catalog-error'),
+                                    style: const TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 13,
+                                      height: 1.35,
+                                      color: kCreditsInk,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                for (final pack in offers) ...[
+                                  BuyCreditsPackageTile(
+                                    key: ValueKey('pack-${pack['key']}'),
+                                    vip: isVipCreditRecord(pack),
+                                    selected: pack['key']?.toString() == _selectedKey,
+                                    title: _offerTitle(pack),
+                                    subtitle: _offerSubtitle(pack),
+                                    priceLabel: _offerPriceLabel(pack) ?? '—',
+                                    unitLabel: _unitLabel(pack),
+                                    savingsLabel: _savingsLabel(pack),
+                                    onTap: () => setState(
+                                      () => _selectedKey = pack['key']?.toString(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                const SizedBox(height: 12),
+                                KeyedSubtree(
+                                  key: const Key('purchase-history'),
+                                  child: BuyCreditsSectionTitle(
+                                    'Últimas compras',
+                                    key: _historyKey,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
-                                ..._packages.map((item) {
-                                  final pack = item as Map<String, dynamic>;
-                                  final key = pack['key']?.toString() ?? '';
-                                  final credits = asInt(pack['credits']);
-                                  final price = asMoney(pack['priceBrl']);
-                                  final selectedPack = key == _selectedKey;
-                                  final save = packageSavings(pack, _packages);
-                                  final unit = credits == 0 ? 0 : price / credits;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Material(
-                                      color: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                        side: BorderSide(
-                                          color: selectedPack ? kCreditsAccent : const Color(0xFFE4E4EA),
-                                          width: selectedPack ? 1.8 : 1,
-                                        ),
-                                      ),
-                                      child: InkWell(
-                                        onTap: () => setState(() => _selectedKey = key),
-                                        borderRadius: BorderRadius.circular(16),
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                                          child: Column(
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Icon(
-                                                    selectedPack ? Icons.radio_button_checked : Icons.radio_button_off,
-                                                    color: selectedPack ? kCreditsAccent : const Color(0xFFC9C9D0),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  const CircleAvatar(
-                                                    radius: 14,
-                                                    backgroundColor: kCreditsSoft,
-                                                    child: Icon(Icons.star_rounded, size: 16, color: kCreditsAccent),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(
-                                                          credits == 1 ? '1 crédito' : '$credits créditos',
-                                                          style: const TextStyle(
-                                                            fontFamily: AppTheme.fontFamily,
-                                                            fontWeight: FontWeight.w800,
-                                                            fontSize: 15,
-                                                            color: kCreditsInk,
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          packageSubtitle(credits),
-                                                          style: const TextStyle(
-                                                            fontFamily: AppTheme.fontFamily,
-                                                            fontSize: 12,
-                                                            color: kCreditsMuted,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    formatBrl(price),
-                                                    style: const TextStyle(
-                                                      fontFamily: AppTheme.fontFamily,
-                                                      fontWeight: FontWeight.w800,
-                                                      fontSize: 16,
-                                                      color: kCreditsAccent,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Padding(
-                                                padding: const EdgeInsets.only(left: 34),
-                                                child: Wrap(
-                                                  spacing: 10,
-                                                  runSpacing: 4,
-                                                  children: [
-                                                    Text(
-                                                      '${formatBrl(unit)} por crédito',
-                                                      style: const TextStyle(
-                                                        fontFamily: AppTheme.fontFamily,
-                                                        fontSize: 11,
-                                                        color: kCreditsMuted,
-                                                      ),
-                                                    ),
-                                                    if (save != null)
-                                                      Text(
-                                                        'Economize ${formatBrl(save)}',
-                                                        style: const TextStyle(
-                                                          fontFamily: AppTheme.fontFamily,
-                                                          fontWeight: FontWeight.w700,
-                                                          fontSize: 11,
-                                                          color: kCreditsAccent,
-                                                        ),
-                                                      ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
+                                const SizedBox(height: 10),
+                                if (_purchases.isEmpty)
+                                  const Text(
+                                    'Nenhuma compra ainda.',
+                                    style: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 13,
+                                      color: kCreditsMuted,
                                     ),
-                                  );
-                                }),
-                                if (_purchases.isNotEmpty) ...[
-                                  const SizedBox(height: 18),
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        'Últimas compras',
-                                        style: TextStyle(
-                                          fontFamily: AppTheme.fontFamily,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 16,
-                                          color: kCreditsInk,
+                                  )
+                                else
+                                  for (final item in _purchases)
+                                    if (item is Map)
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 16),
+                                        child: BuyCreditsHistoryTile(
+                                          key: ValueKey(
+                                            'history-${item['id'] ?? item.hashCode}',
+                                          ),
+                                          title: _purchaseTitle(
+                                            Map<String, dynamic>.from(item),
+                                          ),
+                                          provider: purchaseProviderLabel(
+                                            item['provider']?.toString(),
+                                          ),
+                                          dateLabel: formatPurchaseDate(
+                                            item['createdAt'],
+                                          ),
+                                          amountLabel: formatBrl(
+                                            asMoney(item['amountPaid']),
+                                          ),
+                                          amountColor: isVipCreditRecord(item)
+                                              ? buyCreditsPurple
+                                              : buyCreditsOrange,
+                                          status: item['status']?.toString() ?? '',
                                         ),
                                       ),
-                                      const Spacer(),
-                                      if (_purchases.length > 3)
-                                        TextButton(
-                                          onPressed: () => setState(() => _showAllPurchases = !_showAllPurchases),
-                                          child: Text(_showAllPurchases ? 'Ver menos' : 'Ver todas →'),
-                                        ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  ...visiblePurchases.map((item) {
-                                    final purchase = item as Map<String, dynamic>;
-                                    final credits = asInt(purchase['credits']);
-                                    final paid = asMoney(purchase['amountPaid']);
-                                    final status = purchase['status']?.toString() ?? '';
-                                    final provider = purchaseProviderLabel(
-                                      purchase['provider']?.toString(),
-                                    );
-                                    final statusLabel = purchaseStatusLabel(status);
-                                    final isPaid = status == 'PAID';
-                                    final failed = status == 'FAILED' ||
-                                        status == 'CANCELLED';
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 10),
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  credits == 1 ? '1 crédito' : '$credits créditos',
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontFamily: AppTheme.fontFamily,
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 14,
-                                                    color: kCreditsInk,
-                                                  ),
-                                                ),
-                                                if (provider.isNotEmpty)
-                                                  Text(
-                                                    provider,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontFamily: AppTheme.fontFamily,
-                                                      fontSize: 12,
-                                                      color: kCreditsMuted,
-                                                    ),
-                                                  ),
-                                                Text(
-                                                  formatPurchaseDate(purchase['createdAt']),
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontFamily: AppTheme.fontFamily,
-                                                    fontSize: 12,
-                                                    color: kCreditsMuted,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          Text(
-                                            formatBrl(paid),
-                                            style: const TextStyle(
-                                              fontFamily: AppTheme.fontFamily,
-                                              fontWeight: FontWeight.w800,
-                                              fontSize: 13,
-                                              color: kCreditsAccent,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: isPaid
-                                                    ? const Color(0xFFE6F6EC)
-                                                    : failed
-                                                        ? const Color(0xFFFDECEC)
-                                                        : const Color(0xFFF0F0F3),
-                                                borderRadius: BorderRadius.circular(20),
-                                              ),
-                                              child: Text(
-                                                statusLabel,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontFamily: AppTheme.fontFamily,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: isPaid
-                                                      ? const Color(0xFF22A45A)
-                                                      : failed
-                                                          ? const Color(0xFFB3261E)
-                                                          : kCreditsMuted,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
+                                if (creditsCouponAvailable()) ...[
+                                  const SizedBox(height: 8),
+                                  CouponRedeemSection(onRedeem: _redeemCoupon),
                                 ],
                               ],
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                          child: Column(
-                            children: [
-                              CreditsPurpleButton(
-                                label: 'Continuar para pagamento',
-                                subtitle: selected == null ? null : 'Total: ${formatBrl(asMoney(selected['priceBrl']))}',
-                                onPressed: selected == null ? null : _continue,
-                              ),
-                              const SizedBox(height: 8),
-                              const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.lock_outline, size: 14, color: kCreditsMuted),
-                                  SizedBox(width: 6),
-                                  Text(
-                                    'Pagamento 100% seguro',
-                                    style: TextStyle(
-                                      fontFamily: AppTheme.fontFamily,
-                                      fontSize: 11,
-                                      color: kCreditsMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                        BuyCreditsPayBar(
+                          totalLabel: _totalLabel(selected),
+                          onPressed: selected == null ? null : _continue,
                         ),
                       ],
                     ),
@@ -475,81 +483,42 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
       ),
     );
   }
+
+  String _offerTitle(Map<String, dynamic> pack) {
+    final credits = asInt(pack['credits']);
+    if (isVipCreditRecord(pack)) {
+      return credits == 1 ? '1 crédito VIP' : '$credits créditos VIP';
+    }
+    return credits == 1 ? '1 crédito' : '$credits créditos';
+  }
+
+  String _offerSubtitle(Map<String, dynamic> pack) {
+    if (isVipCreditRecord(pack)) {
+      return 'Destaque na página HOME e\nenvio de aviso aos usuários';
+    }
+    return packageSubtitle(asInt(pack['credits']));
+  }
+
+  String? _unitLabel(Map<String, dynamic> pack) {
+    if (isVipCreditRecord(pack)) return null;
+    final credits = asInt(pack['credits']);
+    if (credits <= 0) return null;
+    final unit = asMoney(pack['priceBrl']) / credits;
+    return '${formatBrl(unit)} por crédito';
+  }
+
+  String? _savingsLabel(Map<String, dynamic> pack) {
+    if (isVipCreditRecord(pack)) return null;
+    final save = packageSavings(pack, _packages);
+    if (save == null) return null;
+    return 'Economize ${formatBrl(save)}';
+  }
 }
 
-class _BalanceCard extends StatelessWidget {
-  const _BalanceCard({required this.balance, this.onHistory});
+class _VipOfferLoad {
+  const _VipOfferLoad({this.offer, this.error, this.checkoutReady = false});
 
-  final int balance;
-  final VoidCallback? onHistory;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Color(0x14000000), blurRadius: 12, offset: Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                radius: 22,
-                backgroundColor: kCreditsSoft,
-                child: Icon(Icons.star_rounded, color: kCreditsAccent, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Saldo atual',
-                      style: TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 12,
-                        color: kCreditsMuted,
-                      ),
-                    ),
-                    Text(
-                      '$balance',
-                      style: const TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 32,
-                        height: 1.1,
-                        color: kCreditsInk,
-                      ),
-                    ),
-                    const Text(
-                      'créditos disponíveis',
-                      style: TextStyle(
-                        fontFamily: AppTheme.fontFamily,
-                        fontSize: 12,
-                        color: kCreditsMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.monetization_on_outlined, color: kCreditsAccent, size: 42),
-            ],
-          ),
-          if (onHistory != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: onHistory,
-                child: const Text('Últimas compras'),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
+  final Map<String, dynamic>? offer;
+  final String? error;
+  final bool checkoutReady;
 }

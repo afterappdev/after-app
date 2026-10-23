@@ -23,6 +23,10 @@ class AuthController extends ChangeNotifier {
 
   UserSession? user;
   SocialOnboarding? pendingSocialOnboarding;
+
+  /// Runs while the current access token is still valid, before logout or
+  /// before another account replaces the session.
+  Future<void> Function()? beforeSessionEnd;
   bool bootstrapping = true;
   String? error;
   String? _oauthError;
@@ -168,6 +172,9 @@ class AuthController extends ChangeNotifier {
     required String state,
     required String city,
     required String role,
+    String? documentType,
+    String? documentNumber,
+    String? ageBand,
   }) async {
     error = null;
     notifyListeners();
@@ -179,6 +186,12 @@ class AuthController extends ChangeNotifier {
         'state': state.trim(),
         'city': city.trim(),
         'role': role,
+        if (kIsWeb) 'registrationChannel': 'after_web',
+        if (role == 'VENUE' && documentType != null)
+          'documentType': documentType,
+        if (role == 'VENUE' && documentNumber != null)
+          'documentNumber': documentNumber,
+        if (role == 'USER' && ageBand != null) 'ageBand': ageBand,
       }) as Map<String, dynamic>;
       await _persist(data);
     } on ApiException catch (e) {
@@ -195,6 +208,9 @@ class AuthController extends ChangeNotifier {
     required String state,
     required String city,
     String? password,
+    String? documentType,
+    String? documentNumber,
+    String? ageBand,
   }) async {
     error = null;
     notifyListeners();
@@ -205,7 +221,13 @@ class AuthController extends ChangeNotifier {
         'name': name.trim(),
         'state': state.trim(),
         'city': city.trim(),
+        if (kIsWeb) 'registrationChannel': 'after_web',
         if (password != null && password.isNotEmpty) 'password': password,
+        if (accountType == 'venue' && documentType != null)
+          'documentType': documentType,
+        if (accountType == 'venue' && documentNumber != null)
+          'documentNumber': documentNumber,
+        if (accountType == 'user' && ageBand != null) 'ageBand': ageBand,
       }) as Map<String, dynamic>;
       pendingSocialOnboarding = null;
       await _persist(data);
@@ -240,14 +262,26 @@ class AuthController extends ChangeNotifier {
   Future<void> invalidateExpiredSession() => _clearSession();
 
   Future<void> _clearSession() {
-    api.setToken(null);
     final inFlight = _sessionClearing;
     if (inFlight != null) return inFlight;
     return _sessionClearing = _clearSessionBody();
   }
 
+  Future<void> _endPreviousSession() async {
+    final hook = api.onUnauthorized;
+    api.onUnauthorized = null;
+    try {
+      await beforeSessionEnd?.call();
+    } catch (_) {
+    } finally {
+      api.onUnauthorized = hook;
+    }
+  }
+
   Future<void> _clearSessionBody() async {
     try {
+      await _endPreviousSession();
+      api.setToken(null);
       await googleSession.signOut();
       await storage.clear();
       user = null;
@@ -269,12 +303,14 @@ class AuthController extends ChangeNotifier {
     required String state,
     required String city,
     String? avatarUrl,
+    String? ageBand,
   }) async {
     final data = await api.patch('/users/me', body: {
       'name': name.trim(),
       'state': state.trim(),
       'city': city.trim(),
       'avatarUrl': avatarUrl ?? '',
+      'ageBand': ?ageBand,
     }) as Map<String, dynamic>;
     await _updateStoredUser(
       UserSession(
@@ -348,6 +384,9 @@ class AuthController extends ChangeNotifier {
   Future<void> _persist(Map<String, dynamic> data) async {
     final token = data['accessToken'] as String;
     final session = UserSession.fromJson(data['user'] as Map<String, dynamic>);
+    if (user != null && user!.id != session.id) {
+      await _endPreviousSession();
+    }
     api.setToken(token);
     await storage.saveSession(
       token: token,

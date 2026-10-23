@@ -9,12 +9,27 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Role, PurchaseStatus } from '@prisma/client';
+import { Prisma, PurchaseStatus, Role } from '@prisma/client';
 import appleSignin from 'apple-signin-auth';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { VENUE_SIGNUP_BONUS_CREDITS } from '../common/constants/credits';
+import {
+  confirmWelcomeCredit,
+  readWelcomeCreditSecret,
+  recordWelcomeVenueProvision,
+  reserveWelcomeCredit,
+} from '../credits/welcome-credit';
+import {
+  VENUE_DOCUMENT_TAKEN,
+  isVenueDocumentConflict,
+} from '../venues/venue-document';
+import {
+  assertEnrichedRegistrationComplete,
+  resolveRegistrationProfile,
+  type RegistrationRole,
+} from './registration-profile';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppleLoginDto } from './dto/apple-login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
@@ -140,7 +155,7 @@ export class AuthService {
     };
   }
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, requestOrigin?: string) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
     });
@@ -149,23 +164,66 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        name: dto.name,
-        email: dto.email.toLowerCase(),
-        passwordHash,
-        state: dto.state,
-        city: dto.city,
-        role: dto.role,
-        ...(dto.role === Role.VENUE
-          ? this.venueCreateNested(dto.name, dto.city, dto.state)
-          : {}),
-      },
-      include: { venue: true },
-    });
+    const allowedWebOrigins = this.oauthAllowedOrigins();
+    assertEnrichedRegistrationComplete(
+      dto.role as RegistrationRole,
+      dto,
+      requestOrigin,
+      allowedWebOrigins,
+    );
+    const profile = resolveRegistrationProfile(
+      dto.role as RegistrationRole,
+      dto,
+      requestOrigin,
+      allowedWebOrigins,
+    );
+    const welcomeSecret =
+      profile.mode === 'enriched' && profile.venueDocument
+        ? readWelcomeCreditSecret(this.config)
+        : null;
+    try {
+      const user = await this.prisma.$transaction((tx) => {
+        const base = {
+          name: dto.name,
+          email: dto.email.toLowerCase(),
+          passwordHash,
+          state: dto.state,
+          city: dto.city,
+          role: dto.role,
+          ...(profile.ageBand ? { ageBand: profile.ageBand } : {}),
+        };
+        if (profile.mode === 'legacy_mobile' && dto.role === Role.VENUE) {
+          return this.createLegacyVenueUser(
+            tx,
+            {
+              ...base,
+              ...this.legacyVenueCreateNested(dto.name, dto.city, dto.state),
+            },
+          );
+        }
+        if (profile.mode === 'legacy_mobile') {
+          return tx.user.create({ data: base, include: { venue: true } });
+        }
+        return this.insertRegisteredUser(
+          tx,
+          base,
+          profile.venueDocument
+            ? {
+                ...profile.venueDocument,
+                name: dto.name,
+                city: dto.city,
+                state: dto.state,
+              }
+            : null,
+          welcomeSecret,
+        );
+      });
 
-    this.enqueueAccountCreated(user);
-    return this.buildAuthResponse(user);
+      this.enqueueAccountCreated(user);
+      return this.buildAuthResponse(user);
+    } catch (error) {
+      this.rethrowRegistrationConflict(error, 'register');
+    }
   }
 
   async login(dto: LoginDto) {
@@ -238,9 +296,31 @@ export class AuthService {
     });
   }
 
-  async completeSocialRegistration(dto: CompleteSocialRegistrationDto) {
+  async completeSocialRegistration(
+    dto: CompleteSocialRegistrationDto,
+    requestOrigin?: string,
+  ) {
     const payload = this.readSocialOnboardingToken(dto.onboardingToken);
     const role = dto.accountType === 'venue' ? Role.VENUE : Role.USER;
+    const registrationRole: RegistrationRole =
+      role === Role.VENUE ? 'VENUE' : 'USER';
+    const allowedWebOrigins = this.oauthAllowedOrigins();
+    assertEnrichedRegistrationComplete(
+      registrationRole,
+      dto,
+      requestOrigin,
+      allowedWebOrigins,
+    );
+    const profile = resolveRegistrationProfile(
+      registrationRole,
+      dto,
+      requestOrigin,
+      allowedWebOrigins,
+    );
+    const welcomeSecret =
+      profile.mode === 'enriched' && profile.venueDocument
+        ? readWelcomeCreditSecret(this.config)
+        : null;
     const passwordHash = dto.password
       ? await bcrypt.hash(dto.password, 10)
       : await bcrypt.hash(randomBytes(32).toString('hex'), 10);
@@ -295,34 +375,45 @@ export class AuthService {
                   : {}),
               };
 
-        return tx.user.create({
-          data: {
-            name: dto.name.trim(),
-            email: row.email,
-            passwordHash,
-            state: dto.state,
-            city: dto.city,
-            role,
-            avatarUrl: row.avatarUrl,
-            ...providerData,
-            ...(role === Role.VENUE
-              ? this.venueCreateNested(dto.name.trim(), dto.city, dto.state)
-              : {}),
-          },
-          include: { venue: true },
-        });
+        const base = {
+          name: dto.name.trim(),
+          email: row.email,
+          passwordHash,
+          state: dto.state,
+          city: dto.city,
+          role,
+          avatarUrl: row.avatarUrl,
+          ...(profile.ageBand ? { ageBand: profile.ageBand } : {}),
+          ...providerData,
+        };
+        if (profile.mode === 'legacy_mobile' && role === Role.VENUE) {
+          return this.createLegacyVenueUser(tx, {
+            ...base,
+            ...this.legacyVenueCreateNested(dto.name.trim(), dto.city, dto.state),
+          });
+        }
+        if (profile.mode === 'legacy_mobile') {
+          return tx.user.create({ data: base, include: { venue: true } });
+        }
+        return this.insertRegisteredUser(
+          tx,
+          base,
+          profile.venueDocument
+            ? {
+                ...profile.venueDocument,
+                name: dto.name.trim(),
+                city: dto.city,
+                state: dto.state,
+              }
+            : null,
+          welcomeSecret,
+        );
       });
 
       this.enqueueAccountCreated(user);
       return this.buildAuthResponse(user);
     } catch (error) {
-      const code = (error as { code?: string }).code;
-      if (code === 'P2002') {
-        throw new ConflictException(
-          'Não foi possível concluir o cadastro. Tente novamente.',
-        );
-      }
-      throw error;
+      this.rethrowRegistrationConflict(error, 'social');
     }
   }
 
@@ -1003,7 +1094,85 @@ export class AuthService {
     });
   }
 
-  private venueCreateNested(name: string, city: string, state: string) {
+  private rethrowRegistrationConflict(
+    error: unknown,
+    mode: 'register' | 'social',
+  ): never {
+    if (isVenueDocumentConflict(error)) {
+      throw new ConflictException(VENUE_DOCUMENT_TAKEN);
+    }
+    const code = (error as { code?: string }).code;
+    if (code === 'P2002' && mode === 'register') {
+      throw new ConflictException('E-mail já cadastrado');
+    }
+    if (code === 'P2002') {
+      throw new ConflictException(
+        'Não foi possível concluir o cadastro. Tente novamente.',
+      );
+    }
+    throw error;
+  }
+
+  private async insertRegisteredUser(
+    tx: Prisma.TransactionClient,
+    data: Prisma.UserCreateInput,
+    venue: {
+      name: string;
+      city: string;
+      state: string;
+      documentType: 'CPF' | 'CNPJ';
+      documentDigits: string;
+    } | null,
+    welcomeSecret: string | null,
+  ) {
+    if (venue && !welcomeSecret) {
+      throw new ServiceUnavailableException('Não foi possível concluir o cadastro agora.');
+    }
+    const reserved = venue
+      ? await reserveWelcomeCredit(
+          tx,
+          { documentType: venue.documentType, documentDigits: venue.documentDigits },
+          welcomeSecret as string,
+        )
+      : null;
+    const user = await tx.user.create({
+      data: {
+        ...data,
+        ...(venue
+          ? this.venueCreateNested(
+              venue.name,
+              venue.city,
+              venue.state,
+              venue,
+              reserved ? VENUE_SIGNUP_BONUS_CREDITS : 0,
+            )
+          : {}),
+      },
+      include: { venue: true },
+    });
+    if (reserved) {
+      if (!user.venue?.id) throw new Error('welcome claim confirmation failed');
+      await confirmWelcomeCredit(tx, reserved.id, user.venue.id);
+    }
+    return user;
+  }
+
+  private async createLegacyVenueUser(
+    tx: Prisma.TransactionClient,
+    data: Prisma.UserCreateInput,
+  ) {
+    const user = await tx.user.create({
+      data,
+      include: { venue: true },
+    });
+    if (!user.venue?.id) {
+      throw new Error('legacy venue create failed');
+    }
+    await recordWelcomeVenueProvision(tx, user.venue.id);
+    return user;
+  }
+
+  private legacyVenueCreateNested(name: string, city: string, state: string) {
     return {
       venue: {
         create: {
@@ -1017,8 +1186,30 @@ export class AuthService {
               amountPaid: 0,
               credits: VENUE_SIGNUP_BONUS_CREDITS,
               status: PurchaseStatus.PAID,
+              confirmedAt: new Date(),
             },
           },
+        },
+      },
+    };
+  }
+
+  private venueCreateNested(
+    name: string,
+    city: string,
+    state: string,
+    document: { documentType: 'CPF' | 'CNPJ'; documentDigits: string },
+    credits: number,
+  ) {
+    return {
+      venue: {
+        create: {
+          name,
+          city,
+          state,
+          documentType: document.documentType,
+          documentDigits: document.documentDigits,
+          wallet: { create: { balance: credits } },
         },
       },
     };

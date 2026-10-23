@@ -8,12 +8,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import {
   AuthUser,
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AGE_BAND_INVALID, AGE_BANDS } from './age-band';
 import { UsersService } from './users.service';
 
 class UpdateUserDto {
@@ -35,6 +36,10 @@ class UpdateUserDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsIn(AGE_BANDS, { message: AGE_BAND_INVALID })
+  ageBand?: (typeof AGE_BANDS)[number];
 }
 
 class ChangePasswordDto {

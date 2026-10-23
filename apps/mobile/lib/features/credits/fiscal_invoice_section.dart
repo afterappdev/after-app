@@ -68,6 +68,7 @@ class FiscalInvoiceSection extends StatelessWidget {
                   selected: controller.invoiceRequested,
                   onTap: () {
                     controller.invoiceRequested = true;
+                    controller.applyRememberedVenueDocument();
                     onChanged();
                   },
                 ),

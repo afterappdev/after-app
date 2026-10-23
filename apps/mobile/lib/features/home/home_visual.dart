@@ -39,6 +39,27 @@ class HomeVisual {
     BoxShadow(color: Color(0x0F000000), blurRadius: 14, offset: Offset(0, 4)),
   ];
 
+  /// Borda fina do card VIP: roxo, rosa, vermelho e laranja.
+  static const vipBorderGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF7C3AED),
+      Color(0xFFE879F9),
+      Color(0xFFEF4444),
+      Color(0xFFFF812E),
+    ],
+  );
+
+  static const vipBadgeGradient = LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [Color(0xFF6D28D9), Color(0xFF9333EA)],
+  );
+
+  static const vipCrown = Color(0xFFFFD54A);
+  static const vipBorderWidth = 1.5;
+
   /// Coluna central da Home. Em telas largas o feed não estica com a viewport.
   static double columnMaxWidth(double viewportWidth) {
     if (viewportWidth >= 1100) return 600;

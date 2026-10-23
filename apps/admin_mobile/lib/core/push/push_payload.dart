@@ -1,4 +1,4 @@
-enum PushNavKind { account, sale }
+enum PushNavKind { account, sale, report, coupon }
 
 class PushNavTarget {
   const PushNavTarget({required this.kind, required this.id});
@@ -35,6 +35,13 @@ PushNavTarget? parseAdminPushData(Map<String, dynamic>? data) {
     case 'PURCHASE_PAID':
       if (entityId == null || entityId.isEmpty) return null;
       return PushNavTarget(kind: PushNavKind.sale, id: entityId);
+    case 'REPORT_CREATED':
+      if (entityId == null || entityId.isEmpty) return null;
+      return PushNavTarget(kind: PushNavKind.report, id: entityId);
+    case 'COUPON_REDEEMED':
+      final couponId = data['couponId']?.toString().trim();
+      if (couponId == null || couponId.isEmpty) return null;
+      return PushNavTarget(kind: PushNavKind.coupon, id: couponId);
     default:
       return null;
   }

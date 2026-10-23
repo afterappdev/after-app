@@ -5,17 +5,20 @@ class ProviderRevenue {
     required this.googlePlay,
     required this.appStore,
     required this.pix,
+    this.card = 0,
   });
 
   final double googlePlay;
   final double appStore;
   final double pix;
+  final double card;
 
   factory ProviderRevenue.fromJson(Map<String, dynamic> json) {
     return ProviderRevenue(
       googlePlay: asMoney(json['google_play']),
       appStore: asMoney(json['app_store']),
       pix: asMoney(json['pix']),
+      card: asMoney(json['card']),
     );
   }
 
@@ -189,10 +192,48 @@ class RecentSale {
   }
 }
 
+class RefundPosition {
+  const RefundPosition({
+    required this.yearMonth,
+    required this.paidSalesBrl,
+    required this.fullRefundsBrl,
+    required this.partialRefundsBrl,
+    required this.partialsWithoutAmount,
+    this.refundReviewsOpen = 0,
+    required this.revenueAfterRefundsBrl,
+    required this.revenueComplete,
+  });
+
+  final String yearMonth;
+  final double paidSalesBrl;
+  final double fullRefundsBrl;
+  final double partialRefundsBrl;
+  final int partialsWithoutAmount;
+  final int refundReviewsOpen;
+  final double revenueAfterRefundsBrl;
+  final bool revenueComplete;
+
+  factory RefundPosition.fromJson(Map<String, dynamic> json) {
+    return RefundPosition(
+      yearMonth: asString(json['yearMonth']),
+      paidSalesBrl: asMoney(json['paidSalesBrl']),
+      fullRefundsBrl: asMoney(json['fullRefundsBrl']),
+      partialRefundsBrl: asMoney(json['partialRefundsBrl']),
+      partialsWithoutAmount: asInt(json['partialsWithoutAmount']),
+      refundReviewsOpen: json['refundReviewsOpen'] == null
+          ? 0
+          : asInt(json['refundReviewsOpen']),
+      revenueAfterRefundsBrl: asMoney(json['revenueAfterRefundsBrl']),
+      revenueComplete: json['revenueComplete'] != false,
+    );
+  }
+}
+
 class AdminDashboard {
   const AdminDashboard({
     required this.totals,
     required this.month,
+    required this.refundPosition,
     required this.history,
     required this.recentAccounts,
     required this.recentSales,
@@ -201,6 +242,7 @@ class AdminDashboard {
 
   final AdminDashboardTotals totals;
   final AdminDashboardMonth month;
+  final RefundPosition refundPosition;
   final List<MonthlySales> history;
   final List<RecentAccount> recentAccounts;
   final List<RecentSale> recentSales;
@@ -210,6 +252,7 @@ class AdminDashboard {
     return AdminDashboard(
       totals: AdminDashboardTotals.fromJson(asMap(json['totals'])),
       month: AdminDashboardMonth.fromJson(asMap(json['month'])),
+      refundPosition: RefundPosition.fromJson(asMap(json['refundPosition'])),
       history: _list(json['history'], MonthlySales.fromJson),
       recentAccounts: _list(json['recentAccounts'], RecentAccount.fromJson),
       recentSales: _list(json['recentSales'], RecentSale.fromJson),

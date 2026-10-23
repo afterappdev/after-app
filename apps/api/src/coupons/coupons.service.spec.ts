@@ -37,7 +37,7 @@ function coupon(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function setup() {
+function setup(push?: { notifyCouponRedeemed: jest.Mock }) {
   const prisma = {
     creditCoupon: {
       count: jest.fn(),
@@ -70,8 +70,8 @@ function setup() {
     name: 'Bar Central',
     city: 'São Paulo',
   });
-  const service = new CouponsService(prisma as never);
-  return { prisma, service };
+  const service = new CouponsService(prisma as never, push as never);
+  return { prisma, service, push };
 }
 
 describe('CouponsService', () => {
@@ -390,5 +390,51 @@ describe('CouponsService', () => {
         creditAmount: 2,
       }),
     ]);
+  });
+
+  it('resgate confirmado notifica o admin e a falha do FCM preserva o crédito', async () => {
+    const push = {
+      notifyCouponRedeemed: jest.fn().mockRejectedValue(new Error('fcm down')),
+    };
+    const { prisma, service } = setup(push);
+    prisma.creditCoupon.findUnique.mockResolvedValue(coupon());
+    prisma.creditCouponRedemption.count.mockResolvedValue(0);
+    prisma.creditCouponRedemption.create.mockResolvedValue({ id: 'red-1' });
+    prisma.creditWallet.upsert.mockResolvedValue({ balance: 12 });
+
+    await expect(service.redeem(venueUser, 'after2')).resolves.toEqual({
+      code: 'AFTER2',
+      creditAmount: 2,
+      balance: 12,
+    });
+    expect(push.notifyCouponRedeemed).toHaveBeenCalledTimes(1);
+    expect(push.notifyCouponRedeemed).toHaveBeenCalledWith({
+      redemptionId: 'red-1',
+      couponId: 'coupon-1',
+      code: 'AFTER2',
+      creditAmount: 2,
+      balance: 12,
+      venueName: 'Bar Central',
+    });
+  });
+
+  it('cupom inválido ou já utilizado não notifica', async () => {
+    const push = { notifyCouponRedeemed: jest.fn() };
+    const invalid = setup(push);
+    invalid.prisma.creditCoupon.findUnique.mockResolvedValue(null);
+    await expect(invalid.service.redeem(venueUser, 'AFTER2')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+
+    const repeated = setup(push);
+    repeated.prisma.creditCoupon.findUnique.mockResolvedValue(coupon());
+    repeated.prisma.creditCouponRedemption.count.mockResolvedValue(1);
+    await expect(repeated.service.redeem(venueUser, 'AFTER2')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+
+    expect(push.notifyCouponRedeemed).not.toHaveBeenCalled();
+    expect(invalid.prisma.creditCouponRedemption.create).not.toHaveBeenCalled();
+    expect(repeated.prisma.creditWallet.upsert).not.toHaveBeenCalled();
   });
 });

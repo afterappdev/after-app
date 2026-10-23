@@ -271,6 +271,7 @@ void main() {
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         expect(body['onboardingToken'], token);
         expect(body['accountType'], 'user');
+        expect(body['ageBand'], 'AGE_19_35');
         expect(body.containsKey('email'), isFalse);
         expect(body.containsKey('password'), isFalse);
         expect(body.containsKey('providerId'), isFalse);
@@ -291,6 +292,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-role-user')));
     await tester.pump();
+    await tester.tap(find.byKey(const Key('register-age-AGE_19_35')));
+    await tester.pump();
     await _selectLocation(tester);
     await tester.tap(find.byKey(const Key('register-submit')));
     await tester.pumpAndSettle();
@@ -307,6 +310,9 @@ void main() {
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         expect(body['accountType'], 'venue');
         expect(body['name'], 'Bar da Ada');
+        expect(body['documentType'], 'CPF');
+        expect(body['documentNumber'], '123.456.789-09');
+        expect(body.containsKey('ageBand'), isFalse);
         return http.Response(
           jsonEncode(_sessionBody(role: 'VENUE', venueId: 'v1')),
           201,
@@ -327,7 +333,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('register-role-venue')));
     await tester.pump();
+    await tester.enterText(find.byKey(const Key('register-document')), '12345678909');
+    await tester.pump();
     await _selectLocation(tester);
+    await tester.ensureVisible(find.byKey(const Key('register-submit')));
     await tester.tap(find.byKey(const Key('register-submit')));
     await tester.pumpAndSettle();
     expect(auth.user?.role, 'VENUE');
@@ -401,7 +410,34 @@ void main() {
     await tester.pumpWidget(_app(api: api, auth: auth, initialRoute: AppRoutes.register));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('register-password')), findsOneWidget);
+    expect(find.byKey(const Key('register-document')), findsNothing);
     expect(tester.widget<TextField>(find.byKey(const Key('register-password'))).controller?.text,
         isEmpty);
+  });
+
+  testWidgets('estabelecimento recusa CPF inválido e não chama a API', (tester) async {
+    await _useTallSurface(tester);
+    var posts = 0;
+    final api = apiWith((req) async {
+      if (req.url.path.endsWith('/auth/register')) posts += 1;
+      return http.Response('{}', 404);
+    });
+    final auth = AuthController(api: api, storage: AuthStorage())
+      ..bootstrapping = false;
+    await tester.pumpWidget(_app(api: api, auth: auth, initialRoute: AppRoutes.register));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('register-role-venue')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('register-email')), 'bar@after.local');
+    await tester.enterText(find.byKey(const Key('register-name')), 'Bar da Ada');
+    await tester.enterText(find.byKey(const Key('register-document')), '11111111111');
+    await tester.enterText(find.byKey(const Key('register-password')), 'senha123');
+    await tester.enterText(find.byKey(const Key('register-confirm-password')), 'senha123');
+    await _selectLocation(tester);
+    await tester.ensureVisible(find.byKey(const Key('register-submit')));
+    await tester.tap(find.byKey(const Key('register-submit')));
+    await tester.pump();
+    expect(find.text('CPF inválido.'), findsOneWidget);
+    expect(posts, 0);
   });
 }

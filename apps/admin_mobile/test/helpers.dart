@@ -29,6 +29,7 @@ class FakeAdminApi implements AdminApi {
     this.dashboardData,
     this.accountsPage,
     this.salesPage,
+    this.saleDetail,
     this.accountDetail,
     this.reportsPage,
     this.reportDetail,
@@ -40,6 +41,7 @@ class FakeAdminApi implements AdminApi {
   AdminDashboard? dashboardData;
   Paginated<AdminAccount>? accountsPage;
   Paginated<AdminSale>? salesPage;
+  AdminSaleDetail? saleDetail;
   AdminAccountDetail? accountDetail;
   Paginated<AdminReport>? reportsPage;
   AdminReportDetail? reportDetail;
@@ -102,20 +104,27 @@ class FakeAdminApi implements AdminApi {
     }
   }
 
+  String? lastSalesProvider;
+  String? lastSalesStatus;
+
   @override
   Future<Paginated<AdminSale>> sales({
     int page = 1,
     int limit = 20,
     String? provider,
+    String? status,
     String? from,
     String? to,
   }) async {
+    lastSalesProvider = provider;
+    lastSalesStatus = status;
     return salesPage ??
         const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0);
   }
 
   @override
-  Future<AdminSaleDetail> sale(String id) {
+  Future<AdminSaleDetail> sale(String id) async {
+    if (saleDetail != null) return saleDetail!;
     throw UnimplementedError();
   }
 
@@ -239,6 +248,7 @@ AdminDashboard sampleDashboard({
   double play = 2000,
   double apple = 1500,
   double pix = 4325,
+  RefundPosition? refundPosition,
 }) {
   return AdminDashboard(
     totals: AdminDashboardTotals(
@@ -258,6 +268,17 @@ AdminDashboard sampleDashboard({
         pix: pix,
       ),
     ),
+    refundPosition:
+        refundPosition ??
+        RefundPosition(
+          yearMonth: '2026-09',
+          paidSalesBrl: gross,
+          fullRefundsBrl: 0,
+          partialRefundsBrl: 0,
+          partialsWithoutAmount: 0,
+          revenueAfterRefundsBrl: gross,
+          revenueComplete: true,
+        ),
     history: [
       for (var i = 10; i >= 0; i--)
         MonthlySales(
@@ -294,6 +315,15 @@ const sampleDashboardJson = {
     'creditsSold': 16,
     'grossRevenueBrl': 340,
     'revenueByProvider': {'google_play': 25, 'app_store': 200, 'pix': 115},
+  },
+  'refundPosition': {
+    'yearMonth': '2026-09',
+    'paidSalesBrl': 340,
+    'fullRefundsBrl': 34.9,
+    'partialRefundsBrl': 10.1,
+    'partialsWithoutAmount': 1,
+    'revenueAfterRefundsBrl': 329.9,
+    'revenueComplete': false,
   },
   'history': [
     {

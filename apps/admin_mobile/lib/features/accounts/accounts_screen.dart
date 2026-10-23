@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/router/admin_navigation.dart';
 import '../../core/widgets/status_body.dart';
 import 'account_detail_screen.dart';
 import 'accounts_controller.dart';
@@ -125,10 +126,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 ),
                 isThreeLine: true,
                 onTap: () async {
-                  final deleted = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute(
-                      builder: (_) => AccountDetailScreen(id: account.id),
-                    ),
+                  final deleted = await pushAdminPage<bool>(
+                    context,
+                    location: '/contas/${Uri.encodeComponent(account.id)}',
+                    builder: (_) => AccountDetailScreen(id: account.id),
                   );
                   if (!context.mounted) return;
                   if (deleted == true) {

@@ -14,6 +14,7 @@ import { Type } from 'class-transformer';
 import { PhotoKind, MediaType } from '@prisma/client';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -31,6 +32,15 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { VenuesService } from './venues.service';
+
+class VenueFiscalDocumentDto {
+  @IsIn(['CPF', 'CNPJ'])
+  documentType!: 'CPF' | 'CNPJ';
+
+  @IsString()
+  @MaxLength(18)
+  documentNumber!: string;
+}
 
 class UpdateVenueDto {
   @IsOptional()
@@ -227,6 +237,22 @@ export class VenuesController {
     @Body() dto: ReplyReviewDto,
   ) {
     return this.venuesService.replyToReview(user, id, reviewId, dto.reply);
+  }
+
+  @Get(':id/fiscal-document')
+  @UseGuards(JwtAuthGuard)
+  fiscalDocument(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.venuesService.readFiscalDocument(user.userId, id);
+  }
+
+  @Put(':id/fiscal-document')
+  @UseGuards(JwtAuthGuard)
+  saveFiscalDocument(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: VenueFiscalDocumentDto,
+  ) {
+    return this.venuesService.saveFiscalDocument(user.userId, id, dto);
   }
 
   @Get(':id')

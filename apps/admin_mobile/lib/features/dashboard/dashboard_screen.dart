@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/router/admin_navigation.dart';
 import '../../core/theme/admin_theme.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_dashboard.dart';
@@ -64,6 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _RevenueCard(month: data.month),
               const SizedBox(height: 16),
               _ProvidersCard(revenue: data.month.revenueByProvider),
+              const SizedBox(height: 16),
+              _RefundPositionSection(position: data.refundPosition),
               const SizedBox(height: 16),
               _HistoryChart(history: data.history),
               if (data.warnings.isNotEmpty) ...[
@@ -216,6 +219,187 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
+class _RefundPositionSection extends StatelessWidget {
+  const _RefundPositionSection({required this.position});
+
+  final RefundPosition position;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+    final cards = [
+      _RefundCard(
+        label: 'Vendas pagas',
+        value: formatBrl(position.paidSalesBrl),
+        color: AdminTheme.orange,
+      ),
+      _RefundCard(
+        label: 'Reembolsos totais',
+        value: formatBrl(position.fullRefundsBrl),
+        detail: 'Valor original das compras reembolsadas',
+        color: AdminTheme.pink,
+      ),
+      _RefundCard(
+        label: 'Reembolsos parciais',
+        value: formatBrl(position.partialRefundsBrl),
+        color: AdminTheme.purple,
+      ),
+      _RefundCard(
+        label: 'Receita após reembolsos',
+        value: formatBrl(position.revenueAfterRefundsBrl),
+        detail: position.revenueComplete ? null : 'Incompleta',
+        color: position.revenueComplete ? AdminTheme.green : AdminTheme.textSecondary,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Reembolsos e receita',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 22,
+            color: AdminTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Posição atual das vendas confirmadas em ${monthAbbrevFromYearMonth(position.yearMonth)}/${position.yearMonth.split('-').first}. Não é o fluxo de caixa nem o dinheiro devolvido no mês.',
+          style: const TextStyle(
+            color: AdminTheme.textSecondary,
+            fontWeight: FontWeight.w600,
+            height: 1.35,
+          ),
+        ),
+        if (position.refundReviewsOpen > 0) ...[
+          const SizedBox(height: 8),
+          Text(
+            position.refundReviewsOpen == 1
+                ? '1 reembolso com verificação necessária. Esse sinal não entra na receita nem nos reembolsos.'
+                : '${formatCount(position.refundReviewsOpen)} reembolsos com verificação necessária. Esses sinais não entram na receita nem nos reembolsos.',
+            style: const TextStyle(
+              color: AdminTheme.textSecondary,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+        ],
+        if (position.partialsWithoutAmount > 0) ...[
+          const SizedBox(height: 8),
+          Text(
+            position.partialsWithoutAmount == 1
+                ? '1 reembolso parcial sem valor informado. A receita calculada não é definitiva.'
+                : '${formatCount(position.partialsWithoutAmount)} reembolsos parciais sem valor informado. A receita calculada não é definitiva.',
+            style: const TextStyle(
+              color: AdminTheme.pink,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (wide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < cards.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: cards[i]),
+              ],
+            ],
+          )
+        else
+          Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: cards[0]),
+                  const SizedBox(width: 8),
+                  Expanded(child: cards[1]),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: cards[2]),
+                  const SizedBox(width: 8),
+                  Expanded(child: cards[3]),
+                ],
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _RefundCard extends StatelessWidget {
+  const _RefundCard({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.detail,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AdminTheme.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                height: 1,
+              ),
+            ),
+          ),
+          if (detail != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              detail!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _RevenueCard extends StatelessWidget {
   const _RevenueCard({required this.month});
 
@@ -231,7 +415,13 @@ class _RevenueCard extends StatelessWidget {
         decoration: const BoxDecoration(color: AdminTheme.orange),
         child: Stack(
           children: [
-            const Positioned.fill(child: CustomPaint(painter: _SparklinePainter())),
+            const Positioned(
+              right: 4,
+              top: 16,
+              width: 104,
+              height: 46,
+              child: CustomPaint(painter: _SparklinePainter()),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
               child: Column(
@@ -331,6 +521,7 @@ class _ProvidersCard extends StatelessWidget {
           _row('Google Play', revenue.googlePlay, AdminTheme.purple),
           _row('Apple', revenue.appStore, AdminTheme.pink),
           _row('PIX', revenue.pix, AdminTheme.green),
+          _row('Cartão de crédito', revenue.card, AdminTheme.orange),
         ],
       ),
     );
@@ -530,11 +721,12 @@ class _RecentAccounts extends StatelessWidget {
                     ),
                     isThreeLine: true,
                     onTap: () async {
-                      final deleted = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AccountDetailScreen(id: accounts[i].id),
-                        ),
+                      final deleted = await pushAdminPage<bool>(
+                        context,
+                        location:
+                            '/contas/${Uri.encodeComponent(accounts[i].id)}',
+                        builder: (_) =>
+                            AccountDetailScreen(id: accounts[i].id),
                       );
                       if (!context.mounted) return;
                       if (deleted == true) {
@@ -594,10 +786,10 @@ class _RecentSales extends StatelessWidget {
                       '${providerLabel(sales[i].provider)}\n${sales[i].venueName}\n${formatDateTime(sales[i].confirmedAt)}',
                     ),
                     isThreeLine: true,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => SaleDetailScreen(id: sales[i].id),
-                      ),
+                    onTap: () => pushAdminPage<void>(
+                      context,
+                      location: '/vendas/${Uri.encodeComponent(sales[i].id)}',
+                      builder: (_) => SaleDetailScreen(id: sales[i].id),
                     ),
                   ),
                   if (i != sales.length - 1) const Divider(height: 1),

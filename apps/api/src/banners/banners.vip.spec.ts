@@ -1,0 +1,232 @@
+import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { BannersService } from './banners.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { quotePublication } from './banner-quote';
+
+describe('quotePublication', () => {
+  it('sexta comum, sábado VIP e domingo comum', () => {
+    expect(
+      quotePublication({
+        dates: ['2026-10-23', '2026-10-25'],
+        vipDates: ['2026-10-24'],
+        creditPerDisplayDay: 1,
+      }),
+    ).toEqual({
+      days: [
+        { date: '2026-10-23', tier: 'COMMON' },
+        { date: '2026-10-25', tier: 'COMMON' },
+        { date: '2026-10-24', tier: 'VIP' },
+      ],
+      commonCredits: 2,
+      vipCredits: 1,
+    });
+  });
+
+  it('duas datas VIP não consomem crédito comum', () => {
+    expect(
+      quotePublication({
+        dates: [],
+        vipDates: ['2026-10-24', '2026-10-25'],
+        creditPerDisplayDay: 1,
+      }),
+    ).toMatchObject({ commonCredits: 0, vipCredits: 2 });
+  });
+
+  it('rejeita data repetida e modalidade contraditória', () => {
+    expect(() =>
+      quotePublication({
+        dates: ['2026-10-24', '2026-10-24'],
+        creditPerDisplayDay: 1,
+      }),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      quotePublication({
+        dates: ['2026-10-24'],
+        vipDates: ['2026-10-24'],
+        creditPerDisplayDay: 1,
+      }),
+    ).toThrow(BadRequestException);
+  });
+});
+
+describe('BannersService VIP', () => {
+  function setup(balance: { balance: number; vipBalance: number }) {
+    const wallet = { ...balance };
+    const entries: { operationKey: string }[] = [];
+    let created = false;
+    let scheduleSequence = 0;
+    const prisma = {
+      venue: {
+        findUnique: jest.fn(async () => ({
+          id: 'venue-1',
+          ownerUserId: 'owner-1',
+          name: 'Bar',
+          city: 'São Paulo',
+          state: 'SP',
+          ibgeCityId: 3550308,
+        })),
+        update: jest.fn(),
+      },
+      creditWallet: {
+        findUnique: jest.fn(async () => ({ ...wallet })),
+        updateMany: jest.fn(async (args: {
+          where: { balance?: { gte: number }; vipBalance?: { gte: number } };
+          data: {
+            balance?: { decrement: number };
+            vipBalance?: { decrement: number };
+          };
+        }) => {
+          const common = args.data.balance?.decrement ?? 0;
+          const vip = args.data.vipBalance?.decrement ?? 0;
+          if (wallet.balance < common || wallet.vipBalance < vip) return { count: 0 };
+          wallet.balance -= common;
+          wallet.vipBalance -= vip;
+          return { count: 1 };
+        }),
+      },
+      banner: {
+        create: jest.fn(async ({ data }: { data: { schedules: { create: { tier: string; displayDate: Date }[] } } }) => {
+          created = true;
+          return {
+            id: 'banner-1',
+            schedules: data.schedules.create.map((row) => ({
+              id: `sch-${scheduleSequence++}`,
+              displayDate: row.displayDate,
+              ibgeCityId: 3550308,
+              tier: row.tier,
+              vipCreditEntryId: null,
+            })),
+          };
+        }),
+      },
+      bannerSchedule: {
+        update: jest.fn(async ({ where, data }: { where: { id: string }; data: { vipCreditEntryId: string } }) => ({
+          id: where.id,
+          vipCreditEntryId: data.vipCreditEntryId,
+        })),
+      },
+      vipCreditEntry: {
+        create: jest.fn(async ({ data }: { data: { operationKey: string } }) => {
+          if (entries.some((item) => item.operationKey === data.operationKey)) {
+            throw new Error('duplicate consume');
+          }
+          entries.push(data);
+          return { id: `entry-${entries.length}`, ...data };
+        }),
+      },
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const snapshot = { ...wallet };
+        const before = entries.length;
+        try {
+          return await fn(prisma);
+        } catch (error) {
+          wallet.balance = snapshot.balance;
+          wallet.vipBalance = snapshot.vipBalance;
+          entries.splice(before);
+          created = false;
+          throw error;
+        }
+      }),
+    };
+    const service = new BannersService(
+      prisma as never,
+      { get: () => '1' } as unknown as ConfigService,
+      { notifyFavoriteFollowers: jest.fn() } as unknown as NotificationsService,
+    );
+    return { prisma, service, wallet, entries, wasCreated: () => created };
+  }
+
+  it('publicação mista debita os dois saldos na mesma transação', async () => {
+    const { prisma, service, wallet, entries } = setup({ balance: 2, vipBalance: 1 });
+    await service.create(
+      'owner-1',
+      'https://cdn.example/a.jpg',
+      ['2026-10-23', '2026-10-25'],
+      'Fim de semana',
+      'Texto',
+      null,
+      ['2026-10-24'],
+    );
+    expect(wallet).toEqual({ balance: 0, vipBalance: 0 });
+    expect(entries.map((item) => item.operationKey)).toEqual(['vip-consume:sch-2']);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('falta de VIP não debita o saldo comum', async () => {
+    const { prisma, service, wallet, wasCreated } = setup({ balance: 5, vipBalance: 0 });
+    await expect(
+      service.create(
+        'owner-1',
+        'https://cdn.example/a.jpg',
+        ['2026-10-23'],
+        'Título',
+        'Texto',
+        null,
+        ['2026-10-24'],
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(wallet).toEqual({ balance: 5, vipBalance: 0 });
+    expect(wasCreated()).toBe(false);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('corrida com saldo para uma publicação não deixa débito parcial', async () => {
+    const state = setup({ balance: 1, vipBalance: 1 });
+    state.prisma.creditWallet.updateMany.mockImplementationOnce(async () => ({ count: 0 }));
+    await expect(
+      state.service.create(
+        'owner-1',
+        'https://cdn.example/a.jpg',
+        [],
+        'Título',
+        'Texto',
+        null,
+        ['2026-10-24'],
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(state.wallet).toEqual({ balance: 1, vipBalance: 1 });
+    expect(state.wasCreated()).toBe(false);
+  });
+
+  it('falha ao gravar o banner devolve os dois saldos', async () => {
+    const { prisma, service, wallet } = setup({ balance: 2, vipBalance: 1 });
+    prisma.banner.create.mockRejectedValueOnce(new Error('disk'));
+    await expect(
+      service.create(
+        'owner-1',
+        'https://cdn.example/a.jpg',
+        ['2026-10-23'],
+        'Título',
+        'Texto',
+        null,
+        ['2026-10-24'],
+      ),
+    ).rejects.toThrow('disk');
+    expect(wallet).toEqual({ balance: 2, vipBalance: 1 });
+  });
+
+  it('republicar a mesma data VIP consome outro crédito', async () => {
+    const { service, wallet, entries } = setup({ balance: 0, vipBalance: 2 });
+    await service.create(
+      'owner-1',
+      'https://cdn.example/a.jpg',
+      [],
+      'Título',
+      'Texto',
+      null,
+      ['2026-10-24'],
+    );
+    await service.create(
+      'owner-1',
+      'https://cdn.example/b.jpg',
+      [],
+      'Outra',
+      'Texto',
+      null,
+      ['2026-10-24'],
+    );
+    expect(wallet.vipBalance).toBe(0);
+    expect(entries).toHaveLength(2);
+  });
+});

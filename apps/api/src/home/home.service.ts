@@ -102,6 +102,9 @@ export class HomeService {
     return sortOpenThenDistance(
       schedules.map((s) => ({
         bannerId: s.banner.id,
+        scheduleId: s.id ?? null,
+        tier: s.tier === 'VIP' ? 'VIP' : 'COMMON',
+        featured: s.tier === 'VIP',
         imageUrl: s.banner.imageUrl,
         title: s.banner.title,
         description: s.banner.description,

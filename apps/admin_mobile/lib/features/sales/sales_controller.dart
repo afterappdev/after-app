@@ -11,6 +11,7 @@ class SalesController extends ChangeNotifier {
 
   final List<AdminSale> items = [];
   String? provider;
+  String? status;
   String period = 'all';
   int page = 1;
   int totalPages = 1;
@@ -34,6 +35,7 @@ class SalesController extends ChangeNotifier {
       final result = await api.sales(
         page: refresh ? 1 : page + 1,
         provider: provider,
+        status: status,
         from: range.$1,
         to: range.$2,
       );
@@ -58,6 +60,11 @@ class SalesController extends ChangeNotifier {
 
   void setProvider(String? value) {
     provider = value;
+    load();
+  }
+
+  void setStatus(String? value) {
+    status = value;
     load();
   }
 

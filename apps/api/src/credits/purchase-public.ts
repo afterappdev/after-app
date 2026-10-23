@@ -8,6 +8,7 @@ export type PublicCreditPurchase = {
   credits: number;
   provider: string | null;
   status: string;
+  modality: 'COMMON' | 'VIP';
   confirmedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +38,11 @@ export function toPublicPurchase(purchase: {
     credits: purchase.credits,
     provider: purchase.provider ?? null,
     status: purchase.status,
+    modality:
+      purchase.packageKey === 'vip_unit_1' ||
+      (purchase.productId ?? '').includes('.vip.')
+        ? 'VIP'
+        : 'COMMON',
     confirmedAt: purchase.confirmedAt ?? null,
     createdAt: purchase.createdAt,
     updatedAt: purchase.updatedAt,

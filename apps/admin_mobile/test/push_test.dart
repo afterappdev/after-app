@@ -3,16 +3,24 @@ import 'package:after_admin/core/push/admin_push_coordinator.dart';
 import 'package:after_admin/core/push/push_navigation.dart';
 import 'package:after_admin/core/push/push_payload.dart';
 import 'package:after_admin/data/admin_api.dart';
+import 'package:after_admin/data/admin_report.dart';
 import 'package:after_admin/data/admin_session.dart';
 import 'package:after_admin/features/auth/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'fake_push_messaging.dart';
 import 'helpers.dart';
 
 void main() {
+  setUpAll(() async {
+    Intl.defaultLocale = 'pt_BR';
+    await initializeDateFormatting('pt_BR');
+  });
+
   test('parsing seguro do payload administrativo', () {
     expect(
       parseAdminPushData({'type': 'ACCOUNT_CREATED', 'entityId': 'user-1'})?.id,
@@ -29,6 +37,36 @@ void main() {
     expect(
       parseAdminPushData({'type': 'PURCHASE_PAID', 'entityId': 'sale-3'})?.kind,
       PushNavKind.sale,
+    );
+    expect(
+      parseAdminPushData({'type': 'REPORT_CREATED', 'entityId': 'report-9'})
+          ?.kind,
+      PushNavKind.report,
+    );
+    expect(
+      parseAdminPushData({'type': 'REPORT_CREATED', 'entityId': 'report-9'})
+          ?.id,
+      'report-9',
+    );
+    expect(
+      parseAdminPushData({
+        'type': 'COUPON_REDEEMED',
+        'entityId': 'red-1',
+        'couponId': 'coupon-1',
+      })?.kind,
+      PushNavKind.coupon,
+    );
+    expect(
+      parseAdminPushData({
+        'type': 'COUPON_REDEEMED',
+        'entityId': 'red-1',
+        'couponId': 'coupon-1',
+      })?.id,
+      'coupon-1',
+    );
+    expect(
+      parseAdminPushData({'type': 'COUPON_REDEEMED', 'entityId': 'red-1'}),
+      isNull,
     );
     expect(parseAdminPushData({'type': 'UNKNOWN', 'entityId': 'x'}), isNull);
     expect(parseAdminPushData({}), isNull);
@@ -198,5 +236,75 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(find.text('Venda'), findsOneWidget);
+  });
+
+  testWidgets('REPORT_CREATED abre a denúncia existente', (tester) async {
+    await tester.pumpWidget(
+      Provider<AdminApi>.value(
+        value: FakeAdminApi(
+          reportDetail: AdminReportDetail(
+            id: 'report-9',
+            targetType: 'VENUE',
+            targetId: 'venue-1',
+            reason: 'SPAM',
+            status: 'PENDING',
+            createdAt: DateTime.parse('2026-10-08T12:00:00.000Z'),
+            targetSnapshot: const {'name': 'Bar Central'},
+          ),
+        ),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: TextButton(
+                  onPressed: () => openAdminPushTarget(
+                    context,
+                    const PushNavTarget(
+                      kind: PushNavKind.report,
+                      id: 'report-9',
+                    ),
+                  ),
+                  child: const Text('go'),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Denúncia'), findsOneWidget);
+  });
+
+  testWidgets('COUPON_REDEEMED abre o cupom existente', (tester) async {
+    await tester.pumpWidget(
+      Provider<AdminApi>.value(
+        value: FakeAdminApi(),
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return Scaffold(
+                body: TextButton(
+                  onPressed: () => openAdminPushTarget(
+                    context,
+                    const PushNavTarget(
+                      kind: PushNavKind.coupon,
+                      id: 'coupon-1',
+                    ),
+                  ),
+                  child: const Text('go'),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('go'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Cupom'), findsOneWidget);
   });
 }

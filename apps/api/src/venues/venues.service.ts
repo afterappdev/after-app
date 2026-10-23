@@ -1,9 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MediaType, PhotoKind, Prisma } from '@prisma/client';
 import { computeIsOpen } from '../common/utils/hours';
 import {
@@ -20,8 +25,20 @@ import {
   blockedVenueIdsForUser,
   publicVenueWhere,
 } from '../common/moderation/audience';
+import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
+import {
+  linkHistoricalWelcomeClaim,
+  readWelcomeCreditSecret,
+  welcomeCreditsForDocumentLink,
+} from '../credits/welcome-credit';
+import {
+  VENUE_DOCUMENT_TAKEN,
+  isVenueDocumentConflict,
+  omitVenueDocument,
+  resolveVenueDocument,
+} from './venue-document';
 import {
   categoryMatches,
   isLegacyLiveMusicCategory,
@@ -99,6 +116,8 @@ export class VenuesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mediaCleanup: MediaCleanupService,
+    @Optional() private readonly locations?: LocationsService,
+    @Optional() @Inject(ConfigService) private readonly config?: ConfigService,
   ) {}
 
   async listByCity(city: string, user?: AuthUser | null) {
@@ -259,9 +278,10 @@ export class VenuesService {
         : await geocodeCity((city ?? venue.city).trim());
 
     const reviewStats = await this.reviewStats(id);
+    const visible = omitVenueDocument(venue);
 
     return {
-      ...venue,
+      ...visible,
       photos: venue.photos,
       banners: venue.banners,
       isOpen: computeIsOpen(venue.hoursJson),
@@ -493,7 +513,20 @@ export class VenuesService {
     const nextCity = data.city ?? venue.city;
     const nextState = data.state ?? venue.state;
     const nextContacts = data.contacts ?? venue.contacts;
-    const updateData: typeof rest & { lat?: number; lng?: number } = { ...rest };
+    const updateData: typeof rest & {
+      lat?: number;
+      lng?: number;
+      ibgeCityId?: number | null;
+    } = { ...rest };
+    const cityChanged =
+      data.city !== undefined && data.city.trim() !== venue.city.trim();
+    const stateChanged =
+      data.state !== undefined && data.state.trim() !== venue.state.trim();
+    if (cityChanged || stateChanged) {
+      updateData.ibgeCityId = this.locations
+        ? await this.locations.resolveMunicipalityId(nextCity, nextState)
+        : null;
+    }
 
     if (isValidLatLng({ lat: requestedLat, lng: requestedLng })) {
       updateData.lat = requestedLat;
@@ -558,7 +591,75 @@ export class VenuesService {
       await this.mediaCleanup.deleteStoredUploads(stale);
     }
 
-    return updated;
+    return omitVenueDocument(updated);
+  }
+
+  /**
+   * Owner-only fiscal identity. A missing document is an older account.
+   * The document alone is not enough to issue an invoice.
+   */
+  async readFiscalDocument(userId: string, venueId: string) {
+    const venue = await this.requireOwnedVenue(userId, venueId);
+    return {
+      documentType: venue.documentType,
+      documentDigits: venue.documentDigits,
+      sufficientForInvoice: false,
+      additionalFields: ['fiscalName', 'fiscalEmail', 'address'],
+    };
+  }
+
+  async saveFiscalDocument(
+    userId: string,
+    venueId: string,
+    input: { documentType?: string | null; documentNumber?: string | null },
+  ) {
+    await this.requireOwnedVenue(userId, venueId);
+    const document = resolveVenueDocument(input);
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const credits = await welcomeCreditsForDocumentLink(tx, venueId);
+        if (credits > 0) {
+          const secret = readWelcomeCreditSecret(
+            this.config,
+            'Não foi possível salvar o documento agora.',
+          );
+          await linkHistoricalWelcomeClaim(tx, document, secret, venueId, credits);
+        }
+        await tx.venue.update({
+          where: { id: venueId },
+          data: {
+            documentType: document.documentType,
+            documentDigits: document.documentDigits,
+          },
+        });
+      });
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
+      if (isVenueDocumentConflict(error)) {
+        throw new ConflictException(VENUE_DOCUMENT_TAKEN);
+      }
+      throw error;
+    }
+    return this.readFiscalDocument(userId, venueId);
+  }
+
+  private async requireOwnedVenue(userId: string, venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        ownerUserId: true,
+        documentType: true,
+        documentDigits: true,
+      },
+    });
+    if (!venue) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    if (venue.ownerUserId !== userId) {
+      throw new ForbiddenException('Sem permissão para editar este local');
+    }
+    return venue;
   }
 
   async addPhoto(

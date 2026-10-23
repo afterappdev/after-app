@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
+import '../../core/router/admin_navigation.dart';
+import '../../core/theme/admin_theme.dart';
 import '../../core/widgets/status_body.dart';
+import '../../data/admin_sale.dart';
 import 'sale_detail_screen.dart';
 import 'sales_controller.dart';
 
@@ -55,6 +58,12 @@ class _SalesScreenState extends State<SalesScreen> {
                 'PIX',
                 () => controller.setProvider('pix'),
               ),
+              const SizedBox(width: 8),
+              _chip(
+                controller.provider == 'card',
+                'Cartão de crédito',
+                () => controller.setProvider('card'),
+              ),
             ],
           ),
         ),
@@ -85,9 +94,48 @@ class _SalesScreenState extends State<SalesScreen> {
           ),
         ),
         const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              _chip(
+                controller.status == null,
+                'Todas',
+                () => controller.setStatus(null),
+              ),
+              const SizedBox(width: 8),
+              _chip(
+                controller.status == 'paid',
+                'Pagas',
+                () => controller.setStatus('paid'),
+              ),
+              const SizedBox(width: 8),
+              _chip(
+                controller.status == 'refunded',
+                'Reembolsadas',
+                () => controller.setStatus('refunded'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
         Expanded(child: _list(controller)),
       ],
     );
+  }
+
+  String? _refundMark(AdminSale sale) {
+    if (sale.status.toUpperCase() == 'REFUNDED' ||
+        sale.hasPartialReview ||
+        sale.hasOpenRefundReview) {
+      return saleHistoryLabel(
+        sale.status,
+        partialReview: sale.hasPartialReview,
+        refundReview: sale.hasOpenRefundReview,
+      );
+    }
+    return null;
   }
 
   Widget _chip(bool selected, String label, VoidCallback onTap) {
@@ -136,22 +184,55 @@ class _SalesScreenState extends State<SalesScreen> {
               );
             }
             final sale = controller.items[index];
+            final mark = _refundMark(sale);
             return AdminCard(
               padding: EdgeInsets.zero,
-              child: ListTile(
-                title: Text(
-                  '${formatBrl(sale.amountPaid)} · ${sale.credits} créditos',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(
-                  '${providerLabel(sale.provider)}\n${sale.venueName}\n${formatDateTime(sale.confirmedAt)}',
-                ),
-                isThreeLine: true,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => SaleDetailScreen(id: sale.id),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                    title: Text(
+                      '${formatBrl(sale.amountPaid)} · ${sale.credits} créditos',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '${providerLabel(sale.provider)}\n${sale.venueName}\n${formatDateTime(sale.confirmedAt)}',
+                    ),
+                    isThreeLine: true,
+                    onTap: () => pushAdminPage<void>(
+                      context,
+                      location: '/vendas/${Uri.encodeComponent(sale.id)}',
+                      builder: (_) => SaleDetailScreen(id: sale.id),
+                    ),
+                    ),
                   ),
-                ),
+                  if (mark != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AdminTheme.sageSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          child: Text(
+                            mark,
+                            style: const TextStyle(
+                              color: AdminTheme.pink,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             );
           },

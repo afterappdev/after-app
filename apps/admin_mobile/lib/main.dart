@@ -8,7 +8,8 @@ import 'core/network/api_client.dart';
 import 'core/push/admin_push_coordinator.dart';
 import 'core/push/firebase_push_messaging.dart';
 import 'core/push/push_navigation.dart';
-import 'core/storage/secure_token_store.dart';
+import 'core/router/admin_navigation.dart';
+import 'core/storage/token_store_factory.dart';
 import 'core/theme/admin_theme.dart';
 import 'data/admin_api.dart';
 import 'features/accounts/accounts_controller.dart';
@@ -36,7 +37,7 @@ Future<void> main() async {
   final auth = AuthController(
     api: api,
     client: client,
-    storage: SecureTokenStore(),
+    storage: createTokenStore(),
     push: push,
   );
   await auth.bootstrap();
@@ -126,6 +127,6 @@ class _AuthGate extends StatelessWidget {
         }
       }
     });
-    return const AdminShell();
+    return AdminShell(initialLocation: currentAdminLocation());
   }
 }

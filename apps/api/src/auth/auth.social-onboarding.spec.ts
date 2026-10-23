@@ -42,6 +42,9 @@ function createPrisma() {
       updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
+    welcomeCreditClaim: { updateMany: jest.Mock };
+    creditPurchase: { create: jest.Mock };
   } = {
     user: {
       findUnique: jest.fn(),
@@ -56,6 +59,13 @@ function createPrisma() {
       updateMany: jest.fn(),
     },
     $transaction: jest.fn(),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    welcomeCreditClaim: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    creditPurchase: {
+      create: jest.fn().mockResolvedValue({ id: 'purchase-1' }),
+    },
   };
   prisma.$transaction.mockImplementation(async (arg: unknown) => {
     if (typeof arg === 'function') {
@@ -97,6 +107,7 @@ describe('AuthService social onboarding', () => {
       jwt,
       config({
         JWT_SECRET: 'test-secret',
+        WELCOME_CREDIT_HMAC_SECRET: 'welcome-credit-hmac-test-secret-32',
         GOOGLE_CLIENT_ID: 'web.apps.googleusercontent.com',
         APPLE_BUNDLE_ID: 'br.com.after.app',
       }),
@@ -256,6 +267,7 @@ describe('AuthService social onboarding', () => {
     const result = await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nova Silva',
       state: 'RJ',
       city: 'Niterói',
@@ -280,6 +292,7 @@ describe('AuthService social onboarding', () => {
       service.completeSocialRegistration({
         onboardingToken: token,
         accountType: 'user',
+        ageBand: 'AGE_19_35',
         name: 'Nova',
         state: 'SP',
         city: 'São Paulo',
@@ -289,6 +302,7 @@ describe('AuthService social onboarding', () => {
       service.completeSocialRegistration({
         onboardingToken: token,
         accountType: 'user',
+        ageBand: 'AGE_19_35',
         name: 'Nova',
         state: 'SP',
         city: 'São Paulo',
@@ -302,6 +316,7 @@ describe('AuthService social onboarding', () => {
       service.completeSocialRegistration({
         onboardingToken: 'not-a-jwt-token-at-all-here',
         accountType: 'user',
+        ageBand: 'AGE_19_35',
         name: 'Nova',
         state: 'SP',
         city: 'São Paulo',
@@ -317,6 +332,7 @@ describe('AuthService social onboarding', () => {
       service.completeSocialRegistration({
         onboardingToken: session,
         accountType: 'user',
+        ageBand: 'AGE_19_35',
         name: 'Nova',
         state: 'SP',
         city: 'São Paulo',
@@ -343,6 +359,7 @@ describe('AuthService social onboarding', () => {
       service.completeSocialRegistration({
         onboardingToken: issued.onboardingToken,
         accountType: 'user',
+        ageBand: 'AGE_19_35',
         name: 'Nova Silva',
         state: 'SP',
         city: 'São Paulo',
@@ -370,6 +387,7 @@ describe('AuthService social onboarding', () => {
     const result = await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nome Editado',
       state: 'MG',
       city: 'Belo Horizonte',
@@ -412,6 +430,8 @@ describe('AuthService social onboarding', () => {
       name: 'Bar da Ada',
       state: 'SP',
       city: 'São Paulo',
+      documentType: 'CPF',
+      documentNumber: '12345678909',
     });
     expect(prisma.user.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -453,6 +473,7 @@ describe('AuthService social onboarding', () => {
     await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Ada Lovelace',
       state: 'SP',
       city: 'São Paulo',
@@ -487,6 +508,7 @@ describe('AuthService social onboarding', () => {
     await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nova Silva',
       state: 'SP',
       city: 'São Paulo',
@@ -514,6 +536,7 @@ describe('AuthService social onboarding', () => {
     await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nova Silva',
       state: 'SP',
       city: 'São Paulo',
@@ -550,6 +573,7 @@ describe('AuthService social onboarding', () => {
     const dto = {
       onboardingToken: issued.onboardingToken,
       accountType: 'user' as const,
+      ageBand: 'AGE_19_35' as const,
       name: 'Nova Silva',
       state: 'SP',
       city: 'São Paulo',
@@ -594,6 +618,7 @@ describe('AuthService social onboarding', () => {
       state: 'SP',
       city: 'São Paulo',
       role: Role.USER,
+      ageBand: 'AGE_19_35',
     });
     expect(registered.user.email).toBe('nova@after.local');
     expect(prisma.user.create.mock.calls[0][0].data.passwordHash).toBeTruthy();
@@ -625,6 +650,7 @@ describe('AuthService social onboarding', () => {
     const dto = plainToInstance(CompleteSocialRegistrationDto, {
       onboardingToken: 'a'.repeat(24),
       accountType: 'user',
+      ageBand: 'AGE_19_35',
       name: 'Nova',
       state: 'SP',
       city: 'São Paulo',
