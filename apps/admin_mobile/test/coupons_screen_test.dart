@@ -85,7 +85,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.textContaining('AFTER2'), findsOneWidget);
     expect(find.textContaining('2 crédito'), findsOneWidget);
-    expect(find.textContaining('Ativo'), findsOneWidget);
+    final card = find.ancestor(
+      of: find.text('AFTER2'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('Ativo')),
+      findsOneWidget,
+    );
     expect(find.textContaining('Comum'), findsOneWidget);
   });
 

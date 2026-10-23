@@ -19,6 +19,23 @@ class ReportsController extends ChangeNotifier {
   bool loading = false;
   bool loadingMore = false;
   String? error;
+  int pendingTotal = 0;
+  int reviewingTotal = 0;
+  int resolvedTotal = 0;
+
+  Future<void> loadSummary() async {
+    try {
+      final pending = await api.reports(status: 'PENDING', limit: 1);
+      final reviewing = await api.reports(status: 'REVIEWING', limit: 1);
+      final resolved = await api.reports(status: 'RESOLVED', limit: 1);
+      pendingTotal = pending.total;
+      reviewingTotal = reviewing.total;
+      resolvedTotal = resolved.total;
+      notifyListeners();
+    } on ApiException {
+      // keep previous
+    }
+  }
 
   Future<void> load({bool refresh = true}) async {
     if (refresh) {

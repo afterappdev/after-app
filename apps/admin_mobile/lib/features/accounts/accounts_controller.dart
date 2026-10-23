@@ -13,7 +13,10 @@ class AccountsController extends ChangeNotifier {
 
   final List<AdminAccount> items = [];
   String query = '';
-  String? role;
+  String? role = 'USER';
+  int totalUsers = 0;
+  int totalVenues = 0;
+  String? cityFilter;
   int page = 1;
   int totalPages = 1;
   bool loading = false;
@@ -21,6 +24,18 @@ class AccountsController extends ChangeNotifier {
   String? error;
 
   Timer? _debounce;
+
+  Future<void> loadTotals() async {
+    try {
+      final users = await api.accounts(role: 'USER', limit: 1);
+      final venues = await api.accounts(role: 'VENUE', limit: 1);
+      totalUsers = users.total;
+      totalVenues = venues.total;
+      notifyListeners();
+    } on ApiException {
+      // keep previous totals
+    }
+  }
 
   Future<void> load({bool refresh = true}) async {
     if (refresh) {
@@ -68,6 +83,21 @@ class AccountsController extends ChangeNotifier {
   void setRole(String? value) {
     role = value;
     load();
+  }
+
+  void setRoleTab(String value) {
+    role = value;
+    load();
+  }
+
+  void setCityFilter(String? city) {
+    cityFilter = city;
+    notifyListeners();
+  }
+
+  List<AdminAccount> get visibleItems {
+    if (cityFilter == null || cityFilter!.isEmpty) return items;
+    return items.where((a) => a.city == cityFilter).toList();
   }
 
   void setQuery(String value) {

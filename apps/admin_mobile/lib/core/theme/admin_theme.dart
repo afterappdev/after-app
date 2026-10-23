@@ -12,7 +12,8 @@ class AdminTheme {
   static const Color pink = Color(0xFFE45B73);
   static const Color purple = Color(0xFF7B61FF);
   static const Color background = Color(0xFFFFFFFF);
-  static const Color canvas = background;
+  static const Color pageBackground = Color(0xFFF5F6F8);
+  static const Color canvas = pageBackground;
   static const Color brandSage = Color(0xFFAABFB8);
   static const Color sageSoft = Color(0xFFF3F4F4);
   static const Color sageBorder = border;

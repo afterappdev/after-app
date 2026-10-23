@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/admin_theme.dart';
+import '../../core/widgets/admin_layout.dart';
+import '../../core/widgets/status_body.dart';
 import '../../data/admin_api.dart';
 import '../../data/admin_coupon.dart';
 
@@ -122,97 +124,237 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
     }
   }
 
+  InputDecoration _inputDecoration({String? hint, String? helper}) {
+    return InputDecoration(
+      hintText: hint,
+      helperText: helper,
+      helperMaxLines: 2,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AdminTheme.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AdminTheme.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: AdminTheme.purple, width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= kAdminDesktopBreakpoint;
     return Scaffold(
-      appBar: AppBar(title: const Text('Novo cupom')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: _code,
-            textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(labelText: 'Código'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _credits,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(labelText: 'Créditos'),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Tipo de crédito',
-            style: TextStyle(
-              color: AdminTheme.textSecondary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: AdminCouponCreditKind.values.map((kind) {
-              return ChoiceChip(
-                label: Text(kind.label),
-                selected: _creditKind == kind,
-                onSelected: (_) => setState(() => _creditKind = kind),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Início'),
-            subtitle: Text(_startsAt == null ? 'Opcional' : _label(_startsAt!)),
-            trailing: const Icon(Icons.calendar_today_outlined),
-            onTap: () => _pickDate(start: true),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Validade'),
-            subtitle: Text(_expiresAt == null ? 'Opcional' : _label(_expiresAt!)),
-            trailing: const Icon(Icons.event_outlined),
-            onTap: () => _pickDate(start: false),
-          ),
-          TextField(
-            controller: _maxTotal,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(labelText: 'Limite total'),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 6, 18, 0),
-            child: Text(
-              'Deixe vazio para não limitar',
-              style: TextStyle(
-                color: AdminTheme.textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+      backgroundColor: AdminTheme.pageBackground,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(wide ? 28 : 12, 8, wide ? 28 : 12, 0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Novo cupom',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 22,
+                            color: AdminTheme.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Crie um cupom de créditos',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AdminTheme.textSecondary.withValues(alpha: 0.95),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Perfil',
+                    onPressed: () => onAdminProfileTap?.call(context),
+                    icon: const Icon(Icons.account_circle_outlined, size: 30),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _maxPerVenue,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(labelText: 'Limite por estabelecimento'),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Ativo'),
-            value: _active,
-            activeThumbColor: AdminTheme.orange,
-            onChanged: (value) => setState(() => _active = value),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Salvando...' : 'Criar cupom'),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(wide ? 28 : 20, 12, wide ? 28 : 20, 24),
+                children: [
+                  _SectionLabel(icon: Icons.tag_outlined, title: 'Código'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _code,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: _inputDecoration(
+                      hint: 'Ex.: GANHOU5',
+                      helper: 'Use letras e números, sem espaços.',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionLabel(icon: Icons.category_outlined, title: 'Tipo de crédito'),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'Comum',
+                          description: 'Créditos padrão do aplicativo',
+                          icon: Icons.monetization_on_outlined,
+                          accent: AdminTheme.orange,
+                          selected: _creditKind == AdminCouponCreditKind.common,
+                          onTap: () => setState(
+                            () => _creditKind = AdminCouponCreditKind.common,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'VIP',
+                          description: 'Créditos VIP com benefícios',
+                          icon: Icons.workspace_premium_outlined,
+                          accent: AdminTheme.pink,
+                          selected: _creditKind == AdminCouponCreditKind.vip,
+                          onTap: () => setState(
+                            () => _creditKind = AdminCouponCreditKind.vip,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionLabel(icon: Icons.confirmation_number_outlined, title: 'Quantidade de créditos'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _credits,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: _inputDecoration(hint: 'Ex.: 5'),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _SectionLabel(icon: Icons.event_outlined, title: 'Início (opcional)'),
+                            const SizedBox(height: 8),
+                            _DateField(
+                              label: _startsAt == null ? 'Selecionar data' : _label(_startsAt!),
+                              onTap: () => _pickDate(start: true),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _SectionLabel(icon: Icons.event_available_outlined, title: 'Validade (opcional)'),
+                            const SizedBox(height: 8),
+                            _DateField(
+                              label: _expiresAt == null ? 'Selecionar data' : _label(_expiresAt!),
+                              onTap: () => _pickDate(start: false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionLabel(icon: Icons.all_inbox_outlined, title: 'Limite total de utilizações'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _maxTotal,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: _inputDecoration(
+                      hint: 'Deixe vazio para não limitar',
+                      helper: 'Quantidade máxima de vezes que o cupom pode ser usado.',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionLabel(icon: Icons.storefront_outlined, title: 'Limite por estabelecimento'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _maxPerVenue,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: _inputDecoration(
+                      helper: 'Quantidade máxima de vezes que cada estabelecimento pode usar este cupom.',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  AdminCard(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Ativo',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                'Cupom disponível para uso.',
+                                style: TextStyle(color: AdminTheme.textSecondary, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _active,
+                          activeThumbColor: AdminTheme.orange,
+                          onChanged: (value) => setState(() => _active = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AdminTheme.orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? 'Salvando...' : 'Criar cupom',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -221,5 +363,150 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
     final day = value.day.toString().padLeft(2, '0');
     final month = value.month.toString().padLeft(2, '0');
     return '$day/$month/${value.year}';
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: AdminTheme.purple, size: 20),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: AdminTheme.textPrimary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CreditKindCard extends StatelessWidget {
+  const _CreditKindCard({
+    required this.label,
+    required this.description,
+    required this.icon,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String description;
+  final IconData icon;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      padding: const EdgeInsets.all(12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
+          border: Border.all(
+            color: selected ? accent : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: selected ? accent : AdminTheme.textSecondary,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, color: accent, size: 20),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: selected ? accent : AdminTheme.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.3,
+                      color: AdminTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DateField extends StatelessWidget {
+  const _DateField({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AdminTheme.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: label.startsWith('Selecionar')
+                        ? AdminTheme.textSecondary
+                        : AdminTheme.textPrimary,
+                  ),
+                ),
+              ),
+              const Icon(Icons.calendar_today_outlined, size: 18, color: AdminTheme.purple),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

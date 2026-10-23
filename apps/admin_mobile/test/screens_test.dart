@@ -24,6 +24,17 @@ import 'package:provider/single_child_widget.dart';
 
 import 'helpers.dart';
 
+Future<void> _openDashboardDetails(WidgetTester tester) async {
+  final details = find.text('Detalhes operacionais');
+  await tester.scrollUntilVisible(
+    details,
+    120,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(details);
+  await tester.pumpAndSettle();
+}
+
 Widget _app({
   required List<SingleChildWidget> providers,
   required Widget home,
@@ -50,6 +61,9 @@ void main() {
   });
 
   testWidgets('dashboard renderiza números reais', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final api = FakeAdminApi(dashboardData: sampleDashboard());
     await tester.pumpWidget(
       _app(
@@ -62,22 +76,27 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.text('1.284'), findsOneWidget);
-    expect(find.text('986'), findsOneWidget);
-    expect(find.text('298'), findsOneWidget);
-    expect(find.text('42'), findsOneWidget);
+    expect(find.text('Dashboard'), findsOneWidget);
+    expect(find.text(formatCount(42)), findsOneWidget);
+    expect(find.textContaining('986'), findsOneWidget);
+    expect(find.textContaining('298'), findsOneWidget);
     expect(find.text(formatBrl(7825)), findsWidgets);
-    expect(find.text('Google Play'), findsOneWidget);
+    expect(find.textContaining('Google Play'), findsOneWidget);
+    await _openDashboardDetails(tester);
+    expect(find.textContaining('Google Play'), findsWidgets);
     expect(find.text('Apple'), findsOneWidget);
     expect(find.text('PIX'), findsOneWidget);
     expect(find.text('Cartão de crédito'), findsOneWidget);
     expect(find.text('Reembolsos e receita'), findsOneWidget);
     expect(find.textContaining('Não é o fluxo de caixa'), findsOneWidget);
-    expect(find.text('Faturamento bruto'), findsOneWidget);
+    expect(find.textContaining('Faturamento bruto'), findsOneWidget);
     expect(find.text('lucro líquido'), findsNothing);
   });
 
   testWidgets('dashboard com valores zero continua visível', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final api = FakeAdminApi(
       dashboardData: sampleDashboard(
         accounts: 0,
@@ -104,11 +123,15 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text(formatBrl(0)), findsWidgets);
+    await _openDashboardDetails(tester);
     expect(find.text('Google Play'), findsOneWidget);
     expect(find.text('PIX'), findsOneWidget);
   });
 
   testWidgets('receita incompleta não aparece como valor definitivo', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final api = FakeAdminApi(
       dashboardData: sampleDashboard(
         gross: 34.9,
@@ -134,19 +157,23 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    await _openDashboardDetails(tester);
     expect(find.text('Incompleta'), findsOneWidget);
     expect(
       find.textContaining('1 reembolso parcial sem valor informado'),
       findsOneWidget,
     );
     expect(find.text('lucro líquido'), findsNothing);
-    expect(find.text('Faturamento bruto'), findsOneWidget);
+    expect(find.textContaining('Faturamento bruto'), findsOneWidget);
     expect(find.textContaining('verificação necessária'), findsNothing);
   });
 
   testWidgets('verificação em aberto fica fora dos valores de reembolso', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final api = FakeAdminApi(
       dashboardData: sampleDashboard(
         gross: 34.9,
@@ -173,6 +200,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    await _openDashboardDetails(tester);
     expect(
       find.textContaining('1 reembolso com verificação necessária'),
       findsOneWidget,

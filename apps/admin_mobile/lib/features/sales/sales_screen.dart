@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/formatters/admin_formatters.dart';
 import '../../core/router/admin_navigation.dart';
 import '../../core/theme/admin_theme.dart';
+import '../../core/widgets/admin_layout.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_sale.dart';
 import 'sale_detail_screen.dart';
@@ -28,100 +29,123 @@ class _SalesScreenState extends State<SalesScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<SalesController>();
-    return Column(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Row(
+    return AdminScrollPage(
+      title: 'Vendas',
+      subtitle: 'Créditos vendidos e histórico de pagamentos',
+      onRefresh: () => controller.load(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 720;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _chip(
-                controller.provider == null,
-                'Todos',
-                () => controller.setProvider(null),
+              if (controller.loadingMetrics)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (controller.monthMetrics != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _MetricsPanel(wide: wide, metrics: controller.monthMetrics!),
+                ),
+              if (controller.monthMetrics == null && !controller.loadingMetrics)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: AdminUnavailablePanel(
+                    title: 'Resumo do mês',
+                    message:
+                        'Selecione “Este mês” e limpe filtros de origem/status para ver totais consolidados.',
+                  ),
+                ),
+              const SizedBox(height: 12),
+              AdminFilterChipRow(
+                children: [
+                  AdminFilterChip(
+                    label: 'Todos',
+                    selected: controller.provider == null,
+                    onTap: () => controller.setProvider(null),
+                  ),
+                  AdminFilterChip(
+                    label: 'Google Play',
+                    selected: controller.provider == 'google_play',
+                    onTap: () => controller.setProvider('google_play'),
+                  ),
+                  AdminFilterChip(
+                    label: 'Apple',
+                    selected: controller.provider == 'app_store',
+                    onTap: () => controller.setProvider('app_store'),
+                  ),
+                  AdminFilterChip(
+                    label: 'PIX',
+                    selected: controller.provider == 'pix',
+                    onTap: () => controller.setProvider('pix'),
+                  ),
+                  AdminFilterChip(
+                    label: 'Cartão de crédito',
+                    selected: controller.provider == 'card',
+                    onTap: () => controller.setProvider('card'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.provider == 'google_play',
-                'Google Play',
-                () => controller.setProvider('google_play'),
+              const SizedBox(height: 8),
+              AdminFilterChipRow(
+                children: [
+                  AdminFilterChip(
+                    label: 'Tudo',
+                    selected: controller.period == 'all',
+                    onTap: () => controller.setPeriod('all'),
+                  ),
+                  AdminFilterChip(
+                    label: 'Este mês',
+                    selected: controller.period == 'month',
+                    onTap: () => controller.setPeriod('month'),
+                  ),
+                  AdminFilterChip(
+                    label: '30 dias',
+                    selected: controller.period == '30d',
+                    onTap: () => controller.setPeriod('30d'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.provider == 'app_store',
-                'Apple',
-                () => controller.setProvider('app_store'),
+              const SizedBox(height: 8),
+              AdminFilterChipRow(
+                children: [
+                  AdminFilterChip(
+                    label: 'Todas',
+                    selected: controller.status == null,
+                    onTap: () => controller.setStatus(null),
+                  ),
+                  AdminFilterChip(
+                    label: 'Pagas',
+                    selected: controller.status == 'paid',
+                    onTap: () => controller.setStatus('paid'),
+                  ),
+                  AdminFilterChip(
+                    label: 'Reembolsadas',
+                    selected: controller.status == 'refunded',
+                    onTap: () => controller.setStatus('refunded'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.provider == 'pix',
-                'PIX',
-                () => controller.setProvider('pix'),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Histórico de vendas',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: AdminTheme.textPrimary,
+                  ),
+                ),
               ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.provider == 'card',
-                'Cartão de crédito',
-                () => controller.setProvider('card'),
-              ),
+              const SizedBox(height: 8),
+              _list(controller),
             ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _chip(
-                controller.period == 'all',
-                'Tudo',
-                () => controller.setPeriod('all'),
-              ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.period == 'month',
-                'Este mês',
-                () => controller.setPeriod('month'),
-              ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.period == '30d',
-                '30 dias',
-                () => controller.setPeriod('30d'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _chip(
-                controller.status == null,
-                'Todas',
-                () => controller.setStatus(null),
-              ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.status == 'paid',
-                'Pagas',
-                () => controller.setStatus('paid'),
-              ),
-              const SizedBox(width: 8),
-              _chip(
-                controller.status == 'refunded',
-                'Reembolsadas',
-                () => controller.setStatus('refunded'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Expanded(child: _list(controller)),
-      ],
+          );
+        },
+      ),
     );
   }
 
@@ -136,14 +160,6 @@ class _SalesScreenState extends State<SalesScreen> {
       );
     }
     return null;
-  }
-
-  Widget _chip(bool selected, String label, VoidCallback onTap) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-    );
   }
 
   Widget _list(SalesController controller) {
@@ -173,7 +189,9 @@ class _SalesScreenState extends State<SalesScreen> {
       child: RefreshIndicator(
         onRefresh: () => controller.load(),
         child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
           itemCount: controller.items.length + (controller.loadingMore ? 1 : 0),
           separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
@@ -193,19 +211,20 @@ class _SalesScreenState extends State<SalesScreen> {
                   Material(
                     type: MaterialType.transparency,
                     child: ListTile(
-                    title: Text(
-                      '${formatBrl(sale.amountPaid)} · ${sale.credits} créditos',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '${providerLabel(sale.provider)}\n${sale.venueName}\n${formatDateTime(sale.confirmedAt)}',
-                    ),
-                    isThreeLine: true,
-                    onTap: () => pushAdminPage<void>(
-                      context,
-                      location: '/vendas/${Uri.encodeComponent(sale.id)}',
-                      builder: (_) => SaleDetailScreen(id: sale.id),
-                    ),
+                      title: Text(
+                        '${formatBrl(sale.amountPaid)} · ${sale.credits} créditos',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${providerLabel(sale.provider)}\n${sale.venueName}\n${formatDateTime(sale.confirmedAt)}',
+                      ),
+                      isThreeLine: true,
+                      trailing: const Icon(Icons.chevron_right, color: AdminTheme.textSecondary),
+                      onTap: () => pushAdminPage<void>(
+                        context,
+                        location: '/vendas/${Uri.encodeComponent(sale.id)}',
+                        builder: (_) => SaleDetailScreen(id: sale.id),
+                      ),
                     ),
                   ),
                   if (mark != null)
@@ -237,6 +256,201 @@ class _SalesScreenState extends State<SalesScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _MetricsPanel extends StatelessWidget {
+  const _MetricsPanel({required this.wide, required this.metrics});
+
+  final bool wide;
+  final SalesMonthMetrics metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final providers = [
+      (Icons.shop_outlined, 'Google Play', metrics.revenue.googlePlay, AdminTheme.green),
+      (Icons.apple, 'App Store', metrics.revenue.appStore, AdminTheme.purple),
+      (Icons.qr_code_2_outlined, 'PIX', metrics.revenue.pix, AdminTheme.green),
+      (Icons.credit_card_outlined, 'Cartão', metrics.revenue.card, AdminTheme.purple),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Resumo · ${metrics.yearMonth}',
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 15,
+            color: AdminTheme.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (wide)
+          Row(
+            children: [
+              Expanded(
+                child: AdminKpiCard(
+                  label: 'Créditos vendidos',
+                  value: formatCount(metrics.creditsSold),
+                  icon: Icons.stars_rounded,
+                  tint: AdminTheme.orange,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: AdminKpiCard(
+                  label: 'Compras pagas',
+                  value: formatCount(metrics.paidPurchases),
+                  icon: Icons.receipt_long_outlined,
+                  tint: AdminTheme.purple,
+                ),
+              ),
+            ],
+          )
+        else ...[
+          AdminKpiCard(
+            label: 'Créditos vendidos',
+            value: formatCount(metrics.creditsSold),
+            icon: Icons.stars_rounded,
+            tint: AdminTheme.orange,
+          ),
+          const SizedBox(height: 10),
+          AdminKpiCard(
+            label: 'Compras pagas',
+            value: formatCount(metrics.paidPurchases),
+            icon: Icons.receipt_long_outlined,
+            tint: AdminTheme.purple,
+          ),
+        ],
+        const SizedBox(height: 10),
+        AdminCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Receita por modalidade (mês atual)',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              for (final row in providers)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Icon(row.$1, size: 20, color: row.$4),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          row.$2,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        formatBrl(row.$3),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (wide)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _CreditKindCard(metrics: metrics)),
+              const SizedBox(width: 10),
+              Expanded(child: _PackageCard(metrics: metrics)),
+            ],
+          )
+        else ...[
+          _CreditKindCard(metrics: metrics),
+          const SizedBox(height: 10),
+          _PackageCard(metrics: metrics),
+        ],
+      ],
+    );
+  }
+}
+
+class _CreditKindCard extends StatelessWidget {
+  const _CreditKindCard({required this.metrics});
+
+  final SalesMonthMetrics metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Créditos por tipo',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          _metricRow('Comuns', formatCount(metrics.commonCredits), AdminTheme.orange),
+          _metricRow('VIP', formatCount(metrics.vipCredits), AdminTheme.pink),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricRow(String label, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackageCard extends StatelessWidget {
+  const _PackageCard({required this.metrics});
+
+  final SalesMonthMetrics metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Pacotes comuns (compras pagas)',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          _metricRow('1 crédito', formatCount(metrics.purchasesUnit1)),
+          _metricRow('5 créditos', formatCount(metrics.purchasesCombo5)),
+          _metricRow('10 créditos', formatCount(metrics.purchasesCombo10)),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+        ],
       ),
     );
   }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/router/admin_location.dart';
 import '../../core/router/admin_navigation.dart';
 import '../../core/theme/admin_theme.dart';
+import '../../core/widgets/admin_layout.dart';
 import '../accounts/account_detail_screen.dart';
 import '../accounts/accounts_screen.dart';
+import '../auth/auth_controller.dart';
 import '../coupons/coupon_detail_screen.dart';
 import '../coupons/coupon_form_screen.dart';
 import '../coupons/coupons_screen.dart';
@@ -28,13 +31,12 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
   late int _index;
   String? _appliedFragment;
 
-  static const _titles = ['Dashboard', 'Contas', 'Vendas', 'Cupons', 'Denúncias'];
-
   @override
   void initState() {
     super.initState();
     _index = widget.initialLocation.sectionIndex;
     WidgetsBinding.instance.addObserver(this);
+    onAdminProfileTap = _openProfile;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _openInitial(widget.initialLocation);
@@ -43,6 +45,9 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    if (onAdminProfileTap == _openProfile) {
+      onAdminProfileTap = null;
+    }
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -65,6 +70,22 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     setState(() => _index = index);
     _appliedFragment = _sectionFragment;
     publishAdminLocation(_sectionFragment, replace: true);
+  }
+
+  void _openProfile(BuildContext context) {
+    final section = _sectionFragment;
+    publishAdminLocation('/perfil', replace: false);
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()))
+        .whenComplete(() {
+      if (!mounted) return;
+      _appliedFragment = section;
+      publishAdminLocation(section, replace: true);
+    });
+  }
+
+  Future<void> _logout() async {
+    await context.read<AuthController>().logout();
   }
 
   void _openInitial(AdminLocation location) {
@@ -109,33 +130,6 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     };
   }
 
-  PreferredSizeWidget _appBar() {
-    return AppBar(
-      title: Text(_titles[_index]),
-      actions: [
-        IconButton(
-          tooltip: 'Perfil',
-          onPressed: () {
-            final section = _sectionFragment;
-            publishAdminLocation('/perfil', replace: false);
-            Navigator.of(context)
-                .push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                )
-                .whenComplete(() {
-              if (!mounted) return;
-              _appliedFragment = section;
-              publishAdminLocation(section, replace: true);
-            });
-          },
-          icon: const Icon(Icons.account_circle_outlined, size: 28),
-        ),
-      ],
-    );
-  }
-
   Widget _pages() {
     return AdminShellScope(
       sectionFragment: _sectionFragment,
@@ -152,113 +146,83 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     );
   }
 
+  Widget _mobileNav() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: NavigationBar(
+          key: const Key('admin-nav-bar'),
+          selectedIndex: _index,
+          onDestinationSelected: _select,
+          backgroundColor: Colors.white,
+          indicatorColor: AdminTheme.orange.withValues(alpha: 0.14),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.space_dashboard_outlined),
+              selectedIcon: Icon(Icons.space_dashboard_rounded),
+              label: 'Dashboard',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.people_outline),
+              selectedIcon: Icon(Icons.people),
+              label: 'Contas',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.payments_outlined),
+              selectedIcon: Icon(Icons.payments),
+              label: 'Vendas',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.confirmation_number_outlined),
+              selectedIcon: Icon(Icons.confirmation_number),
+              label: 'Cupons',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.flag_outlined),
+              selectedIcon: Icon(Icons.flag),
+              label: 'Denúncias',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 960;
+    final wide = MediaQuery.sizeOf(context).width >= kAdminDesktopBreakpoint;
     if (!wide) {
       return Scaffold(
-        backgroundColor: AdminTheme.background,
-        appBar: _appBar(),
+        backgroundColor: AdminTheme.pageBackground,
         body: _pages(),
-        bottomNavigationBar: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AdminTheme.background,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: NavigationBar(
-            key: const Key('admin-nav-bar'),
-            selectedIndex: _index,
-            onDestinationSelected: _select,
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.space_dashboard_outlined),
-                selectedIcon: Icon(Icons.space_dashboard_rounded),
-                label: 'Dashboard',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: 'Contas',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.payments_outlined),
-                selectedIcon: Icon(Icons.payments),
-                label: 'Vendas',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.confirmation_number_outlined),
-                selectedIcon: Icon(Icons.confirmation_number),
-                label: 'Cupons',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.flag_outlined),
-                selectedIcon: Icon(Icons.flag),
-                label: 'Denúncias',
-              ),
-            ],
-          ),
-        ),
+        bottomNavigationBar: _mobileNav(),
       );
     }
 
     return Scaffold(
-      backgroundColor: AdminTheme.background,
+      backgroundColor: AdminTheme.pageBackground,
       body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          NavigationRail(
+          AdminSidebar(
             key: const Key('admin-nav-rail'),
-            extended: MediaQuery.sizeOf(context).width >= 1180,
-            minExtendedWidth: 196,
-            backgroundColor: AdminTheme.background,
             selectedIndex: _index,
-            onDestinationSelected: _select,
-            labelType: MediaQuery.sizeOf(context).width >= 1180
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
-            selectedIconTheme: const IconThemeData(color: AdminTheme.orange),
-            indicatorColor: const Color(0xFFFFF1E6),
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.space_dashboard_outlined),
-                selectedIcon: Icon(Icons.space_dashboard_rounded),
-                label: Text('Dashboard'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: Text('Contas'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.payments_outlined),
-                selectedIcon: Icon(Icons.payments),
-                label: Text('Vendas'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.confirmation_number_outlined),
-                selectedIcon: Icon(Icons.confirmation_number),
-                label: Text('Cupons'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.flag_outlined),
-                selectedIcon: Icon(Icons.flag),
-                label: Text('Denúncias'),
-              ),
-            ],
+            onSelect: _select,
+            onProfile: () => _openProfile(context),
+            onLogout: _logout,
           ),
-          const VerticalDivider(width: 1, color: AdminTheme.border),
-          Expanded(
-            child: Scaffold(
-              backgroundColor: AdminTheme.background,
-              appBar: _appBar(),
-              body: _pages(),
-            ),
-          ),
+          const VerticalDivider(width: 1, thickness: 1, color: AdminTheme.border),
+          Expanded(child: _pages()),
         ],
       ),
     );

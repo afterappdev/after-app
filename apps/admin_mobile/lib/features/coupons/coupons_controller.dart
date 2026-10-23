@@ -15,6 +15,27 @@ class CouponsController extends ChangeNotifier {
   bool loading = false;
   bool loadingMore = false;
   String? error;
+  String filter = 'all';
+
+  List<AdminCoupon> get visibleItems {
+    return items.where((c) {
+      switch (filter) {
+        case 'active':
+          return c.statusLabel == 'Ativo';
+        case 'inactive':
+          return c.statusLabel == 'Inativo';
+        case 'expired':
+          return c.statusLabel == 'Expirado';
+        default:
+          return true;
+      }
+    }).toList();
+  }
+
+  void setFilter(String value) {
+    filter = value;
+    notifyListeners();
+  }
 
   Future<void> load({bool refresh = true}) async {
     if (refresh) {

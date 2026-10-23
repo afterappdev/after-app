@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/formatters/admin_formatters.dart';
 import '../../core/router/admin_navigation.dart';
 import '../../core/theme/admin_theme.dart';
+import '../../core/widgets/admin_layout.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_dashboard.dart';
 import '../accounts/account_detail_screen.dart';
@@ -19,6 +20,8 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  String? _selectedYm;
+
   @override
   void initState() {
     super.initState();
@@ -40,44 +43,138 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
     final data = controller.data;
-    if (data == null) {
-      return const StatusBody.loading();
-    }
-    return RefreshIndicator(
+    if (data == null) return const StatusBody.loading();
+
+    _selectedYm ??= data.month.yearMonth;
+    final monthOptions = {
+      data.month.yearMonth,
+      for (final row in data.history) row.yearMonth,
+    }.toList()
+      ..sort();
+
+    final selectedYm = _selectedYm!;
+    final monthRevenue = selectedYm == data.month.yearMonth
+        ? data.month.grossRevenueBrl
+        : data.history
+                .where((h) => h.yearMonth == selectedYm)
+                .map((h) => h.grossRevenueBrl)
+                .cast<double?>()
+                .firstOrNull ??
+            0.0;
+
+    final reportsLabel = selectedYm == data.month.yearMonth &&
+            controller.reportsPendingTotal != null
+        ? formatCount(controller.reportsPendingTotal!)
+        : '—';
+
+    return AdminScrollPage(
+      title: 'Dashboard',
+      subtitle: 'Visão geral do After',
       onRefresh: () => controller.load(silent: true),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 720;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-            children: [
-              const Text(
-                'Contas',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 22,
-                  color: AdminTheme.textPrimary,
+          final pad = wide ? 28.0 : 20.0;
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: pad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MonthFilter(
+                  compact: constraints.maxWidth < 420,
+                  value: selectedYm,
+                  options: monthOptions,
+                  onChanged: (v) => setState(() => _selectedYm = v),
                 ),
-              ),
-              const SizedBox(height: 14),
-              _MetricGrid(data: data, wide: wide),
-              const SizedBox(height: 16),
-              _RevenueCard(month: data.month),
-              const SizedBox(height: 16),
-              _ProvidersCard(revenue: data.month.revenueByProvider),
-              const SizedBox(height: 16),
-              _RefundPositionSection(position: data.refundPosition),
-              const SizedBox(height: 16),
-              _HistoryChart(history: data.history),
-              if (data.warnings.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                _WarningsCard(warnings: data.warnings),
+                _KpiGrid(
+                  wide: wide,
+                  newAccounts: selectedYm == data.month.yearMonth
+                      ? formatCount(data.month.newAccounts)
+                      : '—',
+                  salesTotal: formatBrl(monthRevenue),
+                  reportsLabel: reportsLabel,
+                  reportsSubtitle: reportsLabel == '—'
+                      ? 'Sem agregação mensal na API'
+                      : 'Pendentes · total no sistema',
+                ),
+                const SizedBox(height: 16),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _AccountsDonut(
+                          compact: false,
+                          users: data.totals.users,
+                          venues: data.totals.venues,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _SalesDonut(
+                          compact: false,
+                          revenue: data.month.revenueByProvider,
+                        ),
+                      ),
+                    ],
+                  )
+                else ...[
+                  _AccountsDonut(
+                    compact: constraints.maxWidth < 420,
+                    users: data.totals.users,
+                    venues: data.totals.venues,
+                  ),
+                  const SizedBox(height: 12),
+                  _SalesDonut(
+                    compact: constraints.maxWidth < 420,
+                    revenue: data.month.revenueByProvider,
+                  ),
+                ],
+                const SizedBox(height: 16),
+                if (wide)
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: AdminUnavailablePanel(title: 'Top 3 cidades')),
+                      SizedBox(width: 12),
+                      Expanded(child: AdminUnavailablePanel(title: 'Top 3 categorias')),
+                    ],
+                  )
+                else ...[
+                  const AdminUnavailablePanel(title: 'Top 3 cidades'),
+                  const SizedBox(height: 12),
+                  const AdminUnavailablePanel(title: 'Top 3 categorias'),
+                ],
+                const SizedBox(height: 20),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Detalhes operacionais',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: AdminTheme.textPrimary,
+                    ),
+                  ),
+                  children: [
+                    _ProvidersBreakdown(revenue: data.month.revenueByProvider),
+                    const SizedBox(height: 12),
+                    _RefundSection(position: data.refundPosition),
+                    if (data.warnings.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _WarningsCard(warnings: data.warnings),
+                    ],
+                    const SizedBox(height: 12),
+                    _HistoryChart(history: data.history),
+                    const SizedBox(height: 16),
+                    _RecentAccounts(accounts: data.recentAccounts),
+                    const SizedBox(height: 16),
+                    _RecentSales(sales: data.recentSales),
+                  ],
+                ),
               ],
-              const SizedBox(height: 20),
-              _RecentAccounts(accounts: data.recentAccounts),
-              const SizedBox(height: 20),
-              _RecentSales(sales: data.recentSales),
-            ],
+            ),
           );
         },
       ),
@@ -85,422 +182,385 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 }
 
-class _MetricGrid extends StatelessWidget {
-  const _MetricGrid({required this.data, required this.wide});
-
-  final AdminDashboard data;
-  final bool wide;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      (
-        'Total',
-        formatCount(data.totals.accounts),
-        Icons.people_alt_rounded,
-        AdminTheme.orange,
-      ),
-      (
-        'Usuários',
-        formatCount(data.totals.users),
-        Icons.person_rounded,
-        AdminTheme.pink,
-      ),
-      (
-        'Locais',
-        formatCount(data.totals.venues),
-        Icons.storefront_rounded,
-        AdminTheme.orange,
-      ),
-      (
-        'Novas no mês',
-        formatCount(data.month.newAccounts),
-        Icons.trending_up_rounded,
-        AdminTheme.green,
-      ),
-    ];
-    final fourAcross = wide || MediaQuery.sizeOf(context).width >= 340;
-    final cards = [
-      for (final item in items)
-        _MetricCard(
-          label: item.$1,
-          value: item.$2,
-          icon: item.$3,
-          color: item.$4,
-        ),
-    ];
-
-    if (fourAcross) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < cards.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(child: cards[i]),
-          ],
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: cards[0]),
-            const SizedBox(width: 8),
-            Expanded(child: cards[1]),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: cards[2]),
-            const SizedBox(width: 8),
-            Expanded(child: cards[3]),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.label,
+class _MonthFilter extends StatelessWidget {
+  const _MonthFilter({
+    required this.compact,
     required this.value,
-    required this.icon,
-    required this.color,
+    required this.options,
+    required this.onChanged,
   });
 
-  final String label;
+  final bool compact;
   final String value;
-  final IconData icon;
-  final Color color;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+
+  Widget _dropdown() {
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        isExpanded: compact,
+        value: value,
+        items: [
+          for (final ym in options)
+            DropdownMenuItem(
+              value: ym,
+              child: Text(formatYearMonthLabel(ym)),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return AdminCard(
-      padding: const EdgeInsets.fromLTRB(6, 16, 6, 14),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            maxLines: 2,
-            textAlign: TextAlign.center,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AdminTheme.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-              height: 1.15,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      child: compact
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.calendar_month_outlined, color: AdminTheme.purple, size: 22),
+                    SizedBox(width: 10),
+                    Text(
+                      'Selecionar mês',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AdminTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+                _dropdown(),
+              ],
+            )
+          : Row(
+              children: [
+                const Icon(Icons.calendar_month_outlined, color: AdminTheme.purple, size: 22),
+                const SizedBox(width: 10),
+                const Text(
+                  'Selecionar mês',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AdminTheme.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                _dropdown(),
+              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: AdminTheme.textPrimary,
-                height: 1,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
 
-class _RefundPositionSection extends StatelessWidget {
-  const _RefundPositionSection({required this.position});
+String formatYearMonthLabel(String ym) {
+  final parts = ym.split('-');
+  if (parts.length != 2) return ym;
+  final month = int.tryParse(parts[1]) ?? 1;
+  const names = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+  ];
+  final name = month >= 1 && month <= 12 ? names[month - 1] : parts[1];
+  return '$name de ${parts[0]}';
+}
 
-  final RefundPosition position;
+class _KpiGrid extends StatelessWidget {
+  const _KpiGrid({
+    required this.wide,
+    required this.newAccounts,
+    required this.salesTotal,
+    required this.reportsLabel,
+    required this.reportsSubtitle,
+  });
+
+  final bool wide;
+  final String newAccounts;
+  final String salesTotal;
+  final String reportsLabel;
+  final String reportsSubtitle;
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 720;
     final cards = [
-      _RefundCard(
-        label: 'Vendas pagas',
-        value: formatBrl(position.paidSalesBrl),
-        color: AdminTheme.orange,
+      AdminKpiCard(
+        label: 'Contas criadas\n(Usuários e Locais)',
+        value: newAccounts,
+        icon: Icons.groups_outlined,
+        tint: AdminTheme.orange,
       ),
-      _RefundCard(
-        label: 'Reembolsos totais',
-        value: formatBrl(position.fullRefundsBrl),
-        detail: 'Valor original das compras reembolsadas',
-        color: AdminTheme.pink,
+      const AdminKpiCard(
+        label: 'Downloads\nPlay Store',
+        value: '—',
+        icon: Icons.shop_outlined,
+        tint: AdminTheme.green,
+        unavailable: true,
+        subtitle: 'Sem fonte no painel',
       ),
-      _RefundCard(
-        label: 'Reembolsos parciais',
-        value: formatBrl(position.partialRefundsBrl),
-        color: AdminTheme.purple,
+      const AdminKpiCard(
+        label: 'Downloads\nApp Store',
+        value: '—',
+        icon: Icons.apple,
+        tint: AdminTheme.purple,
+        unavailable: true,
+        subtitle: 'Sem fonte no painel',
       ),
-      _RefundCard(
-        label: 'Receita após reembolsos',
-        value: formatBrl(position.revenueAfterRefundsBrl),
-        detail: position.revenueComplete ? null : 'Incompleta',
-        color: position.revenueComplete ? AdminTheme.green : AdminTheme.textSecondary,
+      const AdminKpiCard(
+        label: 'Acessos\nno site',
+        value: '—',
+        icon: Icons.language_outlined,
+        tint: AdminTheme.purple,
+        unavailable: true,
+        subtitle: 'Sem fonte no painel',
+      ),
+      AdminKpiCard(
+        label: 'Total de vendas\n(todas modalidades)',
+        value: salesTotal,
+        icon: Icons.payments_outlined,
+        tint: AdminTheme.pink,
+      ),
+      AdminKpiCard(
+        label: 'Denúncias',
+        value: reportsLabel,
+        icon: Icons.flag_outlined,
+        tint: AdminTheme.orange,
+        unavailable: reportsLabel == '—',
+        subtitle: reportsSubtitle,
       ),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Reembolsos e receita',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-            color: AdminTheme.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Posição atual das vendas confirmadas em ${monthAbbrevFromYearMonth(position.yearMonth)}/${position.yearMonth.split('-').first}. Não é o fluxo de caixa nem o dinheiro devolvido no mês.',
-          style: const TextStyle(
-            color: AdminTheme.textSecondary,
-            fontWeight: FontWeight.w600,
-            height: 1.35,
-          ),
-        ),
-        if (position.refundReviewsOpen > 0) ...[
-          const SizedBox(height: 8),
-          Text(
-            position.refundReviewsOpen == 1
-                ? '1 reembolso com verificação necessária. Esse sinal não entra na receita nem nos reembolsos.'
-                : '${formatCount(position.refundReviewsOpen)} reembolsos com verificação necessária. Esses sinais não entram na receita nem nos reembolsos.',
-            style: const TextStyle(
-              color: AdminTheme.textSecondary,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-            ),
-          ),
-        ],
-        if (position.partialsWithoutAmount > 0) ...[
-          const SizedBox(height: 8),
-          Text(
-            position.partialsWithoutAmount == 1
-                ? '1 reembolso parcial sem valor informado. A receita calculada não é definitiva.'
-                : '${formatCount(position.partialsWithoutAmount)} reembolsos parciais sem valor informado. A receita calculada não é definitiva.',
-            style: const TextStyle(
-              color: AdminTheme.pink,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-            ),
-          ),
-        ],
-        const SizedBox(height: 14),
-        if (wide)
+    if (wide) {
+      return Column(
+        children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (var i = 0; i < cards.length; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
                 Expanded(child: cards[i]),
               ],
             ],
-          )
-        else
-          Column(
+          ),
+          const SizedBox(height: 10),
+          Row(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: cards[0]),
-                  const SizedBox(width: 8),
-                  Expanded(child: cards[1]),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: cards[2]),
-                  const SizedBox(width: 8),
-                  Expanded(child: cards[3]),
-                ],
-              ),
+              for (var i = 3; i < 6; i++) ...[
+                if (i > 3) const SizedBox(width: 10),
+                Expanded(child: cards[i]),
+              ],
             ],
           ),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        for (var i = 0; i < cards.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(child: cards[i]),
+              const SizedBox(width: 10),
+              Expanded(child: cards[i + 1]),
+            ],
+          ),
+        ],
       ],
     );
   }
 }
 
-class _RefundCard extends StatelessWidget {
-  const _RefundCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.detail,
+class _AccountsDonut extends StatelessWidget {
+  const _AccountsDonut({
+    required this.compact,
+    required this.users,
+    required this.venues,
   });
 
-  final String label;
-  final String value;
-  final Color color;
-  final String? detail;
+  final bool compact;
+  final int users;
+  final int venues;
 
   @override
   Widget build(BuildContext context) {
+    final total = users + venues;
     return AdminCard(
-      padding: const EdgeInsets.fromLTRB(10, 14, 10, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AdminTheme.textSecondary,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-              height: 1.2,
+          const Text(
+            'Novas contas criadas\n(Usuários x Locais)',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, height: 1.25),
+          ),
+          const SizedBox(height: 12),
+          _DonutChartBlock(
+            compact: compact,
+            chart: PieChart(
+              PieChartData(
+                sectionsSpace: 2,
+                centerSpaceRadius: 42,
+                sections: [
+                  PieChartSectionData(
+                    value: users.toDouble(),
+                    color: AdminTheme.orange,
+                    radius: 36,
+                    title: '',
+                  ),
+                  PieChartSectionData(
+                    value: venues.toDouble().clamp(0.001, double.infinity),
+                    color: AdminTheme.purple,
+                    radius: 36,
+                    title: '',
+                  ),
+                ],
+              ),
+            ),
+            legend: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatCount(total),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 28,
+                  ),
+                ),
+                _legend('Usuários', AdminTheme.orange, users),
+                _legend('Locais', AdminTheme.purple, venues),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
+        ],
+      ),
+    );
+  }
+
+  Widget _legend(String label, Color color, int value) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Expanded(
             child: Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                height: 1,
-              ),
+              '$label · ${formatCount(value)}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
-          if (detail != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              detail!,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _RevenueCard extends StatelessWidget {
-  const _RevenueCard({required this.month});
+class _DonutChartBlock extends StatelessWidget {
+  const _DonutChartBlock({
+    required this.compact,
+    required this.chart,
+    required this.legend,
+  });
 
-  final AdminDashboardMonth month;
+  final bool compact;
+  final Widget chart;
+  final Widget legend;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
-        child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 148),
-        decoration: const BoxDecoration(color: AdminTheme.orange),
-        child: Stack(
-          children: [
-            const Positioned(
-              right: 4,
-              top: 16,
-              width: 104,
-              height: 46,
-              child: CustomPaint(painter: _SparklinePainter()),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Faturamento bruto',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    formatBrl(month.grossRevenueBrl),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    '${formatCount(month.paidPurchases)} compras  •  ${formatCount(month.creditsSold)} créditos vendidos',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.92),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+    if (compact) {
+      return Column(
+        children: [
+          SizedBox(height: 160, child: chart),
+          const SizedBox(height: 8),
+          legend,
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 3,
+          child: SizedBox(height: 160, child: chart),
+        ),
+        const SizedBox(width: 8),
+        Expanded(flex: 2, child: legend),
+      ],
+    );
+  }
+}
+
+class _SalesDonut extends StatelessWidget {
+  const _SalesDonut({required this.compact, required this.revenue});
+
+  final bool compact;
+  final ProviderRevenue revenue;
+
+  @override
+  Widget build(BuildContext context) {
+    final slices = [
+      (revenue.pix, AdminTheme.green, 'PIX'),
+      (revenue.card, AdminTheme.purple, 'Cartão'),
+      (revenue.appStore, AdminTheme.orange, 'App Store'),
+      (revenue.googlePlay, const Color(0xFF4285F4), 'Google Play'),
+    ];
+    final total = slices.fold<double>(0, (s, e) => s + e.$1);
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Vendas por modalidade',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          _DonutChartBlock(
+            compact: compact,
+            chart: PieChart(
+              PieChartData(
+                sectionsSpace: 2,
+                centerSpaceRadius: 42,
+                sections: [
+                  for (final slice in slices)
+                    if (slice.$1 > 0)
+                      PieChartSectionData(
+                        value: slice.$1,
+                        color: slice.$2,
+                        radius: 36,
+                        title: '',
+                      ),
                 ],
               ),
             ),
-          ],
-        ),
+            legend: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatBrl(total),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                ),
+                for (final slice in slices)
+                  if (slice.$1 > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${slice.$3} · ${formatBrl(slice.$1)}',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SparklinePainter extends CustomPainter {
-  const _SparklinePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.28)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round;
-    final path = Path()
-      ..moveTo(size.width * 0.38, size.height * 0.78)
-      ..cubicTo(
-        size.width * 0.52,
-        size.height * 0.86,
-        size.width * 0.58,
-        size.height * 0.46,
-        size.width * 0.70,
-        size.height * 0.50,
-      )
-      ..cubicTo(
-        size.width * 0.82,
-        size.height * 0.54,
-        size.width * 0.88,
-        size.height * 0.22,
-        size.width * 1.02,
-        size.height * 0.18,
-      );
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class _ProvidersCard extends StatelessWidget {
-  const _ProvidersCard({required this.revenue});
-
+class _ProvidersBreakdown extends StatelessWidget {
+  const _ProvidersBreakdown({required this.revenue});
   final ProviderRevenue revenue;
 
   @override
@@ -509,158 +569,71 @@ class _ProvidersCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Por origem',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-              color: AdminTheme.textPrimary,
-            ),
-          ),
+          const Text('Por origem (mês atual)', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          _row('Google Play', revenue.googlePlay, AdminTheme.purple),
-          _row('Apple', revenue.appStore, AdminTheme.pink),
-          _row('PIX', revenue.pix, AdminTheme.green),
-          _row('Cartão de crédito', revenue.card, AdminTheme.orange),
+          _row('Google Play', revenue.googlePlay),
+          _row('Apple', revenue.appStore),
+          _row('PIX', revenue.pix),
+          _row('Cartão de crédito', revenue.card),
         ],
       ),
     );
   }
 
-  Widget _row(String label, double value, Color dot) {
+  Widget _row(String label, double value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AdminTheme.textPrimary,
-              ),
-            ),
-          ),
-          Text(
-            formatBrl(value),
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: AdminTheme.textPrimary,
-            ),
-          ),
+          Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Text(formatBrl(value), style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
       ),
     );
   }
 }
 
-class _HistoryChart extends StatelessWidget {
-  const _HistoryChart({required this.history});
-
-  final List<MonthlySales> history;
+class _RefundSection extends StatelessWidget {
+  const _RefundSection({required this.position});
+  final RefundPosition position;
 
   @override
   Widget build(BuildContext context) {
-    final maxY = history.fold<double>(
-      0,
-      (current, row) =>
-          row.grossRevenueBrl > current ? row.grossRevenueBrl : current,
-    );
-    final chartMax = maxY <= 0 ? 1.0 : maxY * 1.2;
     return AdminCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Últimos 12 meses',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            'Reembolsos e receita',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Faturamento bruto mensal',
-            style: TextStyle(color: AdminTheme.muted, fontSize: 13),
+          const SizedBox(height: 6),
+          Text(
+            'Posição atual das vendas confirmadas em ${monthAbbrevFromYearMonth(position.yearMonth)}/${position.yearMonth.split('-').first}. Não é o fluxo de caixa nem o dinheiro devolvido no mês.',
+            style: const TextStyle(color: AdminTheme.textSecondary, height: 1.35, fontSize: 13),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 220,
-            child: BarChart(
-              BarChartData(
-                maxY: chartMax,
-                gridData: const FlGridData(show: false),
-                borderData: FlBorderData(show: false),
-                titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 28,
-                      getTitlesWidget: (value, meta) {
-                        final index = value.toInt();
-                        if (index < 0 || index >= history.length) {
-                          return const SizedBox.shrink();
-                        }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            monthAbbrevFromYearMonth(history[index].yearMonth),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: AdminTheme.muted,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                barTouchData: BarTouchData(
-                  touchTooltipData: BarTouchTooltipData(
-                    getTooltipColor: (_) => AdminTheme.ink,
-                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                      final row = history[group.x.toInt()];
-                      return BarTooltipItem(
-                        '${monthAbbrevFromYearMonth(row.yearMonth)}\n${formatBrl(row.grossRevenueBrl)}',
-                        const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                barGroups: [
-                  for (var i = 0; i < history.length; i++)
-                    BarChartGroupData(
-                      x: i,
-                      barRods: [
-                        BarChartRodData(
-                          toY: history[i].grossRevenueBrl,
-                          width: 10,
-                          borderRadius: BorderRadius.circular(4),
-                          color: AdminTheme.brand,
-                        ),
-                      ],
-                    ),
-                ],
-              ),
+          const SizedBox(height: 12),
+          Text('Faturamento bruto · ${formatBrl(position.paidSalesBrl)}'),
+          Text('Receita após reembolsos · ${formatBrl(position.revenueAfterRefundsBrl)}'),
+          if (!position.revenueComplete)
+            const Text(
+              'Incompleta',
+              style: TextStyle(color: AdminTheme.pink, fontWeight: FontWeight.w700),
             ),
-          ),
+          if (position.partialsWithoutAmount > 0)
+            Text(
+              position.partialsWithoutAmount == 1
+                  ? '1 reembolso parcial sem valor informado. A receita calculada não é definitiva.'
+                  : '${formatCount(position.partialsWithoutAmount)} reembolsos parciais sem valor informado. A receita calculada não é definitiva.',
+              style: const TextStyle(color: AdminTheme.pink, fontWeight: FontWeight.w700, height: 1.35),
+            ),
+          if (position.refundReviewsOpen > 0)
+            Text(
+              position.refundReviewsOpen == 1
+                  ? '1 reembolso com verificação necessária. Esse sinal não entra na receita nem nos reembolsos.'
+                  : '${formatCount(position.refundReviewsOpen)} reembolsos com verificação necessária. Esses sinais não entram na receita nem nos reembolsos.',
+              style: const TextStyle(color: AdminTheme.textSecondary, fontWeight: FontWeight.w700, height: 1.35),
+            ),
         ],
       ),
     );
@@ -669,7 +642,6 @@ class _HistoryChart extends StatelessWidget {
 
 class _WarningsCard extends StatelessWidget {
   const _WarningsCard({required this.warnings});
-
   final List<AdminDashboardWarning> warnings;
 
   @override
@@ -683,9 +655,72 @@ class _WarningsCard extends StatelessWidget {
   }
 }
 
+class _HistoryChart extends StatelessWidget {
+  const _HistoryChart({required this.history});
+  final List<MonthlySales> history;
+
+  @override
+  Widget build(BuildContext context) {
+    if (history.isEmpty) return const SizedBox.shrink();
+    final maxY = history.fold<double>(0, (c, r) => r.grossRevenueBrl > c ? r.grossRevenueBrl : c);
+    final chartMax = maxY <= 0 ? 1.0 : maxY * 1.2;
+    return AdminCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Últimos 12 meses', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 200,
+            child: BarChart(
+              BarChartData(
+                maxY: chartMax,
+                gridData: const FlGridData(show: false),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 28,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= history.length) return const SizedBox.shrink();
+                        return Text(
+                          monthAbbrevFromYearMonth(history[index].yearMonth),
+                          style: const TextStyle(fontSize: 10, color: AdminTheme.muted),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                barGroups: [
+                  for (var i = 0; i < history.length; i++)
+                    BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: history[i].grossRevenueBrl,
+                          width: 10,
+                          borderRadius: BorderRadius.circular(4),
+                          color: AdminTheme.orange,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RecentAccounts extends StatelessWidget {
   const _RecentAccounts({required this.accounts});
-
   final List<RecentAccount> accounts;
 
   @override
@@ -693,18 +728,10 @@ class _RecentAccounts extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Últimas contas',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-        ),
-        const SizedBox(height: 10),
+        const Text('Últimas contas', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
         if (accounts.isEmpty)
-          const AdminCard(
-            child: Text(
-              'Nenhuma conta recente.',
-              style: TextStyle(color: AdminTheme.muted),
-            ),
-          )
+          const AdminCard(child: Text('Nenhuma conta recente.', style: TextStyle(color: AdminTheme.muted)))
         else
           AdminCard(
             padding: EdgeInsets.zero,
@@ -712,32 +739,14 @@ class _RecentAccounts extends StatelessWidget {
               children: [
                 for (var i = 0; i < accounts.length; i++) ...[
                   ListTile(
-                    title: Text(
-                      accounts[i].displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '${accounts[i].email}\n${roleLabel(accounts[i].role)} · ${formatDate(accounts[i].createdAt)}',
-                    ),
+                    title: Text(accounts[i].displayName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${accounts[i].email}\n${roleLabel(accounts[i].role)}'),
                     isThreeLine: true,
-                    onTap: () async {
-                      final deleted = await pushAdminPage<bool>(
-                        context,
-                        location:
-                            '/contas/${Uri.encodeComponent(accounts[i].id)}',
-                        builder: (_) =>
-                            AccountDetailScreen(id: accounts[i].id),
-                      );
-                      if (!context.mounted) return;
-                      if (deleted == true) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Conta excluída com sucesso'),
-                          ),
-                        );
-                        context.read<DashboardController>().load(silent: true);
-                      }
-                    },
+                    onTap: () => pushAdminPage<bool>(
+                      context,
+                      location: '/contas/${Uri.encodeComponent(accounts[i].id)}',
+                      builder: (_) => AccountDetailScreen(id: accounts[i].id),
+                    ),
                   ),
                   if (i != accounts.length - 1) const Divider(height: 1),
                 ],
@@ -751,7 +760,6 @@ class _RecentAccounts extends StatelessWidget {
 
 class _RecentSales extends StatelessWidget {
   const _RecentSales({required this.sales});
-
   final List<RecentSale> sales;
 
   @override
@@ -759,18 +767,10 @@ class _RecentSales extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Últimas vendas',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
-        ),
-        const SizedBox(height: 10),
+        const Text('Últimas vendas', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
         if (sales.isEmpty)
-          const AdminCard(
-            child: Text(
-              'Nenhuma venda recente.',
-              style: TextStyle(color: AdminTheme.muted),
-            ),
-          )
+          const AdminCard(child: Text('Nenhuma venda recente.', style: TextStyle(color: AdminTheme.muted)))
         else
           AdminCard(
             padding: EdgeInsets.zero,
@@ -778,14 +778,8 @@ class _RecentSales extends StatelessWidget {
               children: [
                 for (var i = 0; i < sales.length; i++) ...[
                   ListTile(
-                    title: Text(
-                      '${sales[i].credits} créditos · ${formatBrl(sales[i].amountPaid)}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '${providerLabel(sales[i].provider)}\n${sales[i].venueName}\n${formatDateTime(sales[i].confirmedAt)}',
-                    ),
-                    isThreeLine: true,
+                    title: Text(sales[i].venueName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${formatBrl(sales[i].amountPaid)} · ${sales[i].packageKey}'),
                     onTap: () => pushAdminPage<void>(
                       context,
                       location: '/vendas/${Uri.encodeComponent(sales[i].id)}',
@@ -799,5 +793,13 @@ class _RecentSales extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull {
+    final it = iterator;
+    if (!it.moveNext()) return null;
+    return it.current;
   }
 }

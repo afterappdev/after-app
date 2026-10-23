@@ -105,22 +105,21 @@ void main() {
     expect(find.byKey(const Key('admin-nav-rail')), findsNothing);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byIcon(Icons.people_outline));
-    await tester.pump();
-    expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('Contas')),
-      findsOneWidget,
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('admin-nav-bar')),
+        matching: find.text('Contas'),
+      ),
     );
+    await tester.pump();
+    expect(find.text('Usuários e estabelecimentos cadastrados'), findsOneWidget);
 
     await pumpAt(const Size(1280, 800));
     expect(find.byKey(const Key('admin-nav-rail')), findsOneWidget);
     expect(find.byKey(const Key('admin-nav-bar')), findsNothing);
-    await tester.tap(find.byIcon(Icons.payments_outlined));
+    await tester.tap(find.byKey(const Key('admin-sidebar-2')));
     await tester.pump();
-    expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('Vendas')),
-      findsOneWidget,
-    );
+    expect(find.text('Créditos vendidos e histórico de pagamentos'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -137,10 +136,7 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
-    expect(
-      find.descendant(of: find.byType(AppBar), matching: find.text('Cupons')),
-      findsOneWidget,
-    );
+    expect(find.text('Gerencie os cupons de créditos'), findsOneWidget);
     expect(find.text('Novo cupom'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

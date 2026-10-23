@@ -13,6 +13,9 @@ class DashboardController extends ChangeNotifier {
   String? error;
   bool loading = false;
 
+  /// Denúncias pendentes (total global; API não filtra por mês).
+  int? reportsPendingTotal;
+
   Future<void> load({bool silent = false}) async {
     if (!silent) {
       loading = data == null;
@@ -20,13 +23,27 @@ class DashboardController extends ChangeNotifier {
       notifyListeners();
     }
     try {
-      data = await api.dashboard();
+      final results = await Future.wait([
+        api.dashboard(),
+        _fetchReportsPending(),
+      ]);
+      data = results[0] as AdminDashboard;
+      reportsPendingTotal = results[1] as int?;
       error = null;
     } on ApiException catch (e) {
       error = e.message;
     } finally {
       loading = false;
       notifyListeners();
+    }
+  }
+
+  Future<int?> _fetchReportsPending() async {
+    try {
+      final page = await api.reports(status: 'PENDING', limit: 1);
+      return page.total;
+    } on ApiException {
+      return null;
     }
   }
 }

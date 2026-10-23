@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/formatters/admin_formatters.dart';
 import '../../core/router/admin_navigation.dart';
+import '../../core/theme/admin_theme.dart';
+import '../../core/widgets/admin_layout.dart';
 import '../../core/widgets/status_body.dart';
+import '../../data/admin_account.dart';
 import 'account_detail_screen.dart';
 import 'accounts_controller.dart';
 
@@ -21,7 +24,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AccountsController>().load();
+      final c = context.read<AccountsController>();
+      c.loadTotals();
+      c.load();
     });
   }
 
@@ -34,59 +39,97 @@ class _AccountsScreenState extends State<AccountsScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<AccountsController>();
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: TextField(
-            controller: _search,
-            onChanged: controller.setQuery,
-            decoration: const InputDecoration(
-              hintText: 'Buscar por nome, e-mail ou estabelecimento',
-              prefixIcon: Icon(Icons.search),
+    final isUsers = controller.role != 'VENUE';
+    final isVenue = controller.role == 'VENUE';
+
+    return AdminScrollPage(
+      title: 'Contas',
+      subtitle: 'Usuários e estabelecimentos cadastrados',
+      onRefresh: () async {
+        await controller.loadTotals();
+        await controller.load();
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                AdminSegmentCard(
+                  label: 'Usuários',
+                  value: formatCount(controller.totalUsers),
+                  hint: 'Total no banco de dados',
+                  icon: Icons.groups_outlined,
+                  selected: isUsers,
+                  accent: AdminTheme.orange,
+                  onTap: () => controller.setRoleTab('USER'),
+                ),
+                const SizedBox(width: 12),
+                AdminSegmentCard(
+                  label: 'Estabelecimentos',
+                  value: formatCount(controller.totalVenues),
+                  hint: 'Total cadastrados',
+                  icon: Icons.storefront_outlined,
+                  selected: isVenue,
+                  accent: AdminTheme.purple,
+                  onTap: () => controller.setRoleTab('VENUE'),
+                ),
+              ],
             ),
           ),
-        ),
-        const SizedBox(height: 10),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              _chip(controller, 'Todos', null),
-              const SizedBox(width: 8),
-              _chip(controller, 'Usuários', 'USER'),
-              const SizedBox(width: 8),
-              _chip(controller, 'Estabelecimentos', 'VENUE'),
-            ],
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _CityFilter(controller: controller),
           ),
-        ),
-        const SizedBox(height: 8),
-        Expanded(child: _list(controller)),
-      ],
-    );
-  }
-
-  Widget _chip(AccountsController controller, String label, String? role) {
-    final selected = controller.role == role;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => controller.setRole(role),
+          const SizedBox(height: 12),
+          if (isUsers)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: AdminUnavailablePanel(
+                title: 'Usuários por faixa etária',
+                message: 'Distribuição por faixa etária ainda não está disponível na API admin.',
+              ),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: AdminUnavailablePanel(
+                title: 'Locais por categoria',
+                message: 'Distribuição por categoria por cidade será exibida quando a API expor agregados.',
+              ),
+            ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _search,
+              onChanged: controller.setQuery,
+              decoration: InputDecoration(
+                hintText: isVenue
+                    ? 'Buscar por nome do local...'
+                    : 'Buscar por nome, e-mail ou cidade...',
+                prefixIcon: const Icon(Icons.search),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _list(controller),
+        ],
+      ),
     );
   }
 
   Widget _list(AccountsController controller) {
-    if (controller.loading && controller.items.isEmpty) {
+    final items = controller.visibleItems;
+    if (controller.loading && items.isEmpty) {
       return const StatusBody.loading(message: 'Carregando contas...');
     }
-    if (controller.error != null && controller.items.isEmpty) {
-      return StatusBody.error(
-        message: controller.error!,
-        onRetry: controller.load,
-      );
+    if (controller.error != null && items.isEmpty) {
+      return StatusBody.error(message: controller.error!, onRetry: controller.load);
     }
-    if (controller.items.isEmpty) {
+    if (items.isEmpty) {
       return const StatusBody.empty(
         title: 'Nenhuma conta',
         message: 'Não encontramos contas com esses filtros.',
@@ -94,59 +137,162 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
-        if (notification.metrics.pixels >
-            notification.metrics.maxScrollExtent - 240) {
+        if (notification.metrics.pixels > notification.metrics.maxScrollExtent - 240) {
           controller.load(refresh: false);
         }
         return false;
       },
-      child: RefreshIndicator(
-        onRefresh: () => controller.load(),
-        child: ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: controller.items.length + (controller.loadingMore ? 1 : 0),
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            if (index >= controller.items.length) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final account = controller.items[index];
-            return AdminCard(
-              padding: EdgeInsets.zero,
-              child: ListTile(
-                title: Text(
-                  account.displayName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(
-                  '${account.email}\n${roleLabel(account.role)} · ${formatDate(account.createdAt)}',
-                ),
-                isThreeLine: true,
-                onTap: () async {
-                  final deleted = await pushAdminPage<bool>(
-                    context,
-                    location: '/contas/${Uri.encodeComponent(account.id)}',
-                    builder: (_) => AccountDetailScreen(id: account.id),
-                  );
-                  if (!context.mounted) return;
-                  if (deleted == true) {
-                    await controller.accountDeleted(account.id);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Conta excluída com sucesso'),
-                      ),
-                    );
-                  }
-                },
-              ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        itemCount: items.length + (controller.loadingMore ? 1 : 0),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        itemBuilder: (context, index) {
+          if (index >= items.length) {
+            return const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
             );
-          },
+          }
+          final account = items[index];
+          return _AccountTile(account: account, controller: controller);
+        },
+      ),
+    );
+  }
+}
+
+class _CityFilter extends StatelessWidget {
+  const _CityFilter({required this.controller});
+  final AccountsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final cities = {
+      for (final item in controller.items) item.city,
+    }.where((c) => c.trim().isNotEmpty).toList()
+      ..sort();
+    final selected = controller.cityFilter;
+    return AdminCard(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Row(
+        children: [
+          const Icon(Icons.location_on_outlined, color: AdminTheme.purple, size: 22),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Filtrar por cidade',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<String?>(
+              value: selected,
+              hint: const Text('Todas'),
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('Todas')),
+                for (final city in cities)
+                  DropdownMenuItem(value: city, child: Text(city)),
+              ],
+              onChanged: controller.setCityFilter,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountTile extends StatelessWidget {
+  const _AccountTile({required this.account, required this.controller});
+
+  final AdminAccount account;
+  final AccountsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final isVenue = account.role == 'VENUE';
+    return AdminCard(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      child: InkWell(
+        onTap: () => _open(context),
+        borderRadius: BorderRadius.circular(AdminTheme.radiusLg),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: isVenue
+                  ? AdminTheme.purple.withValues(alpha: 0.12)
+                  : AdminTheme.orange.withValues(alpha: 0.12),
+              child: Icon(
+                isVenue ? Icons.storefront_outlined : Icons.person_outline,
+                color: isVenue ? AdminTheme.purple : AdminTheme.orange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    account.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    account.email,
+                    style: const TextStyle(color: AdminTheme.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      _badge(
+                        isVenue ? (account.venueName ?? 'Local') : roleLabel(account.role),
+                        isVenue ? AdminTheme.purple : AdminTheme.orange,
+                      ),
+                      _badge('${account.city}, ${account.state}', AdminTheme.textSecondary),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AdminTheme.textSecondary),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _badge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final deleted = await pushAdminPage<bool>(
+      context,
+      location: '/contas/${Uri.encodeComponent(account.id)}',
+      builder: (_) => AccountDetailScreen(id: account.id),
+    );
+    if (!context.mounted) return;
+    if (deleted == true) {
+      await controller.accountDeleted(account.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Conta excluída com sucesso')),
+      );
+    }
   }
 }
