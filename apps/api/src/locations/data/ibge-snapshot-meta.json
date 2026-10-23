@@ -1,0 +1,6 @@
+{
+  "source": "https://servicodados.ibge.gov.br/api/v1/localidades",
+  "fetchedAt": "2026-10-23",
+  "statesEndpoint": "/estados?orderBy=nome",
+  "municipalitiesEndpoint": "/municipios?orderBy=nome"
+}

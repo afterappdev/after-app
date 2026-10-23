@@ -1,27 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { matchIbgeMunicipality } from '../promo-push/ibge-city';
-
-type IbgeState = {
-  id: number;
-  sigla: string;
-  nome: string;
-};
-
-type IbgeCity = {
-  id: number;
-  nome: string;
-};
+import {
+  type IbgeFetchDeps,
+  type IbgeMunicipalityRow,
+  loadIbgeCitiesByUf,
+  loadIbgeMunicipalities,
+  loadIbgeStates,
+} from './ibge-localidades.client';
 
 export type StateDto = { uf: string; name: string };
 export type CityDto = { id: number; name: string };
 export type CitySearchDto = { id: number; name: string; uf: string };
-
-type IbgeMunicipality = IbgeCity & {
-  microrregiao?: { mesorregiao?: { UF?: { sigla?: string } } };
-  'regiao-imediata'?: {
-    'regiao-intermediaria'?: { UF?: { sigla?: string } };
-  };
-};
 
 function normalize(value: string) {
   return value
@@ -36,23 +25,27 @@ export class LocationsService {
   private statesCache: StateDto[] | null = null;
   private citiesCache = new Map<string, CityDto[]>();
   private allCitiesCache: CitySearchDto[] | null = null;
+  private ibgeDeps: IbgeFetchDeps = {};
+
+  /** Test hook: inject fetch/timeouts without changing HTTP routes. */
+  useIbgeDeps(deps: IbgeFetchDeps): this {
+    this.ibgeDeps = deps;
+    return this;
+  }
 
   async listStates(): Promise<StateDto[]> {
     if (this.statesCache) {
       return this.statesCache;
     }
 
-    const res = await fetch(
-      'https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome',
-    );
-    if (!res.ok) {
+    const { rows } = await loadIbgeStates(this.ibgeDeps);
+    if (!rows.length) {
       throw new NotFoundException('Não foi possível carregar os estados');
     }
 
-    const data = (await res.json()) as IbgeState[];
-    this.statesCache = data.map((s) => ({
-      uf: s.sigla,
-      name: s.nome,
+    this.statesCache = rows.map((s) => ({
+      uf: s.uf,
+      name: s.name,
     }));
     return this.statesCache;
   }
@@ -68,17 +61,14 @@ export class LocationsService {
       return cached;
     }
 
-    const res = await fetch(
-      `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${key}/municipios?orderBy=nome`,
-    );
-    if (!res.ok) {
+    const { rows } = await loadIbgeCitiesByUf(key, this.ibgeDeps);
+    if (!rows.length) {
       throw new NotFoundException(`Cidades não encontradas para ${key}`);
     }
 
-    const data = (await res.json()) as IbgeCity[];
-    const cities = data.map((c) => ({
+    const cities = rows.map((c) => ({
       id: c.id,
-      name: c.nome,
+      name: c.name,
     }));
     this.citiesCache.set(key, cities);
     return cities;
@@ -147,22 +137,16 @@ export class LocationsService {
       return this.allCitiesCache;
     }
 
-    const res = await fetch(
-      'https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome',
-    );
-    if (!res.ok) {
+    const { rows } = await loadIbgeMunicipalities(this.ibgeDeps);
+    if (!rows.length) {
       throw new NotFoundException('Não foi possível carregar as cidades');
     }
 
-    const data = (await res.json()) as IbgeMunicipality[];
-    this.allCitiesCache = data.map((c) => ({
-      id: c.id,
-      name: c.nome,
-      uf:
-        c.microrregiao?.mesorregiao?.UF?.sigla ??
-        c['regiao-imediata']?.['regiao-intermediaria']?.UF?.sigla ??
-        '',
-    }));
+    this.allCitiesCache = rows.map(mapMunicipalityRow);
     return this.allCitiesCache;
   }
+}
+
+function mapMunicipalityRow(c: IbgeMunicipalityRow): CitySearchDto {
+  return { id: c.id, name: c.name, uf: c.uf };
 }
