@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/admin_theme.dart';
 import '../../data/admin_api.dart';
+import '../../data/admin_coupon.dart';
 
 class CouponFormScreen extends StatefulWidget {
   const CouponFormScreen({super.key});
@@ -21,6 +22,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
   DateTime? _startsAt;
   DateTime? _expiresAt;
   bool _active = true;
+  AdminCouponCreditKind _creditKind = AdminCouponCreditKind.common;
   bool _saving = false;
 
   @override
@@ -87,7 +89,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Criar cupom?'),
         content: Text(
-          'O código ${_code.text.trim().toUpperCase()} concederá ${_credits.text.trim()} crédito(s) bônus.',
+          'O código ${_code.text.trim().toUpperCase()} concederá ${_credits.text.trim()} crédito(s) ${_creditKind.label}.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Voltar')),
@@ -101,6 +103,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
       await context.read<AdminApi>().createCoupon(
         code: _code.text.trim(),
         creditAmount: int.parse(_credits.text.trim()),
+        creditKind: _creditKind,
         active: _active,
         startsAt: _iso(_startsAt),
         expiresAt: _iso(_expiresAt),
@@ -137,6 +140,26 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: const InputDecoration(labelText: 'Créditos'),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Tipo de crédito',
+            style: TextStyle(
+              color: AdminTheme.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: AdminCouponCreditKind.values.map((kind) {
+              return ChoiceChip(
+                label: Text(kind.label),
+                selected: _creditKind == kind,
+                onSelected: (_) => setState(() => _creditKind = kind),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 12),
           ListTile(

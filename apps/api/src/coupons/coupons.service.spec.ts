@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { CouponsService } from './coupons.service';
 
@@ -25,6 +25,7 @@ function coupon(overrides: Record<string, unknown> = {}) {
     id: 'coupon-1',
     code: 'AFTER2',
     creditAmount: 2,
+    creditKind: CouponCreditKind.COMMON,
     active: true,
     startsAt: null,
     expiresAt: null,
@@ -51,6 +52,7 @@ function setup(push?: { notifyCouponRedeemed: jest.Mock }) {
       create: jest.fn(),
     },
     creditWallet: {
+      findUnique: jest.fn().mockResolvedValue(null),
       upsert: jest.fn(),
     },
     venue: {
@@ -93,9 +95,30 @@ describe('CouponsService', () => {
         data: expect.objectContaining({
           code: 'AFTER2',
           creditAmount: 2,
+          creditKind: CouponCreditKind.COMMON,
           maxRedemptionsPerVenue: 1,
           createdById: 'admin-1',
         }),
+      }),
+    );
+  });
+
+  it('cria cupom VIP quando solicitado', async () => {
+    const { prisma, service } = setup();
+    prisma.creditCoupon.create.mockImplementation(async ({ data }) =>
+      coupon({ ...data, _count: { redemptions: 0 } }),
+    );
+
+    const created = await service.create(adminUser, {
+      code: 'VIP10',
+      creditAmount: 10,
+      creditKind: CouponCreditKind.VIP,
+    });
+
+    expect(created.creditKind).toBe(CouponCreditKind.VIP);
+    expect(prisma.creditCoupon.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ creditKind: CouponCreditKind.VIP }),
       }),
     );
   });
@@ -134,11 +157,17 @@ describe('CouponsService', () => {
     prisma.creditCoupon.findUnique.mockResolvedValue(coupon());
     prisma.creditCouponRedemption.count.mockResolvedValue(0);
     prisma.creditCouponRedemption.create.mockResolvedValue({ id: 'red-1' });
-    prisma.creditWallet.upsert.mockResolvedValue({ balance: 12 });
+    prisma.creditWallet.upsert.mockResolvedValue({ balance: 12, vipBalance: 0 });
 
     const result = await service.redeem(venueUser, ' after2 ');
 
-    expect(result).toEqual({ code: 'AFTER2', creditAmount: 2, balance: 12 });
+    expect(result).toEqual({
+      code: 'AFTER2',
+      creditAmount: 2,
+      creditKind: CouponCreditKind.COMMON,
+      balance: 12,
+      vipBalance: 0,
+    });
     expect(prisma.creditCoupon.findUnique).toHaveBeenCalledWith({
       where: { code: 'AFTER2' },
     });
@@ -149,6 +178,7 @@ describe('CouponsService', () => {
         venueNameSnapshot: 'Bar Central',
         venueCitySnapshot: 'São Paulo',
         creditAmount: 2,
+        creditKind: CouponCreditKind.COMMON,
       },
     });
     expect(prisma.creditWallet.upsert).toHaveBeenCalledWith(
@@ -163,6 +193,35 @@ describe('CouponsService', () => {
       prisma.creditWallet.upsert.mock.invocationCallOrder[0],
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('resgata cupom VIP creditando somente vipBalance', async () => {
+    const { prisma, service } = setup();
+    prisma.creditCoupon.findUnique.mockResolvedValue(
+      coupon({ creditKind: CouponCreditKind.VIP, creditAmount: 5 }),
+    );
+    prisma.creditCouponRedemption.count.mockResolvedValue(0);
+    prisma.creditCouponRedemption.create.mockResolvedValue({ id: 'red-vip' });
+    prisma.creditWallet.findUnique.mockResolvedValue({ balance: 20, vipBalance: 3 });
+    prisma.creditWallet.upsert.mockResolvedValue({ balance: 20, vipBalance: 8 });
+
+    const result = await service.redeem(venueUser, 'AFTER2');
+
+    expect(result).toEqual({
+      code: 'AFTER2',
+      creditAmount: 5,
+      creditKind: CouponCreditKind.VIP,
+      balance: 20,
+      vipBalance: 8,
+    });
+    expect(prisma.creditCouponRedemption.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ creditKind: CouponCreditKind.VIP }),
+    });
+    expect(prisma.creditWallet.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { vipBalance: { increment: 5 } },
+      }),
+    );
   });
 
   it.each([
@@ -252,6 +311,7 @@ describe('CouponsService', () => {
     });
     prisma.creditWallet.upsert.mockImplementation(async () => ({
       balance: 10 + redemptions * 2,
+      vipBalance: 0,
     }));
 
     const [first, second] = await Promise.allSettled([
@@ -296,7 +356,7 @@ describe('CouponsService', () => {
       redemptions += 1;
       return { id: `red-${redemptions}` };
     });
-    prisma.creditWallet.upsert.mockResolvedValue({ balance: 2 });
+    prisma.creditWallet.upsert.mockResolvedValue({ balance: 2, vipBalance: 0 });
 
     const other = { ...venueUser, userId: 'owner-2', email: 'outro@after.local' };
     const [first, second] = await Promise.allSettled([
@@ -345,6 +405,7 @@ describe('CouponsService', () => {
           id: 'red-1',
           venueId: 'venue-1',
           creditAmount: 2,
+          creditKind: CouponCreditKind.COMMON,
           redeemedAt: new Date('2026-09-02T12:00:00.000Z'),
           venueNameSnapshot: 'Bar Central',
           venueCitySnapshot: 'São Paulo',
@@ -359,6 +420,7 @@ describe('CouponsService', () => {
       expect.objectContaining({
         venueName: 'Bar Central',
         creditAmount: 2,
+        creditKind: CouponCreditKind.COMMON,
       }),
     ]);
   });
@@ -400,12 +462,14 @@ describe('CouponsService', () => {
     prisma.creditCoupon.findUnique.mockResolvedValue(coupon());
     prisma.creditCouponRedemption.count.mockResolvedValue(0);
     prisma.creditCouponRedemption.create.mockResolvedValue({ id: 'red-1' });
-    prisma.creditWallet.upsert.mockResolvedValue({ balance: 12 });
+    prisma.creditWallet.upsert.mockResolvedValue({ balance: 12, vipBalance: 0 });
 
     await expect(service.redeem(venueUser, 'after2')).resolves.toEqual({
       code: 'AFTER2',
       creditAmount: 2,
+      creditKind: CouponCreditKind.COMMON,
       balance: 12,
+      vipBalance: 0,
     });
     expect(push.notifyCouponRedeemed).toHaveBeenCalledTimes(1);
     expect(push.notifyCouponRedeemed).toHaveBeenCalledWith({
@@ -413,7 +477,9 @@ describe('CouponsService', () => {
       couponId: 'coupon-1',
       code: 'AFTER2',
       creditAmount: 2,
+      creditKind: CouponCreditKind.COMMON,
       balance: 12,
+      vipBalance: 0,
       venueName: 'Bar Central',
     });
   });

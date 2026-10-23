@@ -98,4 +98,31 @@ describe('Admin coupons HTTP', () => {
       .expect(400);
     expect(coupons.create).not.toHaveBeenCalled();
   });
+
+  it('admin rejeita tipo de crédito inválido', async () => {
+    await request(app.getHttpServer())
+      .post('/admin/coupons')
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .send({ code: 'VIP1', creditAmount: 1, creditKind: 'GOLD' })
+      .expect(400);
+    expect(coupons.create).not.toHaveBeenCalled();
+  });
+
+  it('admin cria cupom VIP', async () => {
+    coupons.create.mockResolvedValue({
+      id: 'c-vip',
+      code: 'VIP5',
+      creditAmount: 5,
+      creditKind: 'VIP',
+    });
+    await request(app.getHttpServer())
+      .post('/admin/coupons')
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .send({ code: 'VIP5', creditAmount: 5, creditKind: 'VIP' })
+      .expect(201);
+    expect(coupons.create).toHaveBeenCalledWith(
+      expect.objectContaining({ role: Role.ADMIN }),
+      expect.objectContaining({ code: 'VIP5', creditKind: 'VIP' }),
+    );
+  });
 });

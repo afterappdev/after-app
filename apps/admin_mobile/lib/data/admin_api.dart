@@ -71,6 +71,7 @@ abstract class AdminApi {
   Future<AdminCoupon> createCoupon({
     required String code,
     required int creditAmount,
+    AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
     bool active = true,
     String? startsAt,
     String? expiresAt,
@@ -279,6 +280,7 @@ class HttpAdminApi implements AdminApi {
   Future<AdminCoupon> createCoupon({
     required String code,
     required int creditAmount,
+    AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
     bool active = true,
     String? startsAt,
     String? expiresAt,
@@ -292,6 +294,7 @@ class HttpAdminApi implements AdminApi {
       body: {
         'code': code.trim(),
         'creditAmount': creditAmount,
+        'creditKind': creditKind.apiValue,
         'active': active,
         'maxRedemptionsPerVenue': maxRedemptionsPerVenue,
         'startsAt': ?start,

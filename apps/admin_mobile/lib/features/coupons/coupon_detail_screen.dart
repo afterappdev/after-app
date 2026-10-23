@@ -115,7 +115,9 @@ class _CouponDetailScreenState extends State<CouponDetailScreen> {
                 style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 6),
-              Text('${coupon.creditAmount} crédito(s) bônus'),
+              Text(
+                '${coupon.creditAmount} crédito(s) bônus · ${coupon.creditKind.label}',
+              ),
               const SizedBox(height: 4),
               Text('Status: ${coupon.statusLabel}'),
               Text('Utilizações: ${coupon.redemptionCount} de $limit'),
@@ -154,7 +156,9 @@ class _CouponDetailScreenState extends State<CouponDetailScreen> {
                       row.venueName,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    Text('${row.creditAmount} crédito(s)'),
+                    Text(
+                      '${row.creditAmount} crédito(s) · ${row.creditKind.label}',
+                    ),
                     Text(formatDateTime(row.redeemedAt)),
                   ],
                 ),

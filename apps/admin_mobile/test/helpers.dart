@@ -215,6 +215,7 @@ class FakeAdminApi implements AdminApi {
   Future<AdminCoupon> createCoupon({
     required String code,
     required int creditAmount,
+    AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
     bool active = true,
     String? startsAt,
     String? expiresAt,

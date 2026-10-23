@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -8,6 +9,9 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+export const COUPON_CREDIT_KINDS = ['COMMON', 'VIP'] as const;
+export type CouponCreditKindDto = (typeof COUPON_CREDIT_KINDS)[number];
 
 function optionalInt({ value }: { value: unknown }) {
   if (value === null || value === undefined || value === '') return null;
@@ -39,6 +43,10 @@ export class AdminCreateCouponDto {
   @IsInt()
   @Min(1)
   creditAmount!: number;
+
+  @IsOptional()
+  @IsIn(COUPON_CREDIT_KINDS)
+  creditKind?: CouponCreditKindDto;
 
   @IsOptional()
   @IsBoolean()

@@ -15,6 +15,7 @@ class _CouponApi extends FakeAdminApi {
 
   Paginated<AdminCoupon> page;
   int creates = 0;
+  AdminCouponCreditKind? lastCreditKind;
 
   @override
   Future<Paginated<AdminCoupon>> coupons({int page = 1, int limit = 20}) async {
@@ -25,6 +26,7 @@ class _CouponApi extends FakeAdminApi {
   Future<AdminCoupon> createCoupon({
     required String code,
     required int creditAmount,
+    AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
     bool active = true,
     String? startsAt,
     String? expiresAt,
@@ -32,6 +34,7 @@ class _CouponApi extends FakeAdminApi {
     int maxRedemptionsPerVenue = 1,
   }) async {
     creates += 1;
+    lastCreditKind = creditKind;
     if (creditAmount <= 0) {
       throw Exception('inválido');
     }
@@ -39,6 +42,7 @@ class _CouponApi extends FakeAdminApi {
       id: 'c1',
       code: code.toUpperCase(),
       creditAmount: creditAmount,
+      creditKind: creditKind,
       active: active,
       maxRedemptionsPerVenue: maxRedemptionsPerVenue,
       redemptionCount: 0,
@@ -82,6 +86,37 @@ void main() {
     expect(find.textContaining('AFTER2'), findsOneWidget);
     expect(find.textContaining('2 crédito'), findsOneWidget);
     expect(find.textContaining('Ativo'), findsOneWidget);
+    expect(find.textContaining('Comum'), findsOneWidget);
+  });
+
+  testWidgets('formulário envia tipo VIP ao criar', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final api = _CouponApi(
+      const Paginated(items: [], page: 1, limit: 20, total: 0, totalPages: 0),
+    );
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<AdminApi>.value(value: api),
+          ChangeNotifierProvider(create: (_) => CouponsController(api)),
+        ],
+        child: const MaterialApp(home: CouponFormScreen()),
+      ),
+    );
+    await tester.enterText(find.byType(TextField).at(0), 'VIPCODE');
+    await tester.enterText(find.byType(TextField).at(1), '3');
+    await tester.tap(find.text('VIP'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Criar cupom'));
+    await tester.tap(find.text('Criar cupom'));
+    await tester.pump();
+    await tester.tap(find.text('Criar'));
+    await tester.pumpAndSettle();
+    expect(api.creates, 1);
+    expect(api.lastCreditKind, AdminCouponCreditKind.vip);
   });
 
   testWidgets('formulário bloqueia créditos inválidos antes de criar', (tester) async {

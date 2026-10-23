@@ -100,7 +100,7 @@ class _CouponsScreenState extends State<CouponsScreen> {
                 type: MaterialType.transparency,
                 child: ListTile(
                 title: Text(
-                  '${coupon.code} · ${coupon.creditAmount} crédito(s)',
+                  '${coupon.code} · ${coupon.creditAmount} crédito(s) ${coupon.creditKind.label}',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: Text(

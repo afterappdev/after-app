@@ -1,10 +1,24 @@
 import 'json_util.dart';
 
+enum AdminCouponCreditKind { common, vip }
+
+AdminCouponCreditKind adminCouponCreditKindFromApi(String? raw) {
+  if (raw?.toUpperCase() == 'VIP') return AdminCouponCreditKind.vip;
+  return AdminCouponCreditKind.common;
+}
+
+extension AdminCouponCreditKindLabels on AdminCouponCreditKind {
+  String get label => this == AdminCouponCreditKind.vip ? 'VIP' : 'Comum';
+
+  String get apiValue => this == AdminCouponCreditKind.vip ? 'VIP' : 'COMMON';
+}
+
 class AdminCoupon {
   const AdminCoupon({
     required this.id,
     required this.code,
     required this.creditAmount,
+    this.creditKind = AdminCouponCreditKind.common,
     required this.active,
     required this.maxRedemptionsPerVenue,
     required this.redemptionCount,
@@ -17,6 +31,7 @@ class AdminCoupon {
   final String id;
   final String code;
   final int creditAmount;
+  final AdminCouponCreditKind creditKind;
   final bool active;
   final DateTime? startsAt;
   final DateTime? expiresAt;
@@ -38,6 +53,7 @@ class AdminCoupon {
       id: asString(json['id']),
       code: asString(json['code']),
       creditAmount: asInt(json['creditAmount']),
+      creditKind: adminCouponCreditKindFromApi(json['creditKind']?.toString()),
       active: json['active'] == true,
       startsAt: asDateTime(json['startsAt']),
       expiresAt: asDateTime(json['expiresAt']),
@@ -57,6 +73,7 @@ class AdminCouponRedemption {
     required this.venueId,
     required this.venueName,
     required this.creditAmount,
+    this.creditKind = AdminCouponCreditKind.common,
     required this.redeemedAt,
     this.city,
   });
@@ -66,6 +83,7 @@ class AdminCouponRedemption {
   final String venueName;
   final String? city;
   final int creditAmount;
+  final AdminCouponCreditKind creditKind;
   final DateTime redeemedAt;
 
   factory AdminCouponRedemption.fromJson(Map<String, dynamic> json) {
@@ -75,6 +93,7 @@ class AdminCouponRedemption {
       venueName: asString(json['venueName']),
       city: json['city']?.toString(),
       creditAmount: asInt(json['creditAmount']),
+      creditKind: adminCouponCreditKindFromApi(json['creditKind']?.toString()),
       redeemedAt: asDateTime(json['redeemedAt']) ?? DateTime.now(),
     );
   }

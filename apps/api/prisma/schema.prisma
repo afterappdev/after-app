@@ -471,12 +471,19 @@ model CardReconcileLock {
   cooldownUntil      DateTime?
 }
 
+enum CouponCreditKind {
+  COMMON
+  VIP
+}
+
 /// Bonus credits granted by an admin code. Not a store discount.
 model CreditCoupon {
   id                     String                   @id @default(cuid())
   /// Stored trimmed and uppercased. Unique regardless of client casing.
   code                   String                   @unique
   creditAmount           Int
+  /// COMMON credits go to CreditWallet.balance; VIP credits go to vipBalance.
+  creditKind             CouponCreditKind         @default(COMMON)
   active                 Boolean                  @default(true)
   startsAt               DateTime?
   expiresAt              DateTime?
@@ -503,6 +510,8 @@ model CreditCouponRedemption {
   /// Public city at redemption.
   venueCitySnapshot String?
   creditAmount Int
+  /// Snapshot of the coupon kind at redemption time.
+  creditKind   CouponCreditKind @default(COMMON)
   redeemedAt   DateTime     @default(now())
   ledgerEntries CreditLedgerEntry[]
 

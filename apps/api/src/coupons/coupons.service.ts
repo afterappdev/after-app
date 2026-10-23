@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AdminPushService } from '../admin/push/admin-push.service';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +25,7 @@ export type CouponWriteInput = {
 export type CouponCreateInput = CouponWriteInput & {
   code: string;
   creditAmount: number;
+  creditKind?: CouponCreditKind | `${CouponCreditKind}`;
 };
 
 @Injectable()
@@ -76,6 +77,7 @@ export class CouponsService {
         venueName: row.venue?.name ?? row.venueNameSnapshot,
         city: row.venue?.city ?? row.venueCitySnapshot,
         creditAmount: row.creditAmount,
+        creditKind: row.creditKind,
         redeemedAt: row.redeemedAt,
       })),
     };
@@ -90,12 +92,14 @@ export class CouponsService {
     const maxRedemptions = this.parseOptionalLimit(input.maxRedemptions);
     const maxRedemptionsPerVenue = input.maxRedemptionsPerVenue ?? 1;
     this.assertLimit(maxRedemptionsPerVenue, 'limite por estabelecimento');
+    const creditKind = this.normalizeCreditKind(input.creditKind);
 
     try {
       const created = await this.prisma.creditCoupon.create({
         data: {
           code,
           creditAmount,
+          creditKind,
           active: input.active ?? true,
           startsAt,
           expiresAt,
@@ -266,13 +270,20 @@ export class CouponsService {
           venueNameSnapshot: venue.name,
           venueCitySnapshot: venue.city,
           creditAmount: coupon.creditAmount,
+          creditKind: coupon.creditKind,
         },
       });
 
-      const wallet = await tx.creditWallet.upsert({
+      const wallet = this.applyCouponCredits(
+        await tx.creditWallet.findUnique({ where: { venueId: venue.id } }),
+        venue.id,
+        coupon.creditAmount,
+        coupon.creditKind,
+      );
+      const persisted = await tx.creditWallet.upsert({
         where: { venueId: venue.id },
-        create: { venueId: venue.id, balance: coupon.creditAmount },
-        update: { balance: { increment: coupon.creditAmount } },
+        create: wallet.create,
+        update: wallet.update,
       });
 
       return {
@@ -280,7 +291,9 @@ export class CouponsService {
         couponId: coupon.id,
         code: coupon.code,
         creditAmount: coupon.creditAmount,
-        balance: wallet.balance,
+        creditKind: coupon.creditKind,
+        balance: persisted.balance,
+        vipBalance: persisted.vipBalance,
         venueName: venue.name,
       };
     });
@@ -289,7 +302,9 @@ export class CouponsService {
     return {
       code: redeemed.code,
       creditAmount: redeemed.creditAmount,
+      creditKind: redeemed.creditKind,
       balance: redeemed.balance,
+      vipBalance: redeemed.vipBalance,
     };
   }
 
@@ -307,10 +322,53 @@ export class CouponsService {
     }
   }
 
+  private applyCouponCredits(
+    existing: { balance: number; vipBalance: number } | null,
+    venueId: string,
+    creditAmount: number,
+    creditKind: CouponCreditKind,
+  ): {
+    create: Prisma.CreditWalletCreateInput;
+    update: Prisma.CreditWalletUpdateInput;
+  } {
+    const isVip = creditKind === CouponCreditKind.VIP;
+    if (isVip) {
+      return {
+        create: {
+          venue: { connect: { id: venueId } },
+          balance: existing?.balance ?? 0,
+          vipBalance: (existing?.vipBalance ?? 0) + creditAmount,
+        },
+        update: { vipBalance: { increment: creditAmount } },
+      };
+    }
+    return {
+      create: {
+        venue: { connect: { id: venueId } },
+        balance: (existing?.balance ?? 0) + creditAmount,
+        vipBalance: existing?.vipBalance ?? 0,
+      },
+      update: { balance: { increment: creditAmount } },
+    };
+  }
+
+  private normalizeCreditKind(
+    raw: CouponCreditKind | `${CouponCreditKind}` | undefined,
+  ): CouponCreditKind {
+    if (raw == null || raw === CouponCreditKind.COMMON) {
+      return CouponCreditKind.COMMON;
+    }
+    if (raw === CouponCreditKind.VIP) {
+      return CouponCreditKind.VIP;
+    }
+    throw new BadRequestException('Tipo de crédito inválido.');
+  }
+
   private toSummary(row: {
     id: string;
     code: string;
     creditAmount: number;
+    creditKind: CouponCreditKind;
     active: boolean;
     startsAt: Date | null;
     expiresAt: Date | null;
@@ -324,6 +382,7 @@ export class CouponsService {
       id: row.id,
       code: row.code,
       creditAmount: row.creditAmount,
+      creditKind: row.creditKind,
       active: row.active,
       startsAt: row.startsAt,
       expiresAt: row.expiresAt,
