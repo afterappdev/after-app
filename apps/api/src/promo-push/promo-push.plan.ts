@@ -1,6 +1,10 @@
 import { civilDayWindow, startOfCivilDayUtc } from './promo-push.window';
 import { PromoContentKind } from './promo-push.copy';
 import { VipPushSlot } from './promo-push.slots';
+import {
+  planVipPushEventForSchedule,
+  VipPushTimingChoice,
+} from './vip-push-timing';
 
 export type PromoScheduleInput = {
   id: string;
@@ -8,6 +12,7 @@ export type PromoScheduleInput = {
   ibgeCityId: number | null;
   tier?: 'COMMON' | 'VIP' | null;
   vipCreditEntryId?: string | null;
+  pushTiming?: VipPushTimingChoice | null;
 };
 
 export type PromoPushEventDraft = {
@@ -40,6 +45,20 @@ export function planPromoPushEvents(input: {
   const drafts: PromoPushEventDraft[] = [];
   for (const schedule of input.schedules) {
     if (schedule.tier !== 'VIP' || !schedule.vipCreditEntryId) continue;
+    if (schedule.pushTiming) {
+      const draft = planVipPushEventForSchedule({
+        schedule: {
+          ...schedule,
+          pushTiming: schedule.pushTiming,
+        },
+        bannerId: input.bannerId,
+        venueId: input.venueId,
+        contentKind: input.contentKind,
+        now: input.now,
+      });
+      if (draft) drafts.push(draft);
+      continue;
+    }
     if (schedule.ibgeCityId == null) continue;
     const window = civilDayWindow(schedule.displayDate);
     if (window.expiresAt.getTime() <= input.now.getTime()) continue;

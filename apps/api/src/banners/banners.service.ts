@@ -24,6 +24,10 @@ import {
   normalizeBannerIdempotencyKey,
 } from './banner-create-idempotency';
 import { quotePublication } from './banner-quote';
+import {
+  normalizeVipPublicationInput,
+  VipPublicationPlan,
+} from '../promo-push/vip-push-timing';
 
 @Injectable()
 export class BannersService {
@@ -102,12 +106,22 @@ export class BannersService {
     contentKind?: PromoContentKind,
     vipDates: string[] = [],
     idempotencyKeyRaw?: string,
+    vipPublications?: VipPublicationPlan[],
   ) {
+    const now = new Date();
+    const vipInput = normalizeVipPublicationInput(
+      vipDates,
+      vipPublications,
+      now,
+    );
     const quote = quotePublication({
       dates,
-      vipDates,
+      vipDates: vipInput.vipDates,
       creditPerDisplayDay: this.creditPerDisplayDay(),
     });
+    const timingByDate = new Map(
+      vipInput.plans.map((plan) => [plan.date, plan.pushTiming]),
+    );
     const venue = await this.requireVenueOwned(userId);
     const wallet = await this.prisma.creditWallet.findUnique({
       where: { venueId: venue.id },
@@ -139,7 +153,8 @@ export class BannersService {
       ? hashBannerCreateRequest({
           imageUrl,
           dates,
-          vipDates,
+          vipDates: vipInput.vipDates,
+          vipPublications: vipInput.plans,
           title,
           description,
           contentKind,
@@ -212,6 +227,10 @@ export class BannersService {
               citySnapshot: venue.city,
               ibgeCityId,
               tier: day.tier,
+              vipPushTiming:
+                day.tier === 'VIP'
+                  ? (timingByDate.get(day.date) ?? null)
+                  : null,
             })),
           },
         },
@@ -249,20 +268,30 @@ export class BannersService {
     // The credit debit and the banner are already committed. An outbox failure
     // must not refund or hide the publication. The insert is idempotent on
     // bannerScheduleId, so a later retry cannot duplicate the event or the debit.
-    const schedules = banner.schedules.map((schedule, index) => ({
-      id: schedule.id,
-      displayDate: schedule.displayDate,
-      ibgeCityId: schedule.ibgeCityId,
-      tier: schedule.tier ?? quote.days[index]?.tier ?? 'COMMON',
-      vipCreditEntryId: schedule.vipCreditEntryId ?? null,
-    }));
+    const schedules = banner.schedules.map((schedule, index) => {
+      const dayLabel = formatScheduleDate(schedule.displayDate);
+      const tier = schedule.tier ?? quote.days[index]?.tier ?? 'COMMON';
+      return {
+        id: schedule.id,
+        displayDate: schedule.displayDate,
+        ibgeCityId: schedule.ibgeCityId,
+        tier,
+        vipCreditEntryId: schedule.vipCreditEntryId ?? null,
+        pushTiming:
+          tier === 'VIP'
+            ? (schedule.vipPushTiming ??
+              timingByDate.get(dayLabel) ??
+              null)
+            : null,
+      };
+    });
     if (runSideEffects) {
       try {
         await this.promoPush.recordSchedules(this.prisma, {
           bannerId: banner.id,
           venueId: venue.id,
           contentKind: contentKind ?? null,
-          now: new Date(),
+          now,
           schedules,
         });
       } catch {
@@ -271,7 +300,7 @@ export class BannersService {
             bannerId: banner.id,
             venueId: venue.id,
             contentKind: contentKind ?? null,
-            now: new Date(),
+            now,
             schedules,
           });
         } catch {
@@ -329,6 +358,13 @@ function assertBalances(
 }
 
 /** Parses YYYY-MM-DD as a UTC date-only value for Prisma @db.Date. */
+function formatScheduleDate(value: Date): string {
+  const y = value.getUTCFullYear();
+  const m = (value.getUTCMonth() + 1).toString().padStart(2, '0');
+  const d = value.getUTCDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function parseDateOnly(value: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
   if (!m) {

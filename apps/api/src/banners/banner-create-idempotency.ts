@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PromoContentKind } from '../promo-push/promo-push.copy';
+import { VipPublicationPlan } from '../promo-push/vip-push-timing';
 
 const KEY_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -21,16 +22,21 @@ export function hashBannerCreateRequest(input: {
   imageUrl: string;
   dates: string[];
   vipDates: string[];
+  vipPublications?: VipPublicationPlan[];
   title?: string;
   description?: string;
   contentKind?: PromoContentKind | null;
 }): string {
   const dates = [...input.dates].map((d) => d.trim()).sort();
   const vipDates = [...input.vipDates].map((d) => d.trim()).sort();
+  const vipPublications = [...(input.vipPublications ?? [])]
+    .map((p) => ({ date: p.date.trim(), pushTiming: p.pushTiming }))
+    .sort((a, b) => a.date.localeCompare(b.date));
   const canonical = JSON.stringify({
     imageUrl: input.imageUrl.trim(),
     dates,
     vipDates,
+    vipPublications,
     title: input.title?.trim() ?? '',
     description: input.description?.trim() ?? '',
     contentKind: input.contentKind ?? null,

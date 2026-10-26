@@ -5,15 +5,39 @@ import {
   Headers,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { IsArray, IsIn, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  allowedVipPushTimingsForAllDates,
+  VipPushTimingChoice,
+} from '../promo-push/vip-push-timing';
 import {
   AuthUser,
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BannersService } from './banners.service';
+
+class VipPublicationDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date!: string;
+
+  @IsIn(['IMMEDIATE', 'SLOT_11', 'SLOT_17'])
+  pushTiming!: VipPushTimingChoice;
+}
 
 class CreateBannerDto {
   @IsUrl({ require_tld: false })
@@ -47,6 +71,12 @@ class CreateBannerDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VipPublicationDto)
+  vipPublications?: VipPublicationDto[];
 }
 
 @Controller('banners')
@@ -62,6 +92,23 @@ export class BannersController {
   @Get('pricing')
   pricing() {
     return this.bannersService.pricing();
+  }
+
+  /** Opções de horário VIP válidas para as datas civis informadas (SP). */
+  @Get('vip-push-options')
+  vipPushOptions(@Query('dates') dates?: string) {
+    const list =
+      dates
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0) ?? [];
+    const options = allowedVipPushTimingsForAllDates(list, new Date());
+    return {
+      dates: list,
+      options,
+      officialSlots: ['11:00', '17:00'],
+      timeZone: 'America/Sao_Paulo',
+    };
   }
 
   @Post(':id/cancel')
@@ -85,6 +132,7 @@ export class BannersController {
       dto.contentKind ?? null,
       dto.vipDates ?? [],
       idempotencyKey,
+      dto.vipPublications,
     );
   }
 }
