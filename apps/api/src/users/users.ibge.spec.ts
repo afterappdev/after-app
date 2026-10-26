@@ -30,8 +30,10 @@ describe('UsersService IBGE city', () => {
       prisma as never,
       { deleteStoredUpload: jest.fn() } as never,
       { revokeForAccount: jest.fn() } as never,
-      locations as unknown as LocationsService,
+      {} as never,
     );
+    (service as unknown as { locations: LocationsService }).locations =
+      locations as unknown as LocationsService;
 
     await service.updateMe('user-1', { city: 'São Paulo', state: 'SP' });
 
@@ -70,8 +72,10 @@ describe('UsersService IBGE city', () => {
       prisma as never,
       { deleteStoredUpload: jest.fn() } as never,
       { revokeForAccount: jest.fn() } as never,
-      locations as unknown as LocationsService,
+      {} as never,
     );
+    (service as unknown as { locations: LocationsService }).locations =
+      locations as unknown as LocationsService;
 
     await service.updateMe('user-1', { city: 'Bom Jesus', state: 'SP' });
 

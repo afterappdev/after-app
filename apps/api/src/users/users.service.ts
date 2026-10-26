@@ -1,5 +1,19 @@
-import { Inject, Injectable, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
-import { Prisma, Role } from '@prisma/client';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Optional,
+} from '@nestjs/common';
+import { AccountLifecycleStatus, Prisma, Role } from '@prisma/client';
+import {
+  anonymizeVenueFinancialPii,
+  listFinancialPurgeBlockers,
+} from './account-purge.financial';
+import { AccountPurgeAuditService } from './account-purge.audit';
+import { UploadPurgeIncompleteError } from './account-purge.upload';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import * as bcrypt from 'bcrypt';
 import { AppleAuthTokensService } from '../auth/apple-auth-tokens.service';
@@ -7,6 +21,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { LocationsService } from '../locations/locations.service';
 import { resolveUserAgeBand } from './age-band';
+import { AccountLifecycleService } from './account-lifecycle.service';
+
+export type AdminPurgeStrategy = 'hard' | 'tombstone';
+
+export type PurgeAccountOptions = {
+  strategy?: AdminPurgeStrategy;
+  auditSource?: 'admin' | 'scheduler';
+};
 
 @Injectable()
 export class UsersService {
@@ -14,6 +36,9 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly mediaCleanup: MediaCleanupService,
     private readonly appleTokens: AppleAuthTokensService,
+    private readonly accountLifecycle: AccountLifecycleService,
+    @Optional()
+    private readonly purgeAudit?: AccountPurgeAuditService,
     @Optional()
     @Inject(LocationsService)
     private readonly locations?: LocationsService,
@@ -218,7 +243,32 @@ export class UsersService {
     }
   }
 
+  /** Owner-initiated deletion: 30-day grace period, no immediate purge. */
   async deleteAccount(userId: string) {
+    return this.accountLifecycle.scheduleAccountDeletion(userId);
+  }
+
+  async requestAccountDeletion(userId: string) {
+    return this.accountLifecycle.scheduleAccountDeletion(userId);
+  }
+
+  async cancelAccountDeletion(userId: string) {
+    return this.accountLifecycle.cancelAccountDeletion(userId);
+  }
+
+  async getDeletionStatus(userId: string) {
+    return this.accountLifecycle.getDeletionStatus(userId);
+  }
+
+  /**
+   * Orchestrated permanent removal (admin). Respects financial blockers unless
+   * strategy=tombstone. Scheduler uses the staged executor instead.
+   */
+  async purgeAccountPermanently(
+    userId: string,
+    options?: PurgeAccountOptions,
+  ): Promise<{ ok: true; outcome: 'hard_deleted' | 'tombstoned' }> {
+    const strategy = options?.strategy ?? 'hard';
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -238,11 +288,52 @@ export class UsersService {
       );
     }
 
-    await this.appleTokens.revokeForAccount(user);
+    const blockers = await this.listFinancialPurgeBlockersForUser(userId);
+    if (blockers.length > 0 && strategy === 'hard') {
+      throw new ConflictException({
+        code: 'financial_blockers',
+        reasons: blockers,
+        hint:
+          'Use query strategy=tombstone to anonymize while retaining financial records.',
+      });
+    }
 
-    const urls = await this.deleteUserRecord(this.prisma, userId);
-    await this.mediaCleanup.deleteStoredUploads(urls);
-    return { ok: true };
+    await this.anonymizeFinancialRetention(userId);
+    this.purgeAudit?.log('data_anonymized', {
+      userId,
+      source: options?.auditSource ?? 'admin',
+    });
+
+    const subject = await this.loadUserForPermanentPurge(userId);
+    if (!subject) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    const urls = this.collectUploadUrlsFromUser(subject);
+
+    await this.revokeOAuthBeforePermanentRemoval(userId);
+    const outcome = await this.finalizePermanentUserRemoval(userId);
+
+    const report = await this.mediaCleanup.deleteStoredUploadsWithReport(urls);
+    if (report.failedUrls.length > 0) {
+      this.purgeAudit?.log('uploads_partial_failure', {
+        userId,
+        failedCount: report.failedUrls.length,
+        source: options?.auditSource ?? 'admin',
+      });
+      throw new UploadPurgeIncompleteError(report.failedUrls);
+    }
+    this.purgeAudit?.log('uploads_removed', {
+      userId,
+      removed: report.removed,
+      source: options?.auditSource ?? 'admin',
+    });
+
+    this.purgeAudit?.log(
+      outcome === 'hard_deleted' ? 'admin_purge_hard' : 'admin_purge_tombstone',
+      { userId, strategy, blockerCount: blockers.length },
+    );
+
+    return { ok: true, outcome };
   }
 
   async deleteUserRecord(
@@ -269,12 +360,7 @@ export class UsersService {
       );
     }
 
-    const urls: Array<string | null | undefined> = [user.avatarUrl];
-    if (user.venue) {
-      urls.push(user.venue.logoUrl, user.venue.coverUrl);
-      urls.push(...user.venue.photos.map((photo) => photo.url));
-      urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
-    }
+    const urls = this.collectUploadUrlsFromUser(user);
 
     await this.deleteRelatedOnboarding(db, {
       email: user.email,
@@ -300,5 +386,160 @@ export class UsersService {
       or.push({ provider: 'google', providerId: user.googleId });
     }
     await db.socialOnboardingToken.deleteMany({ where: { OR: or } });
+  }
+
+  collectUploadUrlsFromUser(user: {
+    avatarUrl: string | null;
+    venue?: {
+      logoUrl: string | null;
+      coverUrl: string | null;
+      photos: Array<{ url: string }>;
+      banners: Array<{ imageUrl: string | null }>;
+    } | null;
+  }): string[] {
+    const urls: Array<string | null | undefined> = [user.avatarUrl];
+    if (user.venue) {
+      urls.push(user.venue.logoUrl, user.venue.coverUrl);
+      urls.push(...user.venue.photos.map((photo) => photo.url));
+      urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
+    }
+    return urls.filter((url): url is string => !!url?.trim());
+  }
+
+  async loadUserForPermanentPurge(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        venue: {
+          include: {
+            photos: { select: { url: true } },
+            banners: { select: { imageUrl: true } },
+          },
+        },
+      },
+    });
+  }
+
+  async listFinancialPurgeBlockersForUser(userId: string): Promise<string[]> {
+    return listFinancialPurgeBlockers(this.prisma, userId);
+  }
+
+  async revokeOAuthBeforePermanentRemoval(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        appleId: true,
+        appleRefreshTokenEnc: true,
+        appleClientId: true,
+      },
+    });
+    if (user) {
+      await this.appleTokens.revokeForAccount(user);
+    }
+  }
+
+  async anonymizeFinancialRetention(userId: string): Promise<void> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { ownerUserId: userId },
+      select: { id: true },
+    });
+    if (venue) {
+      await anonymizeVenueFinancialPii(this.prisma, venue.id);
+    }
+  }
+
+  async tombstonePurgedAccount(userId: string): Promise<void> {
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { accountStatus: true },
+    });
+    if (existing?.accountStatus === AccountLifecycleStatus.PURGED) {
+      return;
+    }
+    const tombstoneEmail = `purged+${userId}@deleted.after.local`;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: 'Conta excluída',
+        email: tombstoneEmail,
+        passwordHash: '',
+        googleId: null,
+        appleId: null,
+        appleRefreshTokenEnc: null,
+        appleClientId: null,
+        avatarUrl: null,
+        state: '',
+        city: '',
+        ageBand: null,
+        ibgeCityId: null,
+        promoNotificationsEnabled: false,
+        accountStatus: AccountLifecycleStatus.PURGED,
+        deletionRequestedAt: null,
+        permanentDeletionAt: null,
+        sessionInvalidatedAt: new Date(),
+        sessionVersion: { increment: 1 },
+      },
+    });
+    const venue = await this.prisma.venue.findUnique({
+      where: { ownerUserId: userId },
+      select: { id: true },
+    });
+    if (venue) {
+      await this.prisma.venue.update({
+        where: { id: venue.id },
+        data: {
+          name: 'Estabelecimento removido',
+          description: null,
+          logoUrl: null,
+          coverUrl: null,
+          documentType: null,
+          documentDigits: null,
+          contacts: Prisma.DbNull,
+        },
+      });
+    }
+  }
+
+  /**
+   * Hard delete when no financial Restrict blockers; otherwise tombstone only.
+   */
+  async finalizePermanentUserRemoval(
+    userId: string,
+  ): Promise<'hard_deleted' | 'tombstoned'> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        appleId: true,
+        appleRefreshTokenEnc: true,
+        appleClientId: true,
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    if (user.role === Role.ADMIN) {
+      throw new BadRequestException(
+        'Conta administrativa não pode ser excluída por este fluxo.',
+      );
+    }
+
+    const blockers = await this.listFinancialPurgeBlockersForUser(userId);
+    if (blockers.length > 0) {
+      const identity = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, appleId: true, googleId: true },
+      });
+      if (identity) {
+        await this.deleteRelatedOnboarding(this.prisma, identity);
+      }
+      await this.tombstonePurgedAccount(userId);
+      return 'tombstoned';
+    }
+
+    await this.deleteUserRecord(this.prisma, userId);
+    return 'hard_deleted';
   }
 }

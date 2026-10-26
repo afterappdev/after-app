@@ -95,4 +95,13 @@ describe('MediaCleanupService', () => {
     ).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalled();
   });
+
+  it('deleteStoredUploadsWithReport lista falhas', async () => {
+    r2.deleteByUrl.mockRejectedValueOnce(new Error('R2 down'));
+    const report = await service.deleteStoredUploadsWithReport([
+      'https://media.app-after.com.br/uploads/abc.jpg',
+    ]);
+    expect(report.attempted).toBe(1);
+    expect(report.failedUrls).toHaveLength(1);
+  });
 });

@@ -3,8 +3,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AccountDeletionService } from './account-deletion.service';
+import { AccountLifecycleService } from './account-lifecycle.service';
 import { AccountDeletionMailer } from './account-deletion.mailer';
-import { UsersService } from './users.service';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { DeleteRequestDto } from './account-deletion.dto';
@@ -26,6 +26,7 @@ function createPrisma() {
       findUnique: jest.Mock;
       findFirst: jest.Mock;
     };
+    accountPurgeJob: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
   } = {
     user: { findUnique: jest.fn(), delete: jest.fn() },
@@ -34,6 +35,11 @@ function createPrisma() {
       updateMany: jest.fn(),
       findUnique: jest.fn(),
       findFirst: jest.fn(),
+    },
+    accountPurgeJob: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn(),
+      update: jest.fn(),
     },
     $transaction: jest.fn(),
   };
@@ -77,7 +83,7 @@ describe('AccountDeletionService', () => {
   const originalEnv = { ...process.env };
   let prisma: ReturnType<typeof createPrisma>;
   let mailer: CapturingMailer;
-  let users: { deleteAccount: jest.Mock; deleteUserRecord: jest.Mock };
+  let lifecycle: { scheduleAccountDeletionTx: jest.Mock };
   let service: AccountDeletionService;
   const logs: string[] = [];
 
@@ -86,15 +92,19 @@ describe('AccountDeletionService', () => {
     process.env.PUBLIC_APP_URL = 'https://app-after.com.br';
     delete process.env.RESEND_API_KEY;
     prisma = createPrisma();
+    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     mailer = new CapturingMailer();
-    users = {
-      deleteAccount: jest.fn().mockResolvedValue({ ok: true }),
-      deleteUserRecord: jest.fn().mockResolvedValue(['/uploads/a.jpg']),
+    lifecycle = {
+      scheduleAccountDeletionTx: jest.fn().mockResolvedValue({
+        deletionRequestedAt: new Date(),
+        permanentDeletionAt: new Date(),
+        remainingSeconds: 100,
+      }),
     };
     logs.length = 0;
     service = new AccountDeletionService(
       prisma as never,
-      users as unknown as UsersService,
+      lifecycle as unknown as AccountLifecycleService,
       mailer,
     );
     jest.spyOn(service['logger'], 'log').mockImplementation((m) => {
@@ -150,26 +160,28 @@ describe('AccountDeletionService', () => {
     expect(JSON.stringify(created)).not.toContain(token);
   });
 
-  it('token válido permite confirmação e exclui a conta', async () => {
+  it('token válido agenda exclusão e marca pedido como usado', async () => {
     const token = generateDeletionToken();
     const tokenHash = hashDeletionToken(token);
+    prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 1 });
     prisma.accountDeletionRequest.findFirst.mockResolvedValue({
       userId: 'user-1',
     });
 
     const result = await service.confirmDeletion(token);
     expect(result.ok).toBe(true);
-    expect(result.message).toBe('Sua conta foi excluída.');
+    expect(result.message).toMatch(/agendada/i);
     expect(JSON.stringify(result)).not.toContain(token);
-    expect(prisma.accountDeletionRequest.findFirst).toHaveBeenCalledWith({
-      where: {
-        tokenHash,
-        usedAt: null,
-        expiresAt: { gt: expect.any(Date) },
-      },
-      select: { userId: true },
-    });
-    expect(users.deleteAccount).toHaveBeenCalledWith('user-1');
+    expect(prisma.accountDeletionRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tokenHash }),
+        data: { usedAt: expect.any(Date) },
+      }),
+    );
+    expect(lifecycle.scheduleAccountDeletionTx).toHaveBeenCalledWith(
+      prisma,
+      'user-1',
+    );
   });
 
   it('token expirado ou inexistente é rejeitado', async () => {
@@ -177,16 +189,16 @@ describe('AccountDeletionService', () => {
     await expect(
       service.confirmDeletion(generateDeletionToken()),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(users.deleteAccount).not.toHaveBeenCalled();
+    expect(lifecycle.scheduleAccountDeletionTx).not.toHaveBeenCalled();
   });
 
-  it('token usado é rejeitado e não exclui de novo', async () => {
+  it('token usado é rejeitado e não agenda de novo', async () => {
     prisma.accountDeletionRequest.findFirst.mockResolvedValue(null);
     const token = generateDeletionToken();
     await expect(service.confirmDeletion(token)).rejects.toThrow(
       ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
     );
-    expect(users.deleteAccount).not.toHaveBeenCalled();
+    expect(lifecycle.scheduleAccountDeletionTx).not.toHaveBeenCalled();
   });
 
   it('token inválido é rejeitado', async () => {
@@ -196,26 +208,28 @@ describe('AccountDeletionService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('conta só é excluída após confirmação', async () => {
+  it('conta só é agendada após confirmação', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'USER' });
     prisma.accountDeletionRequest.updateMany.mockResolvedValue({ count: 0 });
     prisma.accountDeletionRequest.create.mockResolvedValue({ id: 'req-1' });
     await service.requestDeletion('user@after.local');
-    expect(users.deleteAccount).not.toHaveBeenCalled();
-    expect(users.deleteUserRecord).not.toHaveBeenCalled();
+    expect(lifecycle.scheduleAccountDeletionTx).not.toHaveBeenCalled();
   });
 
-  it('segunda confirmação não executa exclusão novamente', async () => {
+  it('segunda confirmação não agenda novamente', async () => {
     const token = generateDeletionToken();
-    prisma.accountDeletionRequest.findFirst
-      .mockResolvedValueOnce({ userId: 'user-1' })
-      .mockResolvedValueOnce(null);
+    prisma.accountDeletionRequest.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    prisma.accountDeletionRequest.findFirst.mockResolvedValue({
+      userId: 'user-1',
+    });
 
     await service.confirmDeletion(token);
     await expect(service.confirmDeletion(token)).rejects.toThrow(
       ACCOUNT_DELETION_INVALID_LINK_MESSAGE,
     );
-    expect(users.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(lifecycle.scheduleAccountDeletionTx).toHaveBeenCalledTimes(1);
   });
 
   it('response não permite inferir se o e-mail existe', async () => {
@@ -261,8 +275,7 @@ describe('AccountDeletionService', () => {
     mailer.fail = true;
     const result = await service.requestDeletion('user@after.local');
     expect(result).toEqual({ message: GENERIC });
-    expect(users.deleteAccount).not.toHaveBeenCalled();
-    expect(users.deleteUserRecord).not.toHaveBeenCalled();
+    expect(lifecycle.scheduleAccountDeletionTx).not.toHaveBeenCalled();
   });
 
   it('e-mail de conta ADMIN retorna a mesma mensagem genérica e não cria pedido', async () => {

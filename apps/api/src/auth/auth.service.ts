@@ -9,7 +9,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Prisma, PurchaseStatus, Role } from '@prisma/client';
+import {
+  AccountLifecycleStatus,
+  Prisma,
+  PurchaseStatus,
+  Role,
+} from '@prisma/client';
 import appleSignin from 'apple-signin-auth';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -74,6 +79,10 @@ import {
 } from './social-onboarding';
 import { isProduction } from '../common/env';
 import { AdminPushService } from '../admin/push/admin-push.service';
+import {
+  ACCOUNT_RECOVERY_TTL_SECONDS,
+  ACCOUNT_RECOVERY_TYP,
+} from '../users/account-recovery';
 
 type OAuthStatePayload = {
   redirect: string;
@@ -89,6 +98,21 @@ type AuthUserRecord = {
   city: string;
   avatarUrl: string | null;
   venue: { id: string } | null;
+  sessionVersion: number;
+  accountStatus?: AccountLifecycleStatus;
+  deletionRequestedAt?: Date | null;
+  permanentDeletionAt?: Date | null;
+};
+
+type AccountRecoveryLoginResult = {
+  accountPendingDeletion: true;
+  recoveryToken: string;
+  deletionStatus: {
+    accountStatus: AccountLifecycleStatus;
+    deletionRequestedAt: Date | null;
+    permanentDeletionAt: Date | null;
+    remainingSeconds: number;
+  };
 };
 
 type SocialProfileInput = {
@@ -124,7 +148,8 @@ type SocialAuthResult =
         avatarUrl: string | null;
         venueId: string | null;
       };
-    };
+    }
+  | AccountRecoveryLoginResult;
 
 @Injectable()
 export class AuthService {
@@ -240,11 +265,15 @@ export class AuthService {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
+    if (user.accountStatus === AccountLifecycleStatus.PURGED) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
     if (user.role === Role.ADMIN) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
-    return this.buildAuthResponse(user);
+    return this.sessionOrRecoveryLoginResponse(user);
   }
 
   async loginAdmin(dto: LoginDto) {
@@ -784,7 +813,13 @@ export class AuthService {
     if ('onboardingToken' in result) {
       return attachOAuthOnboarding(redirect, result.onboardingToken);
     }
-    return attachOAuthToken(redirect, result.accessToken);
+    if ('accountPendingDeletion' in result && result.accountPendingDeletion) {
+      return attachOAuthToken(redirect, result.recoveryToken);
+    }
+    if ('accessToken' in result) {
+      return attachOAuthToken(redirect, result.accessToken);
+    }
+    throw new Error('Resposta de login social incompleta.');
   }
 
   private async resolveSocialLogin(
@@ -799,7 +834,7 @@ export class AuthService {
         throw new UnauthorizedException('Credenciais inválidas');
       }
       await this.persistAppleRevocable(user.id, input.appleRevocable);
-      return this.buildAuthResponse(user);
+      return this.sessionOrRecoveryLoginResponse(user);
     }
 
     let email = input.email?.trim().toLowerCase() || null;
@@ -906,7 +941,7 @@ export class AuthService {
       throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
     }
     if (existing.googleId === input.providerId) {
-      return this.buildAuthResponse(existing);
+      return this.sessionOrRecoveryLoginResponse(existing);
     }
 
     try {
@@ -926,7 +961,7 @@ export class AuthService {
           again.googleId === input.providerId &&
           again.role !== Role.ADMIN
         ) {
-          return this.buildAuthResponse(again);
+          return this.sessionOrRecoveryLoginResponse(again);
         }
         throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
       }
@@ -957,7 +992,7 @@ export class AuthService {
     ) {
       throw new ConflictException(SOCIAL_GOOGLE_IDENTITY_CONFLICT_MESSAGE);
     }
-    return this.buildAuthResponse(linked);
+    return this.sessionOrRecoveryLoginResponse(linked);
   }
 
   private fallbackOAuthRedirect(state: string | undefined) {
@@ -1329,11 +1364,55 @@ export class AuthService {
     );
   }
 
+  private sessionOrRecoveryLoginResponse(
+    user: AuthUserRecord,
+  ):
+    | ReturnType<AuthService['buildAuthResponse']>
+    | AccountRecoveryLoginResult {
+    if (user.accountStatus === AccountLifecycleStatus.PENDING_DELETION) {
+      return this.buildAccountRecoveryLoginResponse(user);
+    }
+    return this.buildAuthResponse(user);
+  }
+
+  private buildAccountRecoveryLoginResponse(
+    user: AuthUserRecord,
+  ): AccountRecoveryLoginResult {
+    const recoveryToken = this.jwt.sign(
+      {
+        sub: user.id,
+        email: user.email,
+        role: user.role,
+        typ: ACCOUNT_RECOVERY_TYP,
+      },
+      { expiresIn: ACCOUNT_RECOVERY_TTL_SECONDS },
+    );
+    const permanentDeletionAt = user.permanentDeletionAt ?? null;
+    const remainingSeconds =
+      permanentDeletionAt != null
+        ? Math.max(
+            0,
+            Math.floor((permanentDeletionAt.getTime() - Date.now()) / 1000),
+          )
+        : 0;
+    return {
+      accountPendingDeletion: true,
+      recoveryToken,
+      deletionStatus: {
+        accountStatus: AccountLifecycleStatus.PENDING_DELETION,
+        deletionRequestedAt: user.deletionRequestedAt ?? null,
+        permanentDeletionAt,
+        remainingSeconds,
+      },
+    };
+  }
+
   private buildAuthResponse(user: AuthUserRecord) {
     const accessToken = this.jwt.sign({
       sub: user.id,
       email: user.email,
       role: user.role,
+      sv: user.sessionVersion ?? 0,
     });
 
     return {

@@ -8,7 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { isProduction } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
-import { UsersService } from './users.service';
+import { AccountLifecycleService } from './account-lifecycle.service';
 import { AccountDeletionMailer } from './account-deletion.mailer';
 import { sanitizeMailerError } from './resend-account-deletion.mailer';
 import {
@@ -23,13 +23,16 @@ import {
   normalizeAccountEmail,
 } from './account-deletion.crypto';
 
+const ACCOUNT_DELETION_SCHEDULED_MESSAGE =
+  'Sua exclusão foi agendada. Você tem 30 dias para recuperar a conta.';
+
 @Injectable()
 export class AccountDeletionService {
   private readonly logger = new Logger(AccountDeletionService.name);
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly users: UsersService,
+    private readonly lifecycle: AccountLifecycleService,
     private readonly mailer: AccountDeletionMailer,
   ) {}
 
@@ -106,21 +109,34 @@ export class AccountDeletionService {
 
     const tokenHash = hashDeletionToken(raw);
 
-    const row = await this.prisma.accountDeletionRequest.findFirst({
-      where: {
-        tokenHash,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      select: { userId: true },
-    });
-    if (!row) {
-      throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
-    }
-
     try {
-      await this.users.deleteAccount(row.userId);
+      await this.prisma.$transaction(async (tx) => {
+        const marked = await tx.accountDeletionRequest.updateMany({
+          where: {
+            tokenHash,
+            usedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          data: { usedAt: new Date() },
+        });
+        if (marked.count !== 1) {
+          throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
+        }
+
+        const row = await tx.accountDeletionRequest.findFirst({
+          where: { tokenHash },
+          select: { userId: true },
+        });
+        if (!row) {
+          throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
+        }
+
+        await this.lifecycle.scheduleAccountDeletionTx(tx, row.userId);
+      });
     } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
       if (err instanceof NotFoundException) {
         throw new BadRequestException(ACCOUNT_DELETION_INVALID_LINK_MESSAGE);
       }
@@ -133,6 +149,6 @@ export class AccountDeletionService {
       throw err;
     }
 
-    return { ok: true, message: 'Sua conta foi excluída.' };
+    return { ok: true, message: ACCOUNT_DELETION_SCHEDULED_MESSAGE };
   }
 }

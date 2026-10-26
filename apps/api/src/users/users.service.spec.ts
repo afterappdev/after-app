@@ -1,6 +1,7 @@
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { AppleAuthTokensService } from '../auth/apple-auth-tokens.service';
 import { UsersService } from './users.service';
+import { AccountLifecycleService } from './account-lifecycle.service';
 import { ServiceUnavailableException } from '@nestjs/common';
 
 const USER_ID = 'user-1';
@@ -21,6 +22,17 @@ function createPrisma() {
     socialOnboardingToken: {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    venue: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    creditObligation: { count: jest.fn().mockResolvedValue(0) },
+    creditPurchase: {
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    creditRefundAudit: { count: jest.fn().mockResolvedValue(0) },
+    creditLedgerEntry: { count: jest.fn().mockResolvedValue(0) },
+    vipCreditEntry: { count: jest.fn().mockResolvedValue(0) },
   };
 }
 
@@ -28,6 +40,11 @@ function cleanupMock() {
   return {
     deleteStoredUpload: jest.fn().mockResolvedValue(undefined),
     deleteStoredUploads: jest.fn().mockResolvedValue(undefined),
+    deleteStoredUploadsWithReport: jest.fn().mockResolvedValue({
+      attempted: 0,
+      removed: 0,
+      failedUrls: [],
+    }),
   };
 }
 
@@ -37,20 +54,35 @@ function appleMock() {
   };
 }
 
+function lifecycleMock() {
+  return {
+    scheduleAccountDeletion: jest.fn().mockResolvedValue({
+      deletionRequestedAt: new Date(),
+      permanentDeletionAt: new Date(),
+      remainingSeconds: 100,
+    }),
+    cancelAccountDeletion: jest.fn(),
+    getDeletionStatus: jest.fn(),
+  };
+}
+
 describe('UsersService media cleanup', () => {
   let prisma: ReturnType<typeof createPrisma>;
   let mediaCleanup: ReturnType<typeof cleanupMock>;
   let appleTokens: ReturnType<typeof appleMock>;
+  let accountLifecycle: ReturnType<typeof lifecycleMock>;
   let service: UsersService;
 
   beforeEach(() => {
     prisma = createPrisma();
     mediaCleanup = cleanupMock();
     appleTokens = appleMock();
+    accountLifecycle = lifecycleMock();
     service = new UsersService(
       prisma as never,
       mediaCleanup as unknown as MediaCleanupService,
       appleTokens as unknown as AppleAuthTokensService,
+      accountLifecycle as unknown as AccountLifecycleService,
     );
   });
 
@@ -104,7 +136,18 @@ describe('UsersService media cleanup', () => {
     });
   });
 
-  describe('deleteAccount', () => {
+  describe('deleteAccount (soft schedule)', () => {
+    it('delega ao lifecycle sem apagar mídia', async () => {
+      await service.deleteAccount(USER_ID);
+      expect(accountLifecycle.scheduleAccountDeletion).toHaveBeenCalledWith(
+        USER_ID,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('purgeAccountPermanently', () => {
     function venueUser() {
       return {
         id: USER_ID,
@@ -138,8 +181,13 @@ describe('UsersService media cleanup', () => {
       };
       prisma.user.findUnique.mockResolvedValue(user);
       prisma.user.delete.mockResolvedValue({ id: USER_ID });
+      mediaCleanup.deleteStoredUploadsWithReport.mockResolvedValue({
+        attempted: 1,
+        removed: 1,
+        failedUrls: [],
+      });
 
-      await service.deleteAccount(USER_ID);
+      await service.purgeAccountPermanently(USER_ID);
 
       expect(appleTokens.revokeForAccount).toHaveBeenCalledWith(
         expect.objectContaining({ id: USER_ID, role: 'USER' }),
@@ -153,11 +201,14 @@ describe('UsersService media cleanup', () => {
         },
       });
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: USER_ID } });
-      expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([R2_AVATAR]);
+      expect(mediaCleanup.deleteStoredUploadsWithReport).toHaveBeenCalledWith([
+        R2_AVATAR,
+      ]);
     });
 
     it('exclui VENUE e mídias; onboarding e user somem antes do cleanup', async () => {
       const order: string[] = [];
+      prisma.venue.findUnique.mockResolvedValue({ id: 'v1' });
       prisma.user.findUnique.mockResolvedValue(venueUser());
       prisma.socialOnboardingToken.deleteMany.mockImplementation(async () => {
         order.push('onboarding');
@@ -167,16 +218,17 @@ describe('UsersService media cleanup', () => {
         order.push('db');
         return { id: USER_ID };
       });
-      mediaCleanup.deleteStoredUploads.mockImplementation(async () => {
+      mediaCleanup.deleteStoredUploadsWithReport.mockImplementation(async () => {
         order.push('cleanup');
+        return { attempted: 5, removed: 5, failedUrls: [] };
       });
 
-      await service.deleteAccount(USER_ID);
+      await service.purgeAccountPermanently(USER_ID);
 
       expect(prisma.user.delete).toHaveBeenCalledWith({
         where: { id: USER_ID },
       });
-      expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([
+      expect(mediaCleanup.deleteStoredUploadsWithReport).toHaveBeenCalledWith([
         R2_AVATAR,
         LOCAL_LOGO,
         LOCAL_COVER,
@@ -207,7 +259,7 @@ describe('UsersService media cleanup', () => {
         return { id: USER_ID };
       });
 
-      await service.deleteAccount(USER_ID);
+      await service.purgeAccountPermanently(USER_ID);
 
       expect(appleTokens.revokeForAccount).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -240,7 +292,7 @@ describe('UsersService media cleanup', () => {
       });
       prisma.user.delete.mockResolvedValue({ id: USER_ID });
 
-      await service.deleteAccount(USER_ID);
+      await service.purgeAccountPermanently(USER_ID);
 
       expect(appleTokens.revokeForAccount).toHaveBeenCalled();
       expect(prisma.user.delete).toHaveBeenCalled();
@@ -260,12 +312,12 @@ describe('UsersService media cleanup', () => {
         appleClientId: 'com.r2p.after.afterApp',
       });
 
-      await expect(service.deleteAccount(USER_ID)).rejects.toBeInstanceOf(
+      await expect(service.purgeAccountPermanently(USER_ID)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
       );
       expect(prisma.user.delete).not.toHaveBeenCalled();
       expect(prisma.socialOnboardingToken.deleteMany).not.toHaveBeenCalled();
-      expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+      expect(mediaCleanup.deleteStoredUploadsWithReport).not.toHaveBeenCalled();
     });
 
     it('deleteUserRecord recusa ADMIN sem apagar', async () => {
@@ -276,12 +328,12 @@ describe('UsersService media cleanup', () => {
         venue: null,
       });
 
-      await expect(service.deleteAccount(USER_ID)).rejects.toThrow(
+      await expect(service.purgeAccountPermanently(USER_ID)).rejects.toThrow(
         'Conta administrativa não pode ser excluída por este fluxo.',
       );
       expect(appleTokens.revokeForAccount).not.toHaveBeenCalled();
       expect(prisma.user.delete).not.toHaveBeenCalled();
-      expect(mediaCleanup.deleteStoredUploads).not.toHaveBeenCalled();
+      expect(mediaCleanup.deleteStoredUploadsWithReport).not.toHaveBeenCalled();
     });
   });
 });

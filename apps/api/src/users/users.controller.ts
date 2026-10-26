@@ -13,7 +13,9 @@ import {
   AuthUser,
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AccountRecoveryAuthGuard } from '../auth/account-recovery-auth.guard';
+import { DeletionScopeAuthGuard } from '../auth/deletion-scope-auth.guard';
+import { SessionJwtAuthGuard } from '../auth/session-jwt-auth.guard';
 import { AGE_BAND_INVALID, AGE_BANDS } from './age-band';
 import { UsersService } from './users.service';
 
@@ -52,21 +54,23 @@ class ChangePasswordDto {
 }
 
 @Controller('users')
-@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
+  @UseGuards(SessionJwtAuthGuard)
   me(@CurrentUser() user: AuthUser) {
     return this.usersService.getMe(user.userId);
   }
 
   @Patch('me')
+  @UseGuards(SessionJwtAuthGuard)
   update(@CurrentUser() user: AuthUser, @Body() dto: UpdateUserDto) {
     return this.usersService.updateMe(user.userId, dto);
   }
 
   @Patch('me/password')
+  @UseGuards(SessionJwtAuthGuard)
   changePassword(
     @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
@@ -78,17 +82,38 @@ export class UsersController {
     );
   }
 
+  @Post('me/deletion-request')
+  @UseGuards(SessionJwtAuthGuard)
+  requestDeletion(@CurrentUser() user: AuthUser) {
+    return this.usersService.requestAccountDeletion(user.userId);
+  }
+
+  @Post('me/deletion-cancel')
+  @UseGuards(AccountRecoveryAuthGuard)
+  cancelDeletion(@CurrentUser() user: AuthUser) {
+    return this.usersService.cancelAccountDeletion(user.userId);
+  }
+
+  @Get('me/deletion-status')
+  @UseGuards(DeletionScopeAuthGuard)
+  deletionStatus(@CurrentUser() user: AuthUser) {
+    return this.usersService.getDeletionStatus(user.userId);
+  }
+
   @Delete('me')
+  @UseGuards(SessionJwtAuthGuard)
   deleteMe(@CurrentUser() user: AuthUser) {
     return this.usersService.deleteAccount(user.userId);
   }
 
   @Get('me/blocked-venues')
+  @UseGuards(SessionJwtAuthGuard)
   listBlockedVenues(@CurrentUser() user: AuthUser) {
     return this.usersService.listBlockedVenues(user);
   }
 
   @Post('me/blocked-venues/:venueId')
+  @UseGuards(SessionJwtAuthGuard)
   blockVenue(
     @CurrentUser() user: AuthUser,
     @Param('venueId') venueId: string,
@@ -97,6 +122,7 @@ export class UsersController {
   }
 
   @Delete('me/blocked-venues/:venueId')
+  @UseGuards(SessionJwtAuthGuard)
   unblockVenue(
     @CurrentUser() user: AuthUser,
     @Param('venueId') venueId: string,
