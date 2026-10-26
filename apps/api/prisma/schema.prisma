@@ -291,6 +291,7 @@ model Venue {
   purchases     CreditPurchase[]
   refundAudits  CreditRefundAudit[]
   banners             Banner[]
+  bannerPublicationIdempotencies BannerPublicationIdempotency[]
   notifications       Notification[]
   blockedByUsers      UserVenueBlock[]
   moderationHiddenAt  DateTime?
@@ -594,9 +595,32 @@ model Banner {
   schedules     BannerSchedule[]
   notifications Notification[]
   ledgerEntries CreditLedgerEntry[]
+  publicationIdempotencies BannerPublicationIdempotency[]
 
   @@unique([id, venueId])
   @@index([venueId, createdAt])
+}
+
+enum BannerPublicationIdempotencyStatus {
+  PROCESSING
+  COMPLETED
+}
+
+/// One logical POST /banners attempt per venue + client key. Prevents duplicate debits.
+model BannerPublicationIdempotency {
+  id             String                             @id @default(cuid())
+  venueId        String
+  venue          Venue                              @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  idempotencyKey String
+  requestHash    String
+  status         BannerPublicationIdempotencyStatus @default(PROCESSING)
+  bannerId       String?
+  banner         Banner?                            @relation(fields: [bannerId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                           @default(now())
+  updatedAt      DateTime                           @updatedAt
+
+  @@unique([venueId, idempotencyKey])
+  @@index([bannerId])
 }
 
 model BannerSchedule {

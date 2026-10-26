@@ -17,6 +17,12 @@ import {
   type PromoPushPublisher,
 } from '../promo-push/promo-push.publisher';
 import { assertUserAccountActive } from '../common/account/account-eligibility';
+import {
+  claimBannerPublicationIdempotency,
+  completeBannerPublicationIdempotency,
+  hashBannerCreateRequest,
+  normalizeBannerIdempotencyKey,
+} from './banner-create-idempotency';
 import { quotePublication } from './banner-quote';
 
 @Injectable()
@@ -95,6 +101,7 @@ export class BannersService {
     description?: string,
     contentKind?: PromoContentKind,
     vipDates: string[] = [],
+    idempotencyKeyRaw?: string,
   ) {
     const quote = quotePublication({
       dates,
@@ -120,7 +127,41 @@ export class BannersService {
     // an id already confirmed on the venue: an IBGE outage returns null too.
     const ibgeCityId = resolvedIbge ?? venue.ibgeCityId ?? null;
 
+    if (quote.vipCredits > 0 && ibgeCityId == null) {
+      throw new BadRequestException(
+        'Publicação VIP exige município (IBGE) do estabelecimento para avisos na cidade. ' +
+          'Confira cidade e UF do cadastro ou tente novamente mais tarde.',
+      );
+    }
+
+    const idempotencyKey = normalizeBannerIdempotencyKey(idempotencyKeyRaw);
+    const requestHash = idempotencyKey
+      ? hashBannerCreateRequest({
+          imageUrl,
+          dates,
+          vipDates,
+          title,
+          description,
+          contentKind,
+        })
+      : undefined;
+
+    let runSideEffects = true;
     const banner = await this.prisma.$transaction(async (tx) => {
+      if (idempotencyKey && requestHash) {
+        const claim = await claimBannerPublicationIdempotency(tx, {
+          venueId: venue.id,
+          idempotencyKey,
+          requestHash,
+        });
+        if (claim.kind === 'replay') {
+          runSideEffects = false;
+          return claim.banner as Awaited<
+            ReturnType<typeof tx.banner.create>
+          >;
+        }
+      }
+
       const updated = await tx.creditWallet.updateMany({
         where: {
           venueId: venue.id,
@@ -195,6 +236,13 @@ export class BannersService {
         });
         schedule.vipCreditEntryId = entry.id;
       }
+      if (idempotencyKey) {
+        await completeBannerPublicationIdempotency(tx, {
+          venueId: venue.id,
+          idempotencyKey,
+          bannerId: created.id,
+        });
+      }
       return created;
     });
 
@@ -208,15 +256,7 @@ export class BannersService {
       tier: schedule.tier ?? quote.days[index]?.tier ?? 'COMMON',
       vipCreditEntryId: schedule.vipCreditEntryId ?? null,
     }));
-    try {
-      await this.promoPush.recordSchedules(this.prisma, {
-        bannerId: banner.id,
-        venueId: venue.id,
-        contentKind: contentKind ?? null,
-        now: new Date(),
-        schedules,
-      });
-    } catch {
+    if (runSideEffects) {
       try {
         await this.promoPush.recordSchedules(this.prisma, {
           bannerId: banner.id,
@@ -226,19 +266,29 @@ export class BannersService {
           schedules,
         });
       } catch {
-        this.logger.error(`promo-push outbox failed banner=${banner.id}`);
+        try {
+          await this.promoPush.recordSchedules(this.prisma, {
+            bannerId: banner.id,
+            venueId: venue.id,
+            contentKind: contentKind ?? null,
+            now: new Date(),
+            schedules,
+          });
+        } catch {
+          this.logger.error(`promo-push outbox failed banner=${banner.id}`);
+        }
       }
-    }
 
-    try {
-      await this.notifications.notifyFavoriteFollowers({
-        venueId: venue.id,
-        venueName: venue.name,
-        bannerId: banner.id,
-        promoTitle: title,
-      });
-    } catch {
-      // Publishing still succeeds if inbox fan-out fails.
+      try {
+        await this.notifications.notifyFavoriteFollowers({
+          venueId: venue.id,
+          venueName: venue.name,
+          bannerId: banner.id,
+          promoTitle: title,
+        });
+      } catch {
+        // Publishing still succeeds if inbox fan-out fails.
+      }
     }
 
     return banner;

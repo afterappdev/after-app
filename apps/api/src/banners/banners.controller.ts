@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { IsArray, IsIn, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import {
   AuthUser,
@@ -34,6 +42,11 @@ class CreateBannerDto {
   @IsOptional()
   @IsIn(['PROMOTION', 'EVENT'])
   contentKind?: 'PROMOTION' | 'EVENT';
+
+  /** Optional when the Idempotency-Key header is omitted (legacy clients). */
+  @IsOptional()
+  @IsString()
+  idempotencyKey?: string;
 }
 
 @Controller('banners')
@@ -57,7 +70,12 @@ export class BannersController {
   }
 
   @Post()
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateBannerDto) {
+  create(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CreateBannerDto,
+    @Headers('idempotency-key') idempotencyHeader?: string,
+  ) {
+    const idempotencyKey = idempotencyHeader?.trim() || dto.idempotencyKey;
     return this.bannersService.create(
       user.userId,
       dto.imageUrl,
@@ -66,6 +84,7 @@ export class BannersController {
       dto.description,
       dto.contentKind ?? null,
       dto.vipDates ?? [],
+      idempotencyKey,
     );
   }
 }
