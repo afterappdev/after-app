@@ -295,7 +295,6 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                         height: 32,
                                         filterQuality: FilterQuality.high,
                                       ),
-                                      const SizedBox(width: 6),
                                       Expanded(
                                         child: Align(
                                           alignment: Alignment.centerRight,

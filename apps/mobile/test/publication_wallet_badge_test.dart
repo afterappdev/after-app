@@ -5,6 +5,7 @@ import 'package:after_app/core/network/api_client.dart';
 import 'package:after_app/features/auth/auth_controller.dart';
 import 'package:after_app/features/auth/models/user_session.dart';
 import 'package:after_app/features/credits/credits_screen.dart';
+import 'package:after_app/features/credits/credits_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -106,6 +107,49 @@ void main() {
     expect(find.text('Comprar créditos'), findsWidgets);
   });
 
+  testWidgets('card compacto e alinhado à direita no cabeçalho', (tester) async {
+    const screenWidth = 390.0;
+    const horizontalPadding = 20.0;
+
+    await _pumpCredits(
+      tester,
+      wallet: {'balance': 3, 'vipBalance': 2},
+      size: const Size(screenWidth, 900),
+    );
+
+    final badge = tester.getRect(find.byKey(const Key('publication-wallet-badge')));
+    final contentWidth = screenWidth - horizontalPadding * 2;
+
+    expect(badge.width, lessThan(contentWidth * 0.55));
+    expect(badge.width, greaterThan(130));
+    expect(badge.width, lessThan(210));
+    expect(badge.right, closeTo(screenWidth - horizontalPadding, 1));
+
+    final logo = tester.getRect(find.byType(Image).first);
+    expect(logo.right, lessThan(badge.left - 8));
+  });
+
+  testWidgets('card isolado usa largura intrínseca ao conteúdo', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: PublicationWalletBadge(
+              commonBalance: 3,
+              vipBalance: 2,
+              onBuy: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final badge = tester.getRect(find.byKey(const Key('publication-wallet-badge')));
+    expect(badge.width, greaterThan(130));
+    expect(badge.width, lessThan(210));
+  });
+
   testWidgets('indicador não estoura em 320px e fonte ampliada', (tester) async {
     final originalOnError = FlutterError.onError;
     FlutterError.onError = (details) {
@@ -127,5 +171,33 @@ void main() {
     expect(find.byKey(const Key('publication-wallet-badge')), findsOneWidget);
     expect(find.byKey(const Key('pub-badge-common')), findsOneWidget);
     expect(find.byKey(const Key('pub-badge-vip')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    final badge = tester.getRect(find.byKey(const Key('publication-wallet-badge')));
+    expect(badge.width, lessThan(280));
+  });
+
+  testWidgets('320px com fonte ampliada mantém card à direita', (tester) async {
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      final text = details.exceptionAsString();
+      if (text.contains('RenderFlex overflowed') &&
+          !text.contains('publication-wallet-badge')) {
+        return;
+      }
+      originalOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    await _pumpCredits(
+      tester,
+      wallet: {'balance': 3, 'vipBalance': 2},
+      size: const Size(320, 800),
+      textScale: 1.4,
+    );
+
+    final badge = tester.getRect(find.byKey(const Key('publication-wallet-badge')));
+    expect(badge.right, closeTo(320 - 20, 1));
+    expect(badge.width, lessThan(220));
   });
 }
