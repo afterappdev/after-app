@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/venue_categories.dart';
+import '../../core/theme/app_theme.dart';
 
 /// Category field for venue profile setup. Limits the dropdown menu height so
 /// the list stays compact and can be dismissed without picking an option.
@@ -60,6 +61,90 @@ class VenueCategoryDropdownField extends StatelessWidget {
           )
           .toList(),
       onChanged: onChanged,
+    );
+  }
+}
+
+/// Category filter on the home venue filter sheet (`String?` = all categories).
+class VenueHomeCategoryFilterDropdown extends StatelessWidget {
+  const VenueHomeCategoryFilterDropdown({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
+
+  static const allCategoriesLabel = 'Todas as categorias';
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized =
+        value != null && VenueCategories.all.contains(value) ? value : null;
+    final menuMaxHeight = VenueCategoryDropdownField.maxMenuHeight(context);
+
+    return InputDecorator(
+      decoration: InputDecoration(
+        hintText: allCategoriesLabel,
+        filled: true,
+        fillColor: const Color(0xFFF7F7F8),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 4,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          key: const Key('venue-home-category-filter'),
+          value: normalized,
+          isExpanded: true,
+          dropdownColor: Colors.white,
+          menuMaxHeight: menuMaxHeight,
+          alignment: AlignmentDirectional.bottomStart,
+          borderRadius: BorderRadius.circular(14),
+          hint: Text(
+            allCategoriesLabel,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: Color(0xFF282829),
+            ),
+          ),
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: Color(0xFF282829),
+          ),
+          items: [
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(
+                allCategoriesLabel,
+                key: const Key('venue-home-category-all'),
+              ),
+            ),
+            ...VenueCategories.all.map(
+              (item) => DropdownMenuItem<String?>(
+                value: item,
+                child: Text(item, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
     );
   }
 }

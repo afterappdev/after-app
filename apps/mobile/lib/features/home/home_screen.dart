@@ -21,6 +21,7 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
 import '../venue/promo_validity.dart';
+import '../venue/venue_category_dropdown_field.dart';
 import 'home_feed_cards.dart';
 import 'home_promotions.dart';
 import 'home_visual.dart';
@@ -1574,14 +1575,30 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Filtrar locais',
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-                color: Color(0xFF282829),
-              ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Filtrar locais',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: Color(0xFF282829),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('venue-filter-sheet-close'),
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: 'Fechar',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(
+                    Icons.close,
+                    color: Color(0xFF282829),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             const Text(
@@ -1594,39 +1611,8 @@ class _VenueFilterSheetState extends State<_VenueFilterSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String?>(
+            VenueHomeCategoryFilterDropdown(
               value: _draft.category,
-              isExpanded: true,
-              dropdownColor: Colors.white,
-              decoration: InputDecoration(
-                hintText: 'Todas as categorias',
-                filled: true,
-                fillColor: const Color(0xFFF7F7F8),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Color(0xFFE8E8EE)),
-                ),
-              ),
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Todas as categorias'),
-                ),
-                ...VenueCategories.all.map(
-                  (item) => DropdownMenuItem<String?>(
-                    value: item,
-                    child: Text(item, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-              ],
               onChanged: (value) => setState(() => _draft.category = value),
             ),
             const SizedBox(height: 16),
