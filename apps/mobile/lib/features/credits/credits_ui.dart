@@ -111,6 +111,72 @@ Map<String, dynamic>? firstDisplayableVipOffer(dynamic body) {
   return null;
 }
 
+/// VIP can be bought only when checkout for the current channel is ready (not
+/// merely listed in the catalog).
+bool vipPackageCheckoutAvailable({
+  required Map<String, dynamic> vipOffer,
+  required bool vipCheckoutReady,
+  required bool usePixCheckout,
+}) {
+  if (!isDisplayableVipOffer(vipOffer) || asInt(vipOffer['credits']) != 1) {
+    return false;
+  }
+  if (usePixCheckout) {
+    return vipCheckoutReady && vipWebCheckoutPack(vipOffer) != null;
+  }
+  // Native IAP: VIP checkout is not enabled; common packages use the store.
+  return false;
+}
+
+/// Default package on buy screen: VIP when purchasable, else 1 common credit.
+String? preferredInitialBuyCreditsKey({
+  Map<String, dynamic>? vipOffer,
+  required List<Map<String, dynamic>> commonPackages,
+  required bool vipCheckoutReady,
+  required bool usePixCheckout,
+}) {
+  if (vipOffer != null &&
+      vipPackageCheckoutAvailable(
+        vipOffer: vipOffer,
+        vipCheckoutReady: vipCheckoutReady,
+        usePixCheckout: usePixCheckout,
+      )) {
+    final key = vipOffer['key']?.toString();
+    if (key != null && key.isNotEmpty) return key;
+  }
+  for (final item in commonPackages) {
+    if (asInt(item['credits']) == 1) return item['key']?.toString();
+  }
+  return null;
+}
+
+int commonCreditPackageSortOrder(Map<String, dynamic> pack) {
+  switch (asInt(pack['credits'])) {
+    case 1:
+      return 0;
+    case 5:
+      return 1;
+    case 10:
+      return 2;
+    default:
+      return 100 + asInt(pack['credits']);
+  }
+}
+
+List<Map<String, dynamic>> sortCommonCreditPackages(
+  Iterable<Map<String, dynamic>> packages,
+) {
+  final sorted = packages.map(Map<String, dynamic>.from).toList()
+    ..sort((a, b) {
+      final order = commonCreditPackageSortOrder(a)
+          .compareTo(commonCreditPackageSortOrder(b));
+      if (order != 0) return order;
+      return (a['key']?.toString() ?? '')
+          .compareTo(b['key']?.toString() ?? '');
+    });
+  return sorted;
+}
+
 bool isVipCreditRecord(Map<dynamic, dynamic> record) {
   final modality = record['modality']?.toString().toUpperCase() ?? '';
   if (modality == 'VIP') return true;

@@ -42,6 +42,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   bool _vipCheckoutReady = false;
   List<dynamic> _purchases = [];
   String? _selectedKey;
+  bool _userPickedPackage = false;
 
   bool get _reconcilePendingPix =>
       widget.reconcilePendingPix ?? billingUsesPix();
@@ -72,18 +73,30 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
       final purchases = await api.get('/credits/purchases') as List<dynamic>;
       final vip = await _loadVipOffer(api);
       if (!mounted) return;
-      final common = [
+      final common = sortCommonCreditPackages([
         for (final item in packages)
           if (item is Map && !isVipCreditRecord(item))
             Map<String, dynamic>.from(item),
-      ];
+      ]);
       final known = <String>{
         for (final item in common) item['key']?.toString() ?? '',
         if (vip.offer != null) vip.offer!['key']?.toString() ?? '',
       };
       var selected = _selectedKey;
-      if (selected == null || !known.contains(selected)) {
-        selected = _preferredCommonKey(common);
+      if (!_userPickedPackage) {
+        selected = preferredInitialBuyCreditsKey(
+          vipOffer: vip.offer,
+          commonPackages: common,
+          vipCheckoutReady: vip.checkoutReady,
+          usePixCheckout: _usePixCheckout,
+        );
+      } else if (selected == null || !known.contains(selected)) {
+        selected = preferredInitialBuyCreditsKey(
+          vipOffer: vip.offer,
+          commonPackages: common,
+          vipCheckoutReady: vip.checkoutReady,
+          usePixCheckout: _usePixCheckout,
+        );
       }
       setState(() {
         _balance = asInt(wallet['balance']);
@@ -162,14 +175,6 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     }
     if (_packages.isEmpty) return null;
     return _packages.first as Map<String, dynamic>;
-  }
-
-  String? _preferredCommonKey(List<Map<String, dynamic>> common) {
-    for (final item in common) {
-      if (asInt(item['credits']) == 1) return item['key']?.toString();
-    }
-    if (common.isEmpty) return null;
-    return common.first['key']?.toString();
   }
 
   Future<int> _redeemCoupon(String code) async {
@@ -414,9 +419,10 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                     priceLabel: _offerPriceLabel(pack) ?? '—',
                                     unitLabel: _unitLabel(pack),
                                     savingsLabel: _savingsLabel(pack),
-                                    onTap: () => setState(
-                                      () => _selectedKey = pack['key']?.toString(),
-                                    ),
+                                    onTap: () => setState(() {
+                                      _userPickedPackage = true;
+                                      _selectedKey = pack['key']?.toString();
+                                    }),
                                   ),
                                   const SizedBox(height: 10),
                                 ],

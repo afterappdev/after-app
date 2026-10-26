@@ -82,6 +82,115 @@ void main() {
     expect(find.text('créditos disponíveis'), findsNWidgets(2));
   });
 
+  test('seleção inicial prefere VIP na Web quando checkout PIX está pronto', () {
+    final vip = Map<String, dynamic>.from(_vipPackage);
+    expect(
+      preferredInitialBuyCreditsKey(
+        vipOffer: vip,
+        commonPackages: _commonPackages.map(Map<String, dynamic>.from).toList(),
+        vipCheckoutReady: true,
+        usePixCheckout: true,
+      ),
+      'vip_unit_1',
+    );
+    expect(
+      vipPackageCheckoutAvailable(
+        vipOffer: vip,
+        vipCheckoutReady: true,
+        usePixCheckout: true,
+      ),
+      isTrue,
+    );
+  });
+
+  test('seleção inicial no app nativo usa comum se VIP não tem checkout', () {
+    final vip = Map<String, dynamic>.from(_vipPackage);
+    expect(
+      preferredInitialBuyCreditsKey(
+        vipOffer: vip,
+        commonPackages: _commonPackages.map(Map<String, dynamic>.from).toList(),
+        vipCheckoutReady: true,
+        usePixCheckout: false,
+      ),
+      'unit_1',
+    );
+    expect(
+      vipPackageCheckoutAvailable(
+        vipOffer: vip,
+        vipCheckoutReady: true,
+        usePixCheckout: false,
+      ),
+      isFalse,
+    );
+    expect(
+      preferredInitialBuyCreditsKey(
+        vipOffer: null,
+        commonPackages: _commonPackages.map(Map<String, dynamic>.from).toList(),
+        vipCheckoutReady: false,
+        usePixCheckout: true,
+      ),
+      'unit_1',
+    );
+  });
+
+  test('sem VIP nem pacote comum de 1 credito nao seleciona outro', () {
+    expect(
+      preferredInitialBuyCreditsKey(
+        vipOffer: null,
+        commonPackages: [
+          Map<String, dynamic>.from(_commonPackages[1]),
+          Map<String, dynamic>.from(_commonPackages[2]),
+        ],
+        vipCheckoutReady: false,
+        usePixCheckout: true,
+      ),
+      isNull,
+    );
+  });
+
+  test('ordenacao fixa dos pacotes comuns 1, 5 e 10 creditos', () {
+    final shuffled = [
+      _commonPackages[2],
+      _commonPackages[0],
+      _commonPackages[1],
+    ].map((e) => Map<String, dynamic>.from(e)).toList();
+    final sorted = sortCommonCreditPackages(shuffled);
+    expect(
+      sorted.map((p) => p['key']?.toString()).toList(),
+      ['unit_1', 'combo_5', 'combo_10'],
+    );
+  });
+
+  testWidgets('Android/iOS inicia no pacote comum mesmo com VIP no catálogo',
+      (tester) async {
+    await _pumpBuy(
+      tester,
+      size: const Size(390, 1600),
+      usePixCheckout: false,
+    );
+
+    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+    expect(_border(tester, 'unit_1'), buyCreditsOrange);
+  });
+
+  testWidgets('mantém pacote comum após escolha manual no refresh',
+      (tester) async {
+    await _pumpBuy(tester, size: const Size(800, 1600));
+    expect(find.text('Total: R\$ 99,90'), findsOneWidget);
+
+    await tester.tap(find.text('5 créditos'));
+    await tester.pump();
+    expect(find.text('Total: R\$ 149,90'), findsOneWidget);
+
+    await tester.drag(find.byType(ListView), const Offset(0, 200));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Total: R\$ 149,90'), findsOneWidget);
+    expect(_border(tester, 'combo_5'), buyCreditsOrange);
+  });
+
   test('catálogo local oficial permanece só de referência', () {
     expect(officialVipReferenceOffer['key'], 'vip_unit_1');
     expect(officialVipReferenceOffer['storeProductId'], 'after.credits.vip.1');
@@ -107,6 +216,8 @@ void main() {
     expect(find.text('R\$ 99,90'), findsOneWidget);
     _expectCommonPackages(tester);
     expect(_tileTop(tester, 'vip_unit_1'), lessThan(_tileTop(tester, 'unit_1')));
+    expect(_tileTop(tester, 'unit_1'), lessThan(_tileTop(tester, 'combo_5')));
+    expect(_tileTop(tester, 'combo_5'), lessThan(_tileTop(tester, 'combo_10')));
     expect(_border(tester, 'vip_unit_1'), buyCreditsPurple);
   });
 
@@ -131,6 +242,7 @@ void main() {
     expect(find.text('R\$ 99,90'), findsOneWidget);
     _expectCommonPackages(tester);
     expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+    expect(_border(tester, 'unit_1'), buyCreditsOrange);
     expect(_tileTop(tester, 'vip_unit_1'), lessThan(_tileTop(tester, 'unit_1')));
 
     await tester.tap(find.text('1 crédito VIP'));
@@ -223,19 +335,11 @@ void main() {
     expect(find.text('R\$ 19,99 por crédito'), findsOneWidget);
     expect(find.text('Economize R\$ 24,60'), findsOneWidget);
     expect(find.text('Economize R\$ 149,10'), findsOneWidget);
-    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
-    expect(find.text('Total: R\$ 199,90'), findsNothing);
-    expect(_border(tester, 'unit_1'), buyCreditsOrange);
-    expect(_border(tester, 'combo_10'), buyCreditsBorder);
-    expect(_border(tester, 'vip_unit_1'), buyCreditsPurple);
-
-    await tester.tap(find.text('1 crédito VIP'));
-    await tester.pump();
     expect(find.text('Total: R\$ 99,90'), findsOneWidget);
     expect(find.text('Total: R\$ 199,90'), findsNothing);
-    expect(_border(tester, 'combo_10'), buyCreditsBorder);
-    expect(_border(tester, 'unit_1'), buyCreditsBorder);
     expect(_border(tester, 'vip_unit_1'), buyCreditsPurple);
+    expect(_border(tester, 'unit_1'), buyCreditsBorder);
+    expect(_border(tester, 'combo_10'), buyCreditsBorder);
 
     await tester.tap(find.text('1 crédito'));
     await tester.pump();
@@ -408,8 +512,6 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('1 crédito VIP'));
-    await tester.pump();
     expect(find.text('Total: R\$ 99,90'), findsOneWidget);
 
     await tester.tap(find.text('Continuar para pagamento'));
@@ -437,6 +539,9 @@ void main() {
         if (request.method == 'POST') posts.add(request.url.path);
       },
     );
+
+    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+    expect(_border(tester, 'unit_1'), buyCreditsOrange);
 
     await tester.tap(find.text('1 crédito VIP'));
     await tester.pump();
@@ -497,7 +602,7 @@ void main() {
 
     await _pumpBuy(tester, size: const Size(375, 812), textScale: 1.3);
     expect(tester.takeException(), isNull);
-    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+    expect(find.text('Total: R\$ 99,90'), findsOneWidget);
     expect(find.text('Continuar para pagamento'), findsOneWidget);
 
     await _pumpBuy(tester, size: const Size(1200, 900));
