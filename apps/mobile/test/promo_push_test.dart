@@ -26,6 +26,32 @@ import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:after_app/features/venue/promo_validity.dart';
+
+/// Calendar date for an ACTIVE banner that remains valid after [utcNow].
+String _futurePromoDisplayDate({DateTime? utcNow, int daysAhead = 7}) {
+  final day = saoPauloCalendarDay(utcNow ?? DateTime.now())
+      .add(Duration(days: daysAhead));
+  final month = day.month.toString().padLeft(2, '0');
+  final dayPart = day.day.toString().padLeft(2, '0');
+  return '${day.year}-$month-$dayPart';
+}
+
+Map<String, dynamic> _activeVenueFixture() {
+  return {
+    'id': 'venue-1',
+    'banners': [
+      {
+        'id': 'banner-1',
+        'status': 'ACTIVE',
+        'schedules': [
+          {'displayDate': _futurePromoDisplayDate()},
+        ],
+      },
+    ],
+  };
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -229,19 +255,7 @@ void main() {
   });
 
   testWidgets('tap while the app is open opens the publication once', (tester) async {
-    final api = RecordingPromoApi()
-      ..venue = {
-        'id': 'venue-1',
-        'banners': [
-          {
-            'id': 'banner-1',
-            'status': 'ACTIVE',
-            'schedules': [
-              {'displayDate': '2026-10-20'},
-            ],
-          },
-        ],
-      };
+    final api = RecordingPromoApi()..venue = _activeVenueFixture();
     final harness = await _pumpRouter(tester, api);
     final coordinator = _coordinator(api: api, router: harness.router);
     await coordinator.onAuthenticated(_user('user-a'));
@@ -255,19 +269,7 @@ void main() {
   });
 
   testWidgets('tap from a closed app waits for login and then opens', (tester) async {
-    final api = RecordingPromoApi()
-      ..venue = {
-        'id': 'venue-1',
-        'banners': [
-          {
-            'id': 'banner-1',
-            'status': 'ACTIVE',
-            'schedules': [
-              {'displayDate': '2026-10-20'},
-            ],
-          },
-        ],
-      };
+    final api = RecordingPromoApi()..venue = _activeVenueFixture();
     final messaging = FakePromoMessaging()..launch = _message();
     final harness = await _pumpRouter(tester, api);
     final coordinator = _coordinator(
