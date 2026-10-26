@@ -5,7 +5,9 @@ import '../../core/theme/app_theme.dart';
 Future<bool> showPublishPromotionDialog(
   BuildContext context, {
   required int credits,
+  required bool isVip,
 }) async {
+  final walletLabel = isVip ? 'VIP' : 'comum';
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) {
@@ -15,7 +17,9 @@ Future<bool> showPublishPromotionDialog(
           style: TextStyle(fontFamily: AppTheme.fontFamily, fontWeight: FontWeight.w800),
         ),
         content: Text(
-          'Esta publicação utilizará $credits crédito(s) da sua carteira. Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.',
+          isVip
+              ? 'Esta publicação VIP utilizará $credits crédito(s) VIP da sua carteira, com destaque na Home e envio de aviso push para usuários elegíveis da cidade. Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.'
+              : 'Esta publicação utilizará $credits crédito(s) $walletLabel da sua carteira. Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.',
           style: const TextStyle(fontFamily: AppTheme.fontFamily, height: 1.35),
         ),
         actions: [

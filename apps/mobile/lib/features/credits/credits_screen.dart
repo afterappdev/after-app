@@ -25,6 +25,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
   bool _publishing = false;
   String? _cancellingId;
   int _creditPerDay = 1;
+  int _vipCreditPerDay = 1;
+  PublicationBillingPlan _billingPlan = PublicationBillingPlan.common;
   String? _error;
   int _balance = 0;
   int _vipBalance = 0;
@@ -79,18 +81,23 @@ class _CreditsScreenState extends State<CreditsScreen> {
       final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
       final history = await api.get('/banners/history') as List<dynamic>;
       var perDay = 1;
+      var vipPerDay = 1;
       try {
         final pricing = await api.get('/banners/pricing') as Map<String, dynamic>;
         final parsed = pricing['creditPerDisplayDay'];
         if (parsed is num && parsed > 0) perDay = parsed.round();
+        final vipParsed = pricing['vipCreditPerDisplayDay'];
+        if (vipParsed is num && vipParsed > 0) vipPerDay = vipParsed.round();
       } on ApiException {
         perDay = 1;
+        vipPerDay = 1;
       }
       if (!mounted) return;
       setState(() {
         _balance = asInt(wallet['balance']);
         _vipBalance = asInt(wallet['vipBalance']);
         _creditPerDay = perDay;
+        _vipCreditPerDay = vipPerDay;
         _history = history;
         _loading = false;
       });
@@ -188,14 +195,25 @@ class _CreditsScreenState extends State<CreditsScreen> {
       _snack('Selecione ao menos uma data.');
       return;
     }
-    final cost = _selectedDates.length * _creditPerDay;
-    if (_balance < cost) {
-      _snack('Saldo insuficiente. É preciso $cost crédito(s).');
+    final dayCount = _selectedDates.length;
+    final isVip = _billingPlan == PublicationBillingPlan.vip;
+    final cost = dayCount * (isVip ? _vipCreditPerDay : _creditPerDay);
+    final available = isVip ? _vipBalance : _balance;
+    if (available < cost) {
+      if (isVip) {
+        _snack('Saldo VIP insuficiente. É preciso $cost crédito(s) VIP.');
+      } else {
+        _snack('Saldo comum insuficiente. É preciso $cost crédito(s).');
+      }
       await _openBuy();
       return;
     }
 
-    final confirmed = await showPublishPromotionDialog(context, credits: cost);
+    final confirmed = await showPublishPromotionDialog(
+      context,
+      credits: cost,
+      isVip: isVip,
+    );
     if (!confirmed || !mounted || _publishing) return;
 
     setState(() => _publishing = true);
@@ -203,9 +221,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
       final dates = _selectedDates.map(_fmt).toList()..sort();
       await context.read<ApiClient>().post('/banners', body: {
         'imageUrl': _bannerUrl,
-        'dates': dates,
         'title': title,
         'description': description,
+        ...(isVip ? {'vipDates': dates} : {'dates': dates}),
       });
       if (!mounted) return;
       setState(() {
@@ -213,8 +231,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _selectedDates.clear();
         _title.clear();
         _description.clear();
+        _billingPlan = PublicationBillingPlan.common;
       });
-      _snack('Publicação agendada na HOME.');
+      _snack(isVip ? 'Publicação VIP agendada na HOME.' : 'Publicação agendada na HOME.');
       await _load();
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -256,7 +275,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
   @override
   Widget build(BuildContext context) {
     final sortedDates = _selectedDates.toList()..sort();
-    final cost = sortedDates.length * _creditPerDay;
+    final isVipPlan = _billingPlan == PublicationBillingPlan.vip;
+    final cost = sortedDates.length * (isVipPlan ? _vipCreditPerDay : _creditPerDay);
 
     return Scaffold(
       backgroundColor: kCreditsBg,
@@ -447,6 +467,23 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                   ),
                                   const SizedBox(height: 22),
                                   const Text(
+                                    'Tipo de publicação',
+                                    style: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      color: kCreditsInk,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  PublicationPlanSelector(
+                                    plan: _billingPlan,
+                                    commonBalance: _balance,
+                                    vipBalance: _vipBalance,
+                                    onPlanChanged: (plan) => setState(() => _billingPlan = plan),
+                                  ),
+                                  const SizedBox(height: 22),
+                                  const Text(
                                     '3. Selecionar data',
                                     style: TextStyle(
                                       fontFamily: AppTheme.fontFamily,
@@ -504,12 +541,15 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                   if (cost > 0) ...[
                                     const SizedBox(height: 12),
                                     Text(
-                                      'Custo: $cost crédito${cost == 1 ? '' : 's'}  •  1 crédito = 1 dia na HOME',
+                                      isVipPlan
+                                          ? 'Custo: $cost crédito${cost == 1 ? '' : 's'} VIP  •  Destaque na Home + push na cidade'
+                                          : 'Custo: $cost crédito${cost == 1 ? '' : 's'} comum  •  1 crédito = 1 dia na HOME',
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontFamily: AppTheme.fontFamily,
                                         fontSize: 12,
-                                        color: kCreditsMuted,
+                                        color: isVipPlan ? AppTheme.accentPurple : kCreditsMuted,
+                                        fontWeight: isVipPlan ? FontWeight.w600 : FontWeight.w400,
                                       ),
                                     ),
                                   ],

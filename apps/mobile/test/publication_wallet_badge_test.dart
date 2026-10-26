@@ -34,7 +34,10 @@ Future<void> _pumpCredits(
       if (path.endsWith('/credits/wallet')) return _json(wallet);
       if (path.endsWith('/banners/history')) return _json([]);
       if (path.endsWith('/banners/pricing')) {
-        return _json({'creditPerDisplayDay': 1});
+        return _json({
+          'creditPerDisplayDay': 1,
+          'vipCreditPerDisplayDay': 1,
+        });
       }
       return http.Response(
         jsonEncode({'message': 'not found'}),
@@ -252,5 +255,31 @@ void main() {
     final badge = tester.getRect(find.byKey(const Key('publication-wallet-badge')));
     expect(badge.right, closeTo(320 - 20, 1));
     expect(badge.width, lessThan(220));
+  });
+
+  testWidgets('seletor COMUM/VIP aparece e COMUM vem selecionado', (tester) async {
+    await _pumpCredits(
+      tester,
+      wallet: {'balance': 2, 'vipBalance': 1},
+    );
+
+    expect(find.byKey(const Key('pub-plan-common')), findsOneWidget);
+    expect(find.byKey(const Key('pub-plan-vip')), findsOneWidget);
+    expect(find.text('Saldo comum: 2'), findsOneWidget);
+    expect(find.text('Saldo VIP: 1'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+  });
+
+  testWidgets('selecionar VIP destaca plano roxo', (tester) async {
+    await _pumpCredits(
+      tester,
+      wallet: {'balance': 0, 'vipBalance': 3},
+    );
+
+    await tester.tap(find.byKey(const Key('pub-plan-vip')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Destaque na Home'), findsWidgets);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
   });
 }

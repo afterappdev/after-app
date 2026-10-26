@@ -10,7 +10,11 @@ void main() {
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await showPublishPromotionDialog(context, credits: 2);
+              result = await showPublishPromotionDialog(
+                context,
+                credits: 2,
+                isVip: false,
+              );
             },
             child: const Text('abrir'),
           ),
@@ -34,7 +38,11 @@ void main() {
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              final ok = await showPublishPromotionDialog(context, credits: 1);
+              final ok = await showPublishPromotionDialog(
+                context,
+                credits: 1,
+                isVip: false,
+              );
               if (ok) confirms += 1;
             },
             child: const Text('abrir'),
@@ -70,5 +78,28 @@ void main() {
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
     expect(result, isFalse);
+  });
+
+  testWidgets('confirmação VIP menciona créditos VIP e push', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              await showPublishPromotionDialog(
+                context,
+                credits: 1,
+                isVip: true,
+              );
+            },
+            child: const Text('abrir'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('crédito(s) VIP'), findsOneWidget);
+    expect(find.textContaining('push'), findsOneWidget);
   });
 }

@@ -445,6 +445,165 @@ const _pubPurple = AppTheme.accentPurple;
 const _pubLilac = Color(0xFFEDE4FB);
 const _pubDivider = Color(0xFFE6E6EA);
 
+/// Wallet debit plan for a new publication day (all selected dates share one plan).
+enum PublicationBillingPlan { common, vip }
+
+/// COMUM vs VIP selector on Nova publicação.
+class PublicationPlanSelector extends StatelessWidget {
+  const PublicationPlanSelector({
+    super.key,
+    required this.plan,
+    required this.onPlanChanged,
+    required this.commonBalance,
+    required this.vipBalance,
+  });
+
+  final PublicationBillingPlan plan;
+  final ValueChanged<PublicationBillingPlan> onPlanChanged;
+  final int commonBalance;
+  final int vipBalance;
+
+  @override
+  Widget build(BuildContext context) {
+    final commonTile = _PublicationPlanTile(
+      key: const Key('pub-plan-common'),
+      selected: plan == PublicationBillingPlan.common,
+      title: 'Comum',
+      subtitle: '1 crédito comum por dia',
+      balanceLabel: 'Saldo comum',
+      balance: commonBalance,
+      accent: _pubOrange,
+      softFill: kCreditsSoft,
+      icon: Icon(Icons.star_rounded, size: 18, color: _pubOrange),
+      onTap: () => onPlanChanged(PublicationBillingPlan.common),
+    );
+    final vipTile = _PublicationPlanTile(
+      key: const Key('pub-plan-vip'),
+      selected: plan == PublicationBillingPlan.vip,
+      title: 'VIP',
+      subtitle: 'Destaque na Home + aviso push na cidade',
+      balanceLabel: 'Saldo VIP',
+      balance: vipBalance,
+      accent: _pubPurple,
+      softFill: _pubLilac,
+      icon: FaIcon(FontAwesomeIcons.crown, size: 14, color: _pubPurple),
+      onTap: () => onPlanChanged(PublicationBillingPlan.vip),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 300) {
+          return Column(
+            children: [
+              commonTile,
+              const SizedBox(height: 10),
+              vipTile,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: commonTile),
+            const SizedBox(width: 10),
+            Expanded(child: vipTile),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _PublicationPlanTile extends StatelessWidget {
+  const _PublicationPlanTile({
+    super.key,
+    required this.selected,
+    required this.title,
+    required this.subtitle,
+    required this.balanceLabel,
+    required this.balance,
+    required this.accent,
+    required this.softFill,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final String title;
+  final String subtitle;
+  final String balanceLabel;
+  final int balance;
+  final Color accent;
+  final Color softFill;
+  final Widget icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? softFill : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: selected ? accent : const Color(0xFFE4E4EA),
+          width: selected ? 1.6 : 1,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: selected ? accent : kCreditsInk,
+                      ),
+                    ),
+                  ),
+                  if (selected)
+                    Icon(Icons.check_circle_rounded, size: 18, color: accent),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontSize: 11,
+                  height: 1.35,
+                  color: kCreditsMuted,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$balanceLabel: $balance',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: accent,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Compact wallet indicator for Nova publicação (common + VIP, no sum).
 class PublicationWalletBadge extends StatelessWidget {
   const PublicationWalletBadge({
