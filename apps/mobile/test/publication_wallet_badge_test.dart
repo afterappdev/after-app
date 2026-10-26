@@ -177,6 +177,59 @@ void main() {
     expect(badge.width, lessThan(280));
   });
 
+  testWidgets('area de upload nao estoura em 320px com fonte ampliada', (
+    tester,
+  ) async {
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      final text = details.exceptionAsString();
+      if (text.contains('RenderFlex overflowed')) {
+        fail('Upload area overflow: $text');
+      }
+      originalOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    await _pumpCredits(
+      tester,
+      wallet: {'balance': 3, 'vipBalance': 2},
+      size: const Size(320, 800),
+      textScale: 1.4,
+    );
+
+    expect(find.text('Toque para selecionar uma imagem'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [360.0, 390.0]) {
+    for (final scale in [1.0, 1.4]) {
+      testWidgets(
+        'area de upload nao estoura em ${width.toInt()}px textScale $scale',
+        (tester) async {
+          final originalOnError = FlutterError.onError;
+          FlutterError.onError = (details) {
+            final text = details.exceptionAsString();
+            if (text.contains('RenderFlex overflowed')) {
+              fail('Upload area overflow: $text');
+            }
+            originalOnError?.call(details);
+          };
+          addTearDown(() => FlutterError.onError = originalOnError);
+
+          await _pumpCredits(
+            tester,
+            wallet: {'balance': 3, 'vipBalance': 2},
+            size: Size(width, 900),
+            textScale: scale,
+          );
+
+          expect(find.text('Toque para selecionar uma imagem'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('320px com fonte ampliada mantém card à direita', (tester) async {
     final originalOnError = FlutterError.onError;
     FlutterError.onError = (details) {

@@ -342,58 +342,79 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                     onTap: _uploading ? null : _pickBannerImage,
                                     child: DashedRoundedBorder(
                                       child: SizedBox(
-                                        height: 168,
                                         width: double.infinity,
-                                        child: ClipRRect(
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            minHeight: 168,
+                                          ),
+                                          child: ClipRRect(
                                           borderRadius: BorderRadius.circular(16),
                                           child: _uploading
                                               ? const Center(
                                                   child: CircularProgressIndicator(color: kCreditsAccent),
                                                 )
                                               : _bannerUrl == null
-                                                  ? const Column(
-                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                      children: [
-                                                        Icon(Icons.cloud_upload_outlined, color: kCreditsAccent, size: 36),
-                                                        SizedBox(height: 10),
-                                                        Text(
-                                                          'Toque para selecionar uma imagem',
-                                                          style: TextStyle(
-                                                            fontFamily: AppTheme.fontFamily,
-                                                            fontWeight: FontWeight.w600,
-                                                            fontSize: 13,
-                                                            color: kCreditsInk,
+                                                  ? Padding(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 12,
+                                                        vertical: 16,
+                                                      ),
+                                                      child: Column(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: const [
+                                                          Icon(
+                                                            Icons.cloud_upload_outlined,
+                                                            color: kCreditsAccent,
+                                                            size: 36,
                                                           ),
-                                                        ),
-                                                        SizedBox(height: 4),
-                                                        Text(
-                                                          'PNG, JPG ou JPEG • Máx. 10MB',
-                                                          style: TextStyle(
-                                                            fontFamily: AppTheme.fontFamily,
-                                                            fontSize: 11,
-                                                            color: kCreditsMuted,
+                                                          SizedBox(height: 10),
+                                                          Text(
+                                                            'Toque para selecionar uma imagem',
+                                                            textAlign: TextAlign.center,
+                                                            style: TextStyle(
+                                                              fontFamily: AppTheme.fontFamily,
+                                                              fontWeight: FontWeight.w600,
+                                                              fontSize: 13,
+                                                              color: kCreditsInk,
+                                                            ),
                                                           ),
-                                                        ),
-                                                      ],
+                                                          SizedBox(height: 4),
+                                                          Text(
+                                                            'PNG, JPG ou JPEG • Máx. 10MB',
+                                                            textAlign: TextAlign.center,
+                                                            style: TextStyle(
+                                                              fontFamily: AppTheme.fontFamily,
+                                                              fontSize: 11,
+                                                              color: kCreditsMuted,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     )
-                                                  : Stack(
-                                                      fit: StackFit.expand,
-                                                      children: [
-                                                        Image.network(
-                                                          ApiConfig.resolveMediaUrl(_bannerUrl),
-                                                          fit: BoxFit.cover,
-                                                        ),
-                                                        const Positioned(
-                                                          right: 10,
-                                                          top: 10,
-                                                          child: CircleAvatar(
-                                                            radius: 14,
-                                                            backgroundColor: Colors.white,
-                                                            child: Icon(Icons.edit_outlined, size: 16, color: kCreditsAccent),
+                                                  : SizedBox(
+                                                      height: 168,
+                                                      width: double.infinity,
+                                                      child: Stack(
+                                                        fit: StackFit.expand,
+                                                        children: [
+                                                          Image.network(
+                                                            ApiConfig.resolveMediaUrl(_bannerUrl),
+                                                            fit: BoxFit.cover,
                                                           ),
-                                                        ),
-                                                      ],
+                                                          const Positioned(
+                                                            right: 10,
+                                                            top: 10,
+                                                            child: CircleAvatar(
+                                                              radius: 14,
+                                                              backgroundColor: Colors.white,
+                                                              child: Icon(Icons.edit_outlined, size: 16, color: kCreditsAccent),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
                                                     ),
+                                          ),
                                         ),
                                       ),
                                     ),
