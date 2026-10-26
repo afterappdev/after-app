@@ -21,8 +21,10 @@ import {
 } from '../common/utils/geo';
 import { inferMediaType } from '../common/utils/media-type';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { assertUserAccountActive } from '../common/account/account-eligibility';
 import {
   blockedVenueIdsForUser,
+  isVenuePubliclyVisible,
   publicVenueWhere,
 } from '../common/moderation/audience';
 import { LocationsService } from '../locations/locations.service';
@@ -253,6 +255,7 @@ export class VenuesService {
     const venue = await this.prisma.venue.findUnique({
       where: { id },
       include: {
+        owner: { select: { accountStatus: true } },
         photos: { orderBy: { sortOrder: 'asc' } },
         banners: {
           where: { status: 'ACTIVE' },
@@ -262,7 +265,7 @@ export class VenuesService {
         },
       },
     });
-    if (!venue || venue.moderationHiddenAt) {
+    if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
@@ -296,9 +299,13 @@ export class VenuesService {
   async listReviews(venueId: string, user?: AuthUser | null) {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true, moderationHiddenAt: true },
+      select: {
+        id: true,
+        moderationHiddenAt: true,
+        owner: { select: { accountStatus: true } },
+      },
     });
-    if (!venue || venue.moderationHiddenAt) {
+    if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
@@ -321,9 +328,14 @@ export class VenuesService {
 
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true, ownerUserId: true, moderationHiddenAt: true },
+      select: {
+        id: true,
+        ownerUserId: true,
+        moderationHiddenAt: true,
+        owner: { select: { accountStatus: true } },
+      },
     });
-    if (!venue || venue.moderationHiddenAt) {
+    if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     if (venue.ownerUserId === user.userId) {
@@ -479,6 +491,7 @@ export class VenuesService {
       hoursJson?: Prisma.InputJsonValue | object;
     },
   ) {
+    await assertUserAccountActive(this.prisma, userId);
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
     if (!venue) {
       throw new NotFoundException('Estabelecimento não encontrado');

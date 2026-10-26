@@ -1,3 +1,4 @@
+import { AccountLifecycleStatus } from '@prisma/client';
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
 import { HomeService, businessCalendarDate } from './home.service';
 
@@ -150,6 +151,7 @@ describe('HomeService geolocation', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           moderationHiddenAt: null,
+          owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
           id: { notIn: ['blocked-1'] },
         }),
       }),
@@ -166,6 +168,7 @@ describe('HomeService geolocation', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           moderationHiddenAt: null,
+          owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
         }),
       }),
     );
@@ -195,6 +198,8 @@ describe('HomeService geolocation', () => {
           banner: expect.objectContaining({
             status: 'ACTIVE',
             venue: expect.objectContaining({
+              moderationHiddenAt: null,
+              owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
               id: { notIn: ['blocked-1'] },
             }),
           }),

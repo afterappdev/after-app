@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AccountLifecycleStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AudienceCandidate,
@@ -177,7 +177,13 @@ export class PrismaPromoPushStore implements PromoPushStore {
             banner: {
               select: {
                 status: true,
-                venue: { select: { name: true, moderationHiddenAt: true } },
+                venue: {
+                  select: {
+                    name: true,
+                    moderationHiddenAt: true,
+                    owner: { select: { accountStatus: true } },
+                  },
+                },
               },
             },
           },
@@ -194,7 +200,10 @@ export class PrismaPromoPushStore implements PromoPushStore {
       contentKind: row.contentKind,
       venueName: row.bannerSchedule.banner.venue.name,
       bannerStatus: row.bannerSchedule.banner.status,
-      venueHidden: row.bannerSchedule.banner.venue.moderationHiddenAt != null,
+      venueHidden:
+        row.bannerSchedule.banner.venue.moderationHiddenAt != null ||
+        row.bannerSchedule.banner.venue.owner.accountStatus !==
+          AccountLifecycleStatus.ACTIVE,
       scheduleTier: row.bannerSchedule.tier,
       vipCreditEntryId: row.bannerSchedule.vipCreditEntryId,
       attempts: row.attempts,

@@ -1,6 +1,7 @@
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
+import { AccountLifecycleStatus } from '@prisma/client';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 jest.mock('../common/utils/geo', () => {
@@ -43,12 +44,18 @@ function venueRecord(overrides: Record<string, unknown> = {}) {
     photos: [],
     banners: [],
     moderationHiddenAt: null,
+    owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
     ...overrides,
   };
 }
 
 function createPrisma() {
   return {
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        accountStatus: AccountLifecycleStatus.ACTIVE,
+      }),
+    },
     venue: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -221,6 +228,18 @@ describe('VenuesService geolocation', () => {
       await expect(
         service.getPublic(VENUE_ID, undefined, undefined, undefined, otherUser),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('estabelecimento com owner PENDING_DELETION não aparece no acesso direto', async () => {
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({
+          owner: { accountStatus: AccountLifecycleStatus.PENDING_DELETION },
+        }),
+      );
+
+      await expect(service.getPublic(VENUE_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

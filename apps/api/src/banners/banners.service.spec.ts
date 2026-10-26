@@ -1,3 +1,4 @@
+import { AccountLifecycleStatus } from '@prisma/client';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
@@ -5,6 +6,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 function setup() {
   const prisma = {
+    user: {
+      findUnique: jest.fn().mockResolvedValue({
+        accountStatus: AccountLifecycleStatus.ACTIVE,
+      }),
+    },
     venue: { findUnique: jest.fn() },
     banner: {
       findMany: jest.fn(),
@@ -189,6 +195,18 @@ describe('BannersService cancel', () => {
         displayDate: new Date(Date.UTC(2026, 9, 20)),
       }),
     ]);
+  });
+
+  it('conta PENDING_DELETION não publica promoções', async () => {
+    const { prisma, service } = setup();
+    prisma.user.findUnique.mockResolvedValue({
+      accountStatus: AccountLifecycleStatus.PENDING_DELETION,
+    });
+
+    await expect(
+      service.create('owner-1', 'https://cdn.example/a.jpg', ['2026-10-01']),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.banner.create).not.toHaveBeenCalled();
   });
 
   it('saldo insuficiente não cria publicação nem mexe na anterior', async () => {

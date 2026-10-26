@@ -14,6 +14,7 @@ import {
   ReportTargetType,
 } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { isVenuePubliclyVisible } from '../common/moderation/audience';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminPushService } from '../admin/push/admin-push.service';
 
@@ -155,9 +156,10 @@ export class ReportsService {
         coverUrl: true,
         ownerUserId: true,
         moderationHiddenAt: true,
+        owner: { select: { accountStatus: true } },
       },
     });
-    if (!venue || venue.moderationHiddenAt) {
+    if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     return {
@@ -187,14 +189,20 @@ export class ReportsService {
         status: true,
         venueId: true,
         venue: {
-          select: { id: true, name: true, ownerUserId: true, moderationHiddenAt: true },
+          select: {
+            id: true,
+            name: true,
+            ownerUserId: true,
+            moderationHiddenAt: true,
+            owner: { select: { accountStatus: true } },
+          },
         },
       },
     });
     if (!banner || banner.status !== BannerStatus.ACTIVE) {
       throw new NotFoundException(CONTENT_GONE);
     }
-    if (banner.venue.moderationHiddenAt) {
+    if (!isVenuePubliclyVisible(banner.venue)) {
       throw new NotFoundException(CONTENT_GONE);
     }
     return {
@@ -225,14 +233,20 @@ export class ReportsService {
         mediaType: true,
         venueId: true,
         venue: {
-          select: { id: true, name: true, ownerUserId: true, moderationHiddenAt: true },
+          select: {
+            id: true,
+            name: true,
+            ownerUserId: true,
+            moderationHiddenAt: true,
+            owner: { select: { accountStatus: true } },
+          },
         },
       },
     });
     if (!photo || photo.mediaType !== expected) {
       throw new NotFoundException(CONTENT_GONE);
     }
-    if (photo.venue.moderationHiddenAt) {
+    if (!isVenuePubliclyVisible(photo.venue)) {
       throw new NotFoundException(CONTENT_GONE);
     }
     return {
@@ -258,14 +272,21 @@ export class ReportsService {
         testimonial: true,
         userId: true,
         venueId: true,
-        venue: { select: { id: true, name: true, moderationHiddenAt: true } },
+        venue: {
+          select: {
+            id: true,
+            name: true,
+            moderationHiddenAt: true,
+            owner: { select: { accountStatus: true } },
+          },
+        },
         user: { select: { id: true, name: true } },
       },
     });
     if (!review) {
       throw new NotFoundException(CONTENT_GONE);
     }
-    if (review.venue.moderationHiddenAt) {
+    if (!isVenuePubliclyVisible(review.venue)) {
       throw new NotFoundException(CONTENT_GONE);
     }
     return {

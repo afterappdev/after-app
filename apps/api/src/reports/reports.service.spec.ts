@@ -18,6 +18,16 @@ const user = {
   role: 'USER' as const,
 };
 
+const activeOwner = { accountStatus: 'ACTIVE' as const };
+
+function publicVenue(overrides: Record<string, unknown> = {}) {
+  return {
+    moderationHiddenAt: null,
+    owner: activeOwner,
+    ...overrides,
+  };
+}
+
 describe('ReportsService', () => {
   let prisma: ReturnType<typeof createPrisma>;
   let service: ReportsService;
@@ -38,6 +48,7 @@ describe('ReportsService', () => {
       logoUrl: null,
       coverUrl: null,
       ownerUserId: 'owner-1',
+      ...publicVenue(),
     });
     prisma.report.create.mockResolvedValue({
       id: 'report-1',
@@ -84,7 +95,12 @@ describe('ReportsService', () => {
       kind: 'GALLERY',
       mediaType: MediaType.IMAGE,
       venueId: 'venue-1',
-      venue: { id: 'venue-1', name: 'Bar', ownerUserId: 'owner-1' },
+      venue: {
+        id: 'venue-1',
+        name: 'Bar',
+        ownerUserId: 'owner-1',
+        ...publicVenue(),
+      },
     });
     await expect(
       service.create(user, {
@@ -106,6 +122,7 @@ describe('ReportsService', () => {
       logoUrl: null,
       coverUrl: null,
       ownerUserId: 'owner-1',
+      ...publicVenue(),
     });
     prisma.report.create.mockRejectedValue(
       Object.assign(new Error('unique'), { code: 'P2002' }),
@@ -131,6 +148,7 @@ describe('ReportsService', () => {
       logoUrl: null,
       coverUrl: null,
       ownerUserId: 'user-1',
+      ...publicVenue(),
     });
     await expect(
       service.create(
@@ -151,7 +169,7 @@ describe('ReportsService', () => {
       testimonial: 'Ruim',
       userId: 'user-1',
       venueId: 'venue-1',
-      venue: { id: 'venue-1', name: 'Bar' },
+      venue: { id: 'venue-1', name: 'Bar', ...publicVenue() },
       user: { id: 'user-1', name: 'Ana' },
     });
     await expect(
@@ -188,6 +206,30 @@ describe('ReportsService', () => {
       coverUrl: null,
       ownerUserId: 'owner-1',
       moderationHiddenAt: new Date('2026-09-22T12:00:00.000Z'),
+      owner: activeOwner,
+    });
+    await expect(
+      service.create(user, {
+        targetType: ReportTargetType.VENUE,
+        targetId: 'venue-1',
+        reason: ReportReason.SPAM,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.report.create).not.toHaveBeenCalled();
+  });
+
+  it('estabelecimento com dono pendente de exclusão não pode ser denunciado', async () => {
+    prisma.venue.findUnique.mockResolvedValue({
+      id: 'venue-1',
+      name: 'Bar Central',
+      description: null,
+      city: 'Campinas',
+      state: 'SP',
+      category: 'Bar',
+      logoUrl: null,
+      coverUrl: null,
+      ownerUserId: 'owner-1',
+      ...publicVenue({ owner: { accountStatus: 'PENDING_DELETION' } }),
     });
     await expect(
       service.create(user, {
@@ -211,7 +253,7 @@ describe('ReportsService', () => {
         id: 'venue-1',
         name: 'Bar',
         ownerUserId: 'owner-1',
-        moderationHiddenAt: null,
+        ...publicVenue(),
       },
     });
     await expect(
@@ -245,7 +287,7 @@ describe('ReportsService notifica o Admin só depois de gravar', () => {
     logoUrl: null,
     coverUrl: null,
     ownerUserId: 'owner-1',
-    moderationHiddenAt: null,
+    ...publicVenue(),
   };
 
   it('denúncia de estabelecimento dispara um push com o nome do local', async () => {
@@ -291,7 +333,7 @@ describe('ReportsService notifica o Admin só depois de gravar', () => {
         id: 'venue-1',
         name: 'Bar Central',
         ownerUserId: 'owner-1',
-        moderationHiddenAt: null,
+        ...publicVenue(),
       },
     });
     prisma.report.create.mockResolvedValue({

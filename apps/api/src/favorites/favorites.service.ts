@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import {
   blockedVenueIdsForUser,
+  isVenuePubliclyVisible,
   publicVenueWhere,
 } from '../common/moderation/audience';
 
@@ -39,9 +40,13 @@ export class FavoritesService {
   async add(userId: string, venueId: string) {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true, moderationHiddenAt: true },
+      select: {
+        id: true,
+        moderationHiddenAt: true,
+        owner: { select: { accountStatus: true } },
+      },
     });
-    if (!venue || venue.moderationHiddenAt) {
+    if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     const blocked = await this.prisma.userVenueBlock.findUnique({

@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { AccountLifecycleStatus, Prisma } from '@prisma/client';
 
 export type AudienceCandidate = {
   id: string;
@@ -19,6 +19,7 @@ export function promoAudienceWhere(input: {
 }): Prisma.UserWhereInput {
   const where: Prisma.UserWhereInput = {
     role: 'USER',
+    accountStatus: AccountLifecycleStatus.ACTIVE,
     promoNotificationsEnabled: true,
     venueBlocks: { none: { venueId: input.venueId } },
     OR: [

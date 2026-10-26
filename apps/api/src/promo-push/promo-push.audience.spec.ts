@@ -1,3 +1,4 @@
+import { AccountLifecycleStatus } from '@prisma/client';
 import { AudienceCandidate, promoAudienceWhere, selectPromoAudience } from './promo-push.audience';
 
 const now = new Date('2026-10-20T15:00:00.000Z');
@@ -117,6 +118,7 @@ describe('promoAudienceWhere', () => {
       allowlist: ['user-a'],
     });
     expect(where.role).toBe('USER');
+    expect(where.accountStatus).toBe(AccountLifecycleStatus.ACTIVE);
     expect(where.promoNotificationsEnabled).toBe(true);
     expect(where.venueBlocks).toEqual({ none: { venueId: 'venue-1' } });
     expect(where.id).toEqual({ in: ['user-a'] });

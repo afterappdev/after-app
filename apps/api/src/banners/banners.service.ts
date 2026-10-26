@@ -16,6 +16,7 @@ import {
   PROMO_PUSH_PUBLISHER,
   type PromoPushPublisher,
 } from '../promo-push/promo-push.publisher';
+import { assertUserAccountActive } from '../common/account/account-eligibility';
 import { quotePublication } from './banner-quote';
 
 @Injectable()
@@ -249,6 +250,7 @@ export class BannersService {
   }
 
   private async requireVenueOwned(userId: string) {
+    await assertUserAccountActive(this.prisma, userId);
     const venue = await this.prisma.venue.findUnique({
       where: { ownerUserId: userId },
     });

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AdminPushService } from '../admin/push/admin-push.service';
+import { assertUserAccountActive } from '../common/account/account-eligibility';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { isCouponCode, normalizeCouponCode } from './coupon-code';
@@ -206,6 +207,7 @@ export class CouponsService {
         'Cupom disponível apenas para estabelecimentos.',
       );
     }
+    await assertUserAccountActive(this.prisma, user.userId);
     if (!isCouponCode(rawCode ?? '')) {
       throw new BadRequestException('Informe um código de cupom válido.');
     }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AccountLifecycleStatus, Prisma } from '@prisma/client';
+import { isVenuePubliclyVisible } from '../common/moderation/audience';
 import { PrismaService } from '../prisma/prisma.service';
 
 function inboxWhere(userId: string): Prisma.NotificationWhereInput {
@@ -7,6 +8,7 @@ function inboxWhere(userId: string): Prisma.NotificationWhereInput {
     userId,
     venue: {
       moderationHiddenAt: null,
+      owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
       blockedByUsers: { none: { userId } },
     },
   };
@@ -62,10 +64,22 @@ export class NotificationsService {
     bannerId: string;
     promoTitle?: string | null;
   }) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: params.venueId },
+      select: {
+        moderationHiddenAt: true,
+        owner: { select: { accountStatus: true } },
+      },
+    });
+    if (!venue || !isVenuePubliclyVisible(venue)) {
+      return;
+    }
+
     const followers = await this.prisma.favorite.findMany({
       where: {
         venueId: params.venueId,
         user: {
+          accountStatus: AccountLifecycleStatus.ACTIVE,
           venueBlocks: { none: { venueId: params.venueId } },
         },
       },

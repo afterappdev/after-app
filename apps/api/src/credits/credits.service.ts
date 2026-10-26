@@ -27,6 +27,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { assertUserAccountActive } from '../common/account/account-eligibility';
 import { CREDIT_PACKAGES, CreditPackageKey } from '../common/constants/credits';
 import { isMercadoPagoSandbox, isProduction } from '../common/env';
 import {
@@ -1778,6 +1779,7 @@ export class CreditsService {
   }
 
   private async requireVenueOwned(userId: string) {
+    await assertUserAccountActive(this.prisma, userId);
     const venue = await this.prisma.venue.findUnique({
       where: { ownerUserId: userId },
       include: { owner: { select: { email: true, name: true } } },
