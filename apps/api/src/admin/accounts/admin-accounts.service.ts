@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { AdminPurgeStrategy } from '../../users/users.service';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from '../../users/users.service';
@@ -82,6 +83,10 @@ export class AdminAccountsService {
         avatarUrl: true,
         createdAt: true,
         updatedAt: true,
+        accountStatus: true,
+        deletionRequestedAt: true,
+        permanentDeletionAt: true,
+        deletionCancelledAt: true,
         venue: {
           select: {
             id: true,
@@ -103,6 +108,18 @@ export class AdminAccountsService {
       throw new NotFoundException('Conta não encontrada');
     }
 
+    const job = await this.prisma.accountPurgeJob.findUnique({
+      where: { userId: id },
+      select: {
+        status: true,
+        attempts: true,
+        progressStage: true,
+        scheduledFor: true,
+        cancelledAt: true,
+        completedAt: true,
+        lastError: true,
+      },
+    });
     return {
       id: user.id,
       name: user.name,
@@ -113,6 +130,25 @@ export class AdminAccountsService {
       avatarUrl: user.avatarUrl,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      lifecycle: {
+        accountStatus: user.accountStatus,
+        deletionRequestedAt: user.deletionRequestedAt,
+        permanentDeletionAt: user.permanentDeletionAt,
+        deletionCancelledAt: user.deletionCancelledAt,
+      },
+      purgeJob: job
+        ? {
+            status: job.status,
+            attempts: job.attempts,
+            progressStage: job.progressStage,
+            scheduledFor: job.scheduledFor,
+            cancelledAt: job.cancelledAt,
+            completedAt: job.completedAt,
+            lastError: job.lastError
+              ? job.lastError.slice(0, 200)
+              : null,
+          }
+        : null,
       venue: user.venue
         ? {
             id: user.venue.id,
@@ -172,7 +208,7 @@ export class AdminAccountsService {
     };
   }
 
-  async remove(id: string) {
+  async remove(id: string, strategy: AdminPurgeStrategy = 'hard') {
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, role: true },
@@ -186,8 +222,11 @@ export class AdminAccountsService {
       );
     }
 
-    await this.users.deleteAccount(id);
-    return { success: true };
+    const result = await this.users.purgeAccountPermanently(id, {
+      strategy,
+      auditSource: 'admin',
+    });
+    return { success: true, outcome: result.outcome };
   }
 
   private buildWhere(query: AdminAccountsQueryDto): Prisma.UserWhereInput {

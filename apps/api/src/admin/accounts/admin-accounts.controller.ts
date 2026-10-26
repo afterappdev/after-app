@@ -2,6 +2,7 @@ import { Controller, Delete, Get, HttpCode, Param, Query } from '@nestjs/common'
 import { AdminOnly } from '../guards/admin-only.decorator';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
 import { AdminAccountsStatsQueryDto } from './admin-accounts.stats.query';
+import { AdminAccountRemoveQueryDto } from './admin-accounts.remove.query';
 import { AdminAccountsService } from './admin-accounts.service';
 
 @Controller('admin/accounts')
@@ -31,7 +32,7 @@ export class AdminAccountsController {
 
   @Delete(':id')
   @HttpCode(200)
-  remove(@Param('id') id: string) {
-    return this.accounts.remove(id);
+  remove(@Param('id') id: string, @Query() query: AdminAccountRemoveQueryDto) {
+    return this.accounts.remove(id, query.strategy ?? 'hard');
   }
 }

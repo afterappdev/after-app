@@ -141,7 +141,7 @@ describe('Admin accounts HTTP', () => {
       .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
       .expect(200);
     expect(res.body).toEqual({ success: true });
-    expect(accounts.remove).toHaveBeenCalledWith('u-user');
+    expect(accounts.remove).toHaveBeenCalledWith('u-user', 'hard');
   });
 
   it('DELETE /admin/accounts/:id conta inexistente → 404', async () => {

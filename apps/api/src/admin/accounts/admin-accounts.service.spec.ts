@@ -8,32 +8,47 @@ describe('AdminAccountsService.remove', () => {
     user: { findUnique: jest.fn() },
   };
   const users = {
-    deleteAccount: jest.fn(),
+    purgeAccountPermanently: jest.fn(),
   };
   let service: AdminAccountsService;
 
   beforeEach(() => {
     prisma.user.findUnique.mockReset();
-    users.deleteAccount.mockReset();
-    users.deleteAccount.mockResolvedValue({ ok: true });
+    users.purgeAccountPermanently.mockReset();
+    users.purgeAccountPermanently.mockResolvedValue({
+      ok: true,
+      outcome: 'hard_deleted',
+    });
     service = new AdminAccountsService(prisma as never, users as never);
   });
 
-  it('admin exclui USER reutilizando UsersService.deleteAccount', async () => {
+  it('admin exclui USER com purge imediato', async () => {
     prisma.user.findUnique.mockResolvedValue({ id: 'u-user', role: Role.USER });
 
-    await expect(service.remove('u-user')).resolves.toEqual({ success: true });
-    expect(users.deleteAccount).toHaveBeenCalledWith('u-user');
+    await expect(service.remove('u-user')).resolves.toEqual({
+      success: true,
+      outcome: 'hard_deleted',
+    });
+    expect(users.purgeAccountPermanently).toHaveBeenCalledWith('u-user', {
+      strategy: 'hard',
+      auditSource: 'admin',
+    });
   });
 
-  it('admin exclui VENUE reutilizando deleteAccount', async () => {
+  it('admin exclui VENUE com purge imediato', async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'u-venue',
       role: Role.VENUE,
     });
 
-    await expect(service.remove('u-venue')).resolves.toEqual({ success: true });
-    expect(users.deleteAccount).toHaveBeenCalledWith('u-venue');
+    await expect(service.remove('u-venue')).resolves.toEqual({
+      success: true,
+      outcome: 'hard_deleted',
+    });
+    expect(users.purgeAccountPermanently).toHaveBeenCalledWith('u-venue', {
+      strategy: 'hard',
+      auditSource: 'admin',
+    });
   });
 
   it('conta inexistente → 404 e não chama exclusão', async () => {
@@ -42,7 +57,7 @@ describe('AdminAccountsService.remove', () => {
     await expect(service.remove('missing')).rejects.toBeInstanceOf(
       NotFoundException,
     );
-    expect(users.deleteAccount).not.toHaveBeenCalled();
+    expect(users.purgeAccountPermanently).not.toHaveBeenCalled();
   });
 
   it('tentativa de excluir ADMIN é bloqueada', async () => {
@@ -57,53 +72,25 @@ describe('AdminAccountsService.remove', () => {
     await expect(service.remove('u-admin')).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    expect(users.deleteAccount).not.toHaveBeenCalled();
+    expect(users.purgeAccountPermanently).not.toHaveBeenCalled();
   });
 
-  it('reutiliza deleteUserRecord e o MediaCleanupService existente', async () => {
-    const prismaClient = {
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'u-user',
-          role: Role.USER,
-          email: 'user@after.local',
-          appleId: null,
-          googleId: null,
-          appleRefreshTokenEnc: null,
-          appleClientId: null,
-          avatarUrl: 'https://cdn.example/avatar.jpg',
-          venue: null,
-        }),
-        delete: jest.fn().mockResolvedValue({ id: 'u-user' }),
-      },
-      socialOnboardingToken: {
-        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-      },
-    };
-    const mediaCleanup = {
-      deleteStoredUploads: jest.fn().mockResolvedValue(undefined),
-    };
-    const usersService = new UsersService(
-      prismaClient as never,
-      mediaCleanup as never,
-      { revokeForAccount: jest.fn().mockResolvedValue(undefined) } as never,
-    );
-    const deleteUserRecord = jest.spyOn(usersService, 'deleteUserRecord');
+  it('remove delega ao purge orquestrado do UsersService', async () => {
+    const purge = jest.fn().mockResolvedValue({
+      ok: true,
+      outcome: 'hard_deleted',
+    });
     const adminService = new AdminAccountsService(
-      prismaClient as never,
-      usersService,
+      { user: { findUnique: jest.fn().mockResolvedValue({ id: 'u-user', role: Role.USER }) } } as never,
+      { purgeAccountPermanently: purge } as never,
     );
-
     await expect(adminService.remove('u-user')).resolves.toEqual({
       success: true,
+      outcome: 'hard_deleted',
     });
-    expect(deleteUserRecord).toHaveBeenCalledWith(prismaClient, 'u-user');
-    expect(prismaClient.socialOnboardingToken.deleteMany).toHaveBeenCalled();
-    expect(prismaClient.user.delete).toHaveBeenCalledWith({
-      where: { id: 'u-user' },
+    expect(purge).toHaveBeenCalledWith('u-user', {
+      strategy: 'hard',
+      auditSource: 'admin',
     });
-    expect(mediaCleanup.deleteStoredUploads).toHaveBeenCalledWith([
-      'https://cdn.example/avatar.jpg',
-    ]);
   });
 });
