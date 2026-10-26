@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -23,6 +26,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   bool _loading = true;
   bool _uploading = false;
   bool _publishing = false;
+  String? _publishIdempotencyKey;
   String? _cancellingId;
   int _creditPerDay = 1;
   int _vipCreditPerDay = 1;
@@ -175,6 +179,13 @@ class _CreditsScreenState extends State<CreditsScreen> {
   String _fmtBr(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
+  String _newPublicationIdempotencyKey() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(24, (_) => random.nextInt(256));
+    final encoded = base64Url.encode(bytes).replaceAll(RegExp(r'[^A-Za-z0-9_-]'), 'x');
+    return encoded.length >= 16 ? encoded.substring(0, 24) : encoded.padRight(16, 'x');
+  }
+
   Future<void> _publishBanner() async {
     if (_publishing) return;
     if (_bannerUrl == null) {
@@ -216,15 +227,20 @@ class _CreditsScreenState extends State<CreditsScreen> {
     );
     if (!confirmed || !mounted || _publishing) return;
 
+    final idempotencyKey = _publishIdempotencyKey ??= _newPublicationIdempotencyKey();
     setState(() => _publishing = true);
     try {
       final dates = _selectedDates.map(_fmt).toList()..sort();
-      await context.read<ApiClient>().post('/banners', body: {
-        'imageUrl': _bannerUrl,
-        'title': title,
-        'description': description,
-        ...(isVip ? {'vipDates': dates} : {'dates': dates}),
-      });
+      await context.read<ApiClient>().post(
+        '/banners',
+        headers: {'Idempotency-Key': idempotencyKey},
+        body: {
+          'imageUrl': _bannerUrl,
+          'title': title,
+          'description': description,
+          ...(isVip ? {'vipDates': dates} : {'dates': dates}),
+        },
+      );
       if (!mounted) return;
       setState(() {
         _bannerUrl = null;
@@ -232,6 +248,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _title.clear();
         _description.clear();
         _billingPlan = PublicationBillingPlan.common;
+        _publishIdempotencyKey = null;
       });
       _snack(isVip ? 'Publicação VIP agendada na HOME.' : 'Publicação agendada na HOME.');
       await _load();

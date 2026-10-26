@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/network/api_client.dart';
 
 class PromoPreference {
@@ -55,8 +57,20 @@ class PromoPushApi {
   Future<void> registerToken(String token) async {
     await client.post('/promo-notifications/tokens', body: {
       'token': token,
-      'platform': 'android',
+      'platform': _promoPushPlatform,
     });
+  }
+
+  static String get _promoPushPlatform {
+    if (kIsWeb) return 'web';
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+        return 'ios';
+      case TargetPlatform.android:
+        return 'android';
+      default:
+        return 'web';
+    }
   }
 
   Future<void> unregisterToken(String token) async {

@@ -87,14 +87,22 @@ class ApiClient {
     });
   }
 
-  Future<dynamic> post(String path, {Object? body}) {
+  Future<dynamic> post(
+    String path, {
+    Object? body,
+    Map<String, String>? headers,
+  }) {
     final uri = Uri.parse('${ApiConfig.baseUrl}$path');
     final encoded = body == null ? null : jsonEncode(body);
+    Map<String, String> merge(bool omitAuth) => {
+          ..._jsonHeaders(omitAuth: omitAuth),
+          if (headers != null) ...headers,
+        };
     return _request(
       'POST',
       path,
-      () => _client.post(uri, headers: _jsonHeaders(omitAuth: false), body: encoded),
-      () => _client.post(uri, headers: _jsonHeaders(omitAuth: true), body: encoded),
+      () => _client.post(uri, headers: merge(false), body: encoded),
+      () => _client.post(uri, headers: merge(true), body: encoded),
     );
   }
 

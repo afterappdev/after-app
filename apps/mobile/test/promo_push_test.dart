@@ -98,7 +98,7 @@ void main() {
     expect(api.registered, isEmpty);
     expect(
       coordinator.statusMessage,
-      'A preferência foi salva, mas o Android está bloqueando os avisos.',
+      'A preferência foi salva, mas o sistema está bloqueando os avisos.',
     );
   });
 

@@ -52,16 +52,17 @@ Future<void> main() async {
   );
   final navigatorKey = GlobalKey<NavigatorState>();
   final promoApi = PromoPushApi(api);
-  final androidPromo =
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  final nativePromo = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
   final promo = PromoPushCoordinator(
     api: promoApi,
     messaging: createPromoPushMessaging(),
     ledger: ledger,
     router: PromoPushRouter(navigatorKey: navigatorKey, api: promoApi),
     cityMemory: PreferencesPromoCityMemory(),
-    geocoder: androidPromo ? NominatimMunicipalityGeocoder() : null,
-    locator: androidPromo ? const GeolocatorDeviceLocator() : null,
+    geocoder: nativePromo ? NominatimMunicipalityGeocoder() : null,
+    locator: nativePromo ? const GeolocatorDeviceLocator() : null,
     onSessionEnd: () => OriginCache().clear(),
   );
   await auth.bootstrap();

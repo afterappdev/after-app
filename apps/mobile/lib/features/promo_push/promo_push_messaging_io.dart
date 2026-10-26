@@ -29,17 +29,32 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   @override
   bool get isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
+  bool get _isIos =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  bool get _supportsNativePromo => isAndroid || _isIos;
+
   @override
   Future<bool> initialize() async {
-    if (!isAndroid) return false;
+    if (!_supportsNativePromo) return false;
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp();
       }
       _messaging = FirebaseMessaging.instance;
+      if (_isIos) {
+        await _messaging!.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
       await _local.initialize(
-        const InitializationSettings(
-          android: AndroidInitializationSettings('@drawable/ic_promo_notification'),
+        InitializationSettings(
+          android: const AndroidInitializationSettings(
+            '@drawable/ic_promo_notification',
+          ),
+          iOS: const DarwinInitializationSettings(),
         ),
         onDidReceiveNotificationResponse: (response) {
           final message = _messageFromPayload(response.payload);
@@ -135,8 +150,8 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
       id,
       message.title,
       message.body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
+      NotificationDetails(
+        android: const AndroidNotificationDetails(
           promoAlertsChannelId,
           'Promoções e eventos',
           channelDescription:
@@ -146,6 +161,7 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
           icon: '@drawable/ic_promo_notification',
           color: Color(0xFFF58634),
         ),
+        iOS: const DarwinNotificationDetails(),
       ),
       payload: jsonEncode({
         'type': 'PROMO_PUBLISHED',

@@ -186,7 +186,7 @@ class PromoPushCoordinator extends ChangeNotifier {
           }
         } else if (permission == PromoOsPermission.denied) {
           statusMessage =
-              'A preferência foi salva, mas o Android está bloqueando os avisos.';
+              'A preferência foi salva, mas o sistema está bloqueando os avisos.';
         }
         final session = _session;
         if (session != null) await refreshAuthorizedCity(session);
