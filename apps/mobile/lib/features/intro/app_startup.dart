@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../auth/auth_controller.dart';
+import '../auth/account_recovery_screen.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
 import '../home/home_screen.dart';
@@ -32,6 +33,9 @@ class _AppStartupState extends State<AppStartup> {
     }
     if (!_introDone) {
       return AfterIntroScreen(onFinished: _finishIntro);
+    }
+    if (auth.pendingAccountRecovery != null) {
+      return const AccountRecoveryScreen();
     }
     return auth.pendingSocialOnboarding != null
         ? const RegisterScreen()

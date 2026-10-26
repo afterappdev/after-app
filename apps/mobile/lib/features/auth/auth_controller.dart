@@ -5,8 +5,11 @@ import 'package:flutter/foundation.dart';
 import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
 import 'google_session.dart';
+import 'models/deletion_status.dart';
 import 'models/user_session.dart';
 import 'models/social_onboarding.dart';
+
+const _accountRecoveryJwtTyp = 'account_recovery';
 
 class AuthController extends ChangeNotifier {
   AuthController({
@@ -23,6 +26,8 @@ class AuthController extends ChangeNotifier {
 
   UserSession? user;
   SocialOnboarding? pendingSocialOnboarding;
+  PendingAccountRecovery? pendingAccountRecovery;
+  String? postRecoveryLoginMessage;
 
   /// Runs while the current access token is still valid, before logout or
   /// before another account replaces the session.
@@ -73,7 +78,7 @@ class AuthController extends ChangeNotifier {
         'email': email.trim(),
         'password': password,
       }) as Map<String, dynamic>;
-      await _persist(data);
+      await _applyAuthPayload(data);
     } on ApiException catch (e) {
       error = e.message;
       notifyListeners();
@@ -138,6 +143,11 @@ class AuthController extends ChangeNotifier {
   Future<void> loginWithAccessToken(String accessToken) async {
     error = null;
     notifyListeners();
+    final payload = decodeUnverifiedJwtPayload(accessToken);
+    if (payload?['typ'] == _accountRecoveryJwtTyp) {
+      await _loadPendingRecoveryFromToken(accessToken);
+      return;
+    }
     api.setToken(accessToken);
     try {
       final data = await api.get('/users/me') as Map<String, dynamic>;
@@ -286,16 +296,54 @@ class AuthController extends ChangeNotifier {
       await storage.clear();
       user = null;
       pendingSocialOnboarding = null;
+      pendingAccountRecovery = null;
       notifyListeners();
     } finally {
       _sessionClearing = null;
     }
   }
 
-  Future<void> deleteAccount() async {
-    await api.delete('/users/me');
+  Future<void> requestAccountDeletion() async {
+    await api.post('/users/me/deletion-request');
     await googleSession.disconnect();
     await logout();
+  }
+
+  Future<void> deleteAccount() => requestAccountDeletion();
+
+  Future<void> cancelAccountDeletionRecovery() async {
+    final pending = pendingAccountRecovery;
+    if (pending == null) {
+      throw StateError('Nenhuma recuperação pendente');
+    }
+    final hook = api.onUnauthorized;
+    api.onUnauthorized = null;
+    try {
+      api.setToken(pending.recoveryToken);
+      try {
+        await api.post('/users/me/deletion-cancel');
+      } finally {
+        api.setToken(null);
+      }
+    } finally {
+      api.onUnauthorized = hook;
+    }
+    pendingAccountRecovery = null;
+    postRecoveryLoginMessage =
+        'Conta recuperada! Entre novamente com e-mail, Google ou Apple.';
+    notifyListeners();
+  }
+
+  void abandonAccountRecovery() {
+    if (pendingAccountRecovery == null) return;
+    pendingAccountRecovery = null;
+    notifyListeners();
+  }
+
+  String? takePostRecoveryLoginMessage() {
+    final message = postRecoveryLoginMessage;
+    postRecoveryLoginMessage = null;
+    return message;
   }
 
   Future<void> updateProfile({
@@ -366,7 +414,46 @@ class AuthController extends ChangeNotifier {
       return;
     }
     pendingSocialOnboarding = null;
+    await _applyAuthPayload(data);
+  }
+
+  Future<void> _applyAuthPayload(Map<String, dynamic> data) async {
+    if (data['accountPendingDeletion'] == true) {
+      pendingAccountRecovery = PendingAccountRecovery.fromLoginResponse(data);
+      pendingSocialOnboarding = null;
+      notifyListeners();
+      return;
+    }
+    pendingAccountRecovery = null;
     await _persist(data);
+  }
+
+  Future<void> _loadPendingRecoveryFromToken(String recoveryToken) async {
+    final hook = api.onUnauthorized;
+    api.onUnauthorized = null;
+    try {
+      api.setToken(recoveryToken);
+      try {
+        final status = await api.get('/users/me/deletion-status')
+            as Map<String, dynamic>;
+        pendingAccountRecovery = PendingAccountRecovery(
+          recoveryToken: recoveryToken,
+          status: DeletionStatus.fromJson(status),
+        );
+        pendingSocialOnboarding = null;
+        notifyListeners();
+      } on ApiException catch (e) {
+        error = e.statusCode == 401
+            ? 'Sua sessão de recuperação expirou. Faça login novamente.'
+            : e.message;
+        notifyListeners();
+        rethrow;
+      } finally {
+        api.setToken(null);
+      }
+    } finally {
+      api.onUnauthorized = hook;
+    }
   }
 
   Future<void> _updateStoredUser(UserSession session) async {

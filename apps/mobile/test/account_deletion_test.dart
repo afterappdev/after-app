@@ -192,7 +192,12 @@ void main() {
 
     expect(called, isTrue);
     expect(find.byKey(const Key('deletion-confirm-success')), findsOneWidget);
-    expect(find.text('Sua conta foi excluída.'), findsOneWidget);
+    expect(
+      find.text(
+        'Sua conta foi desativada. Você tem 30 dias para recuperá-la fazendo login novamente.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('token inválido mostra erro amigável', (tester) async {
@@ -219,12 +224,13 @@ void main() {
     expect(find.textContaining('Prisma'), findsNothing);
   });
 
-  testWidgets('botão de exclusão autenticado do app continua funcionando',
+  testWidgets('botão de exclusão autenticado agenda e só então encerra sessão',
       (tester) async {
-    var deleted = false;
+    var scheduled = false;
     final client = MockClient((req) async {
-      if (req.method == 'DELETE' && req.url.path.endsWith('/users/me')) {
-        deleted = true;
+      if (req.method == 'POST' &&
+          req.url.path.endsWith('/users/me/deletion-request')) {
+        scheduled = true;
         return http.Response(
           jsonEncode({'ok': true}),
           200,
@@ -255,14 +261,54 @@ void main() {
       _wrap(const Scaffold(body: DeleteAccountButton()), api: api, auth: auth),
     );
     await tester.pump();
-    await tester.tap(find.text('Excluir conta'));
-    await tester.pump();
-    await tester.tap(find.text('Sim'));
+    await tester.tap(find.text('Excluir minha conta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agendar exclusão'));
     await _pumpAsync(tester);
-    expect(deleted, isTrue);
+    expect(scheduled, isTrue);
     expect(auth.user, isNull);
     expect(google.disconnects, 1);
     expect(google.signOuts, 1);
+  });
+
+  testWidgets('falha ao agendar exclusão mantém sessão local', (tester) async {
+    final client = MockClient((req) async {
+      if (req.method == 'POST' &&
+          req.url.path.endsWith('/users/me/deletion-request')) {
+        return http.Response(
+          jsonEncode({'message': 'Erro interno'}),
+          500,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    final api = ApiClient(client: client);
+    final auth = AuthController(
+      api: api,
+      storage: AuthStorage(),
+      googleSession: _RecordingGoogleSession(),
+    );
+    auth.bootstrapping = false;
+    auth.user = UserSession(
+      id: 'u1',
+      name: 'Ana',
+      email: 'ana@after.local',
+      role: 'USER',
+      state: 'SP',
+      city: 'São Paulo',
+    );
+
+    await tester.pumpWidget(
+      _wrap(const Scaffold(body: DeleteAccountButton()), api: api, auth: auth),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Excluir minha conta'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agendar exclusão'));
+    await _pumpAsync(tester);
+    expect(auth.user, isNotNull);
+    expect(find.text('Erro interno'), findsOneWidget);
   });
 
   test('logout e exclusão limpam sessão e preferências locais', () async {
@@ -281,7 +327,8 @@ void main() {
     final google = _RecordingGoogleSession();
     final api = ApiClient(
       client: MockClient((req) async {
-        if (req.method == 'DELETE' && req.url.path.endsWith('/users/me')) {
+        if (req.method == 'POST' &&
+            req.url.path.endsWith('/users/me/deletion-request')) {
           return http.Response(
             jsonEncode({'ok': true}),
             200,

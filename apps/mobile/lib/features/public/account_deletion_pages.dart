@@ -119,10 +119,10 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
                 ),
                 const SizedBox(height: 10),
                 const Text(
-                  'Você pode excluir a conta After de dois jeitos:\n'
+                  'Você pode solicitar a desativação da conta After de dois jeitos:\n'
                   '• no aplicativo, autenticado, em Perfil → Excluir conta;\n'
                   '• por esta página, informando o e-mail da conta. Enviaremos um link de confirmação só para esse e-mail.\n\n'
-                  'Abrir o e-mail não exclui a conta. A exclusão só acontece se você confirmar no link.',
+                  'Abrir o e-mail não desativa a conta. A desativação só é agendada se você confirmar no link.',
                   style: publicBodyStyle,
                 ),
               ],
@@ -240,7 +240,8 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
                 ),
                 SizedBox(height: 10),
                 Text(
-                  'A exclusão da conta poderá resultar na remoção dos dados pessoais e conteúdos associados à conta, observadas as hipóteses em que determinadas informações precisem ser mantidas para cumprimento de obrigações legais ou regulatórias, prevenção de fraude, segurança, resolução de disputas ou exercício regular de direitos.',
+                  'Após a confirmação, a conta fica desativada por 30 dias. Durante esse período você pode recuperá-la fazendo login no app ou site e escolhendo "Recuperar minha conta".\n\n'
+                  'Depois dos 30 dias, dados elegíveis (perfil, mídias e promoções, quando aplicável) poderão ser removidos definitivamente, observadas retenções legais, fiscais ou de segurança.',
                   style: publicBodyStyle,
                 ),
               ],
@@ -385,7 +386,8 @@ class _ConfirmAccountDeletionPageState
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'Não foi possível concluir a exclusão agora. Tente novamente.';
+        _error =
+            'Não foi possível agendar a desativação agora. Tente novamente.';
       });
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -411,7 +413,7 @@ class _ConfirmAccountDeletionPageState
           const SizedBox(height: 12),
           if (_done)
             const Text(
-              'Sua conta foi excluída.',
+              'Sua conta foi desativada. Você tem 30 dias para recuperá-la fazendo login novamente.',
               key: Key('deletion-confirm-success'),
               style: TextStyle(
                 fontFamily: AppTheme.fontFamily,
@@ -435,7 +437,9 @@ class _ConfirmAccountDeletionPageState
             )
           else ...[
             const Text(
-              'Confirmar agora exclui a conta After ligada a este link, incluindo perfil, mídia, favoritos, avaliações e publicações. Esta ação não pode ser desfeita.',
+              'Confirmar agora agenda a desativação da conta After ligada a este link por 30 dias. '
+              'Durante esse prazo você pode recuperá-la fazendo login e escolhendo "Recuperar minha conta".\n\n'
+              'Após 30 dias, dados elegíveis poderão ser removidos definitivamente, respeitando retenções legais.',
               style: TextStyle(
                 fontFamily: AppTheme.fontFamily,
                 fontWeight: FontWeight.w400,

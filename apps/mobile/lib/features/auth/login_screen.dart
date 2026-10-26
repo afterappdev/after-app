@@ -88,6 +88,10 @@ class _LoginScreenState extends State<LoginScreen> {
         _showErrorSnackBar(oauthError);
       }
       _flushOAuthError();
+      final recovered = context.read<AuthController>().takePostRecoveryLoginMessage();
+      if (recovered != null && recovered.isNotEmpty) {
+        _showSuccessSnackBar(recovered);
+      }
     });
   }
 
@@ -130,6 +134,24 @@ class _LoginScreenState extends State<LoginScreen> {
             color: Colors.white,
             fontSize: 14,
             fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppTheme.accentPurple,
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
