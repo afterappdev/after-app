@@ -1,0 +1,7 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": "account-soft-delete.*\\.isolated-pg\\.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}
