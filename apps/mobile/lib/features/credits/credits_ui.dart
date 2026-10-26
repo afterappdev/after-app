@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'vip_push_timing.dart';
 
 const kCreditsAccent = AppTheme.brand;
 const kCreditsBg = AppTheme.canvas;
@@ -600,6 +601,137 @@ class _PublicationPlanTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Horário do aviso push para publicação VIP (America/Sao_Paulo).
+class VipPushTimingSelector extends StatelessWidget {
+  const VipPushTimingSelector({
+    super.key,
+    required this.dateLabels,
+    required this.selected,
+    required this.onSelected,
+    required this.now,
+  });
+
+  final List<String> dateLabels;
+  final VipPushTiming? selected;
+  final ValueChanged<VipPushTiming> onSelected;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = allowedVipPushTimingsForAllDateLabels(dateLabels, now);
+    if (dateLabels.isEmpty) return const SizedBox.shrink();
+
+    if (options.isEmpty) {
+      return Container(
+        key: const Key('vip-push-timing-empty'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4F4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8B4B4)),
+        ),
+        child: const Text(
+          'As datas selecionadas não permitem o mesmo horário de aviso push. '
+          'Ajuste as datas ou publique em etapas separadas.',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 12,
+            height: 1.35,
+            color: kCreditsInk,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Horário do aviso push',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: kCreditsInk,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Fuso: America/Sao_Paulo. O envio imediato agenda o processamento agora; '
+          'a entrega pelo celular pode levar alguns minutos.',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 11,
+            height: 1.35,
+            color: kCreditsMuted,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ...options.map((timing) {
+          final isSelected = selected == timing;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              key: Key('vip-push-${vipPushTimingApiValue(timing)}'),
+              color: isSelected ? _pubLilac : Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: isSelected ? _pubPurple : const Color(0xFFE4E4EA),
+                  width: isSelected ? 1.6 : 1,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onSelected(timing),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        size: 20,
+                        color: isSelected ? _pubPurple : kCreditsMuted,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          labelVipPushTiming(timing),
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontFamily,
+                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            fontSize: 13,
+                            color: kCreditsInk,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+        if (selected != null && dateLabels.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            vipPushScheduleSummary(displayDates: dateLabels, timing: selected!),
+            style: TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _pubPurple,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

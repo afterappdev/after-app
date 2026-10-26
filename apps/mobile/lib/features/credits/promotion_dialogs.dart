@@ -6,6 +6,7 @@ Future<bool> showPublishPromotionDialog(
   BuildContext context, {
   required int credits,
   required bool isVip,
+  String? vipPushSummary,
 }) async {
   final walletLabel = isVip ? 'VIP' : 'comum';
   final confirmed = await showDialog<bool>(
@@ -18,7 +19,9 @@ Future<bool> showPublishPromotionDialog(
         ),
         content: Text(
           isVip
-              ? 'Esta publicação VIP utilizará $credits crédito(s) VIP da sua carteira, com destaque na Home e envio de aviso push para usuários elegíveis da cidade. Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.'
+              ? 'Esta publicação VIP utilizará $credits crédito(s) VIP da sua carteira, com destaque na Home na data de vigência e aviso push conforme o horário escolhido.'
+                  '${vipPushSummary != null && vipPushSummary.isNotEmpty ? '\n\nAviso push: $vipPushSummary.' : ''} '
+                  'Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.'
               : 'Esta publicação utilizará $credits crédito(s) $walletLabel da sua carteira. Após a publicação, os créditos utilizados não serão devolvidos, mesmo que você exclua a promoção posteriormente.',
           style: const TextStyle(fontFamily: AppTheme.fontFamily, height: 1.35),
         ),

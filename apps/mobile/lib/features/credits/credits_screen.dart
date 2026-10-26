@@ -14,6 +14,7 @@ import 'buy_credits_screen.dart';
 import 'credits_ui.dart';
 import 'promotion_dialogs.dart';
 import 'publication_draft.dart';
+import 'vip_push_timing.dart';
 
 class CreditsScreen extends StatefulWidget {
   const CreditsScreen({super.key});
@@ -31,6 +32,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   int _creditPerDay = 1;
   int _vipCreditPerDay = 1;
   PublicationBillingPlan _billingPlan = PublicationBillingPlan.common;
+  VipPushTiming? _vipPushTiming;
   String? _error;
   int _balance = 0;
   int _vipBalance = 0;
@@ -167,7 +169,24 @@ class _CreditsScreenState extends State<CreditsScreen> {
       } else {
         _selectedDates.add(day);
       }
+      _syncVipPushTiming();
     });
+  }
+
+  void _syncVipPushTiming() {
+    if (_billingPlan != PublicationBillingPlan.vip || _selectedDates.isEmpty) {
+      _vipPushTiming = null;
+      return;
+    }
+    final labels = _selectedDates.map(_fmt).toList();
+    final options = allowedVipPushTimingsForAllDateLabels(labels, DateTime.now());
+    if (options.isEmpty) {
+      _vipPushTiming = null;
+      return;
+    }
+    if (_vipPushTiming == null || !options.contains(_vipPushTiming)) {
+      _vipPushTiming = options.first;
+    }
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
@@ -210,6 +229,16 @@ class _CreditsScreenState extends State<CreditsScreen> {
     final isVip = _billingPlan == PublicationBillingPlan.vip;
     final cost = dayCount * (isVip ? _vipCreditPerDay : _creditPerDay);
     final available = isVip ? _vipBalance : _balance;
+    if (isVip) {
+      _syncVipPushTiming();
+      final labels = _selectedDates.map(_fmt).toList();
+      final options = allowedVipPushTimingsForAllDateLabels(labels, DateTime.now());
+      if (options.isEmpty || _vipPushTiming == null) {
+        _snack('Escolha datas compatíveis e um horário de aviso push VIP.');
+        return;
+      }
+    }
+
     if (available < cost) {
       if (isVip) {
         _snack('Saldo VIP insuficiente. É preciso $cost crédito(s) VIP.');
@@ -220,10 +249,14 @@ class _CreditsScreenState extends State<CreditsScreen> {
       return;
     }
 
+    final dateLabels = _selectedDates.map(_fmt).toList()..sort();
     final confirmed = await showPublishPromotionDialog(
       context,
       credits: cost,
       isVip: isVip,
+      vipPushSummary: isVip && _vipPushTiming != null
+          ? vipPushScheduleSummary(displayDates: dateLabels, timing: _vipPushTiming!)
+          : null,
     );
     if (!confirmed || !mounted || _publishing) return;
 
@@ -238,7 +271,19 @@ class _CreditsScreenState extends State<CreditsScreen> {
           'imageUrl': _bannerUrl,
           'title': title,
           'description': description,
-          ...(isVip ? {'vipDates': dates} : {'dates': dates}),
+          if (isVip) ...{
+            'vipDates': dates,
+            'vipPublications': dates
+                .map(
+                  (date) => {
+                    'date': date,
+                    'pushTiming': vipPushTimingApiValue(_vipPushTiming!),
+                  },
+                )
+                .toList(),
+          } else ...{
+            'dates': dates,
+          },
         },
       );
       if (!mounted) return;
@@ -248,6 +293,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _title.clear();
         _description.clear();
         _billingPlan = PublicationBillingPlan.common;
+        _vipPushTiming = null;
         _publishIdempotencyKey = null;
       });
       _snack(isVip ? 'Publicação VIP agendada na HOME.' : 'Publicação agendada na HOME.');
@@ -497,7 +543,10 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                     plan: _billingPlan,
                                     commonBalance: _balance,
                                     vipBalance: _vipBalance,
-                                    onPlanChanged: (plan) => setState(() => _billingPlan = plan),
+                                    onPlanChanged: (plan) => setState(() {
+                                      _billingPlan = plan;
+                                      _syncVipPushTiming();
+                                    }),
                                   ),
                                   const SizedBox(height: 22),
                                   const Text(
@@ -555,6 +604,15 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                       ],
                                     ),
                                   ),
+                                  if (isVipPlan && sortedDates.isNotEmpty) ...[
+                                    const SizedBox(height: 18),
+                                    VipPushTimingSelector(
+                                      dateLabels: sortedDates.map(_fmt).toList(),
+                                      selected: _vipPushTiming,
+                                      onSelected: (timing) => setState(() => _vipPushTiming = timing),
+                                      now: DateTime.now(),
+                                    ),
+                                  ],
                                   if (cost > 0) ...[
                                     const SizedBox(height: 12),
                                     Text(
@@ -577,8 +635,10 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                     onPressed: _publishBanner,
                                   ),
                                   const SizedBox(height: 8),
-                                  const Text(
-                                    'A publicação será agendada para a data selecionada.',
+                                  Text(
+                                    isVipPlan
+                                        ? 'A promoção VIP entra na Home na data de vigência; o aviso push segue o horário escolhido.'
+                                        : 'A publicação será agendada para a data selecionada.',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       fontFamily: AppTheme.fontFamily,
