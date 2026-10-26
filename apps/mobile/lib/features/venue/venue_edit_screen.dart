@@ -13,6 +13,7 @@ import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/user_session.dart';
+import 'venue_category_dropdown_field.dart';
 import 'venue_location_map.dart';
 import 'venue_pin.dart';
 
@@ -729,27 +730,15 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
+          VenueCategoryDropdownField(
             value: _category,
-            isExpanded: true,
             style: _inputTextStyle,
-            dropdownColor: Colors.white,
+            hintStyle: _inputTextStyle.copyWith(color: _hint),
+            optionsSeed: _category,
             decoration: _fieldDecoration(
               hint: 'Categoria',
               icon: Icons.local_offer_outlined,
             ),
-            hint: Text(
-              'Selecione a categoria',
-              style: _inputTextStyle.copyWith(color: _hint),
-            ),
-            items: VenueCategories.optionsFor(_category)
-                .map(
-                  (item) => DropdownMenuItem(
-                    value: item,
-                    child: Text(item, overflow: TextOverflow.ellipsis),
-                  ),
-                )
-                .toList(),
             onChanged: (value) => setState(() => _category = value),
           ),
           const SizedBox(height: 14),
