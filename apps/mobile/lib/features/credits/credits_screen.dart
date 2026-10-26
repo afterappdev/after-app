@@ -27,6 +27,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   int _creditPerDay = 1;
   String? _error;
   int _balance = 0;
+  int _vipBalance = 0;
   List<dynamic> _history = [];
   String? _bannerUrl;
   DateTime _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month);
@@ -87,7 +88,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _balance = wallet['balance'] as int? ?? 0;
+        _balance = asInt(wallet['balance']);
+        _vipBalance = asInt(wallet['vipBalance']);
         _creditPerDay = perDay;
         _history = history;
         _loading = false;
@@ -286,14 +288,24 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                                 children: [
                                   Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
                                       Image.asset(
                                         AfterLogo.assetPath,
-                                        height: 36,
+                                        height: 32,
                                         filterQuality: FilterQuality.high,
                                       ),
-                                      const Spacer(),
-                                      _CreditsBadge(balance: _balance, onTap: _openBuy),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: PublicationWalletBadge(
+                                            commonBalance: _balance,
+                                            vipBalance: _vipBalance,
+                                            onBuy: _openBuy,
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                   const SizedBox(height: 28),
@@ -637,70 +649,6 @@ class _CreditsScreenState extends State<CreditsScreen> {
                 AfterBottomNav(index: 2, onTap: _onNavTap),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CreditsBadge extends StatelessWidget {
-  const _CreditsBadge({required this.balance, required this.onTap});
-
-  final int balance;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: kCreditsSoft,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-          child: Row(
-            children: [
-              const CircleAvatar(
-                radius: 14,
-                backgroundColor: kCreditsAccent,
-                child: Icon(Icons.star_rounded, size: 16, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Créditos disponíveis',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 10,
-                      color: kCreditsMuted,
-                    ),
-                  ),
-                  Text(
-                    '$balance',
-                    style: const TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      height: 1.15,
-                      color: kCreditsInk,
-                    ),
-                  ),
-                  const Text(
-                    'Comprar créditos',
-                    style: TextStyle(
-                      fontFamily: AppTheme.fontFamily,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: kCreditsAccent,
-                    ),
-                  ),
-                ],
-              ),
-            ],
           ),
         ),
       ),

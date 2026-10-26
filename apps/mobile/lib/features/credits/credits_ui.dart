@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import '../../core/theme/app_theme.dart';
 
@@ -371,4 +372,191 @@ class _DashedPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _DashedPainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.radius != radius;
+}
+
+const _pubOrange = AppTheme.accentOrange;
+const _pubPurple = AppTheme.accentPurple;
+const _pubLilac = Color(0xFFEDE4FB);
+const _pubDivider = Color(0xFFE6E6EA);
+
+/// Compact wallet indicator for Nova publicação (common + VIP, no sum).
+class PublicationWalletBadge extends StatelessWidget {
+  const PublicationWalletBadge({
+    super.key,
+    required this.commonBalance,
+    required this.vipBalance,
+    required this.onBuy,
+  });
+
+  final int commonBalance;
+  final int vipBalance;
+  final VoidCallback onBuy;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 200;
+        return Material(
+          key: const Key('publication-wallet-badge'),
+          color: kCreditsSoft,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 5 : 6,
+                      compact ? 5 : 6,
+                      compact ? 5 : 6,
+                      compact ? 3 : 4,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _PublicationBalanceChip(
+                            valueKey: const Key('pub-badge-common'),
+                            icon: Icon(
+                              Icons.star_rounded,
+                              size: compact ? 12 : 14,
+                              color: _pubOrange,
+                            ),
+                            iconBg: kCreditsSoft,
+                            label: 'Comum',
+                            value: commonBalance,
+                            valueColor: _pubOrange,
+                            compact: compact,
+                          ),
+                          Container(
+                            width: 1,
+                            margin: EdgeInsets.symmetric(
+                              horizontal: compact ? 5 : 7,
+                            ),
+                            color: _pubDivider,
+                          ),
+                          _PublicationBalanceChip(
+                            valueKey: const Key('pub-badge-vip'),
+                            icon: FaIcon(
+                              FontAwesomeIcons.crown,
+                              size: compact ? 9 : 10,
+                              color: _pubPurple,
+                            ),
+                            iconBg: _pubLilac,
+                            label: 'VIP',
+                            value: vipBalance,
+                            valueColor: _pubPurple,
+                            compact: compact,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: _pubDivider,
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      key: const Key('pub-badge-buy'),
+                      onTap: onBuy,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical: compact ? 4 : 5,
+                          horizontal: compact ? 6 : 8,
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Comprar créditos',
+                            style: TextStyle(
+                              fontFamily: AppTheme.fontFamily,
+                              fontSize: compact ? 9 : 10,
+                              fontWeight: FontWeight.w700,
+                              color: _pubOrange,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PublicationBalanceChip extends StatelessWidget {
+  const _PublicationBalanceChip({
+    required this.valueKey,
+    required this.icon,
+    required this.iconBg,
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    this.compact = false,
+  });
+
+  final Key valueKey;
+  final Widget icon;
+  final Color iconBg;
+  final String label;
+  final int value;
+  final Color valueColor;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: compact ? 10 : 12,
+          backgroundColor: iconBg,
+          child: icon,
+        ),
+        SizedBox(width: compact ? 3 : 4),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontSize: compact ? 8 : 9,
+                fontWeight: FontWeight.w600,
+                color: kCreditsMuted,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              '$value',
+              key: valueKey,
+              style: TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                fontWeight: FontWeight.w800,
+                fontSize: compact ? 13 : 15,
+                height: 1.05,
+                color: valueColor,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
