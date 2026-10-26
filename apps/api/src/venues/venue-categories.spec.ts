@@ -1,6 +1,8 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { AccountLifecycleStatus } from '@prisma/client';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ACCOUNT_PENDING_OPERATION_MESSAGE } from '../common/account/account-eligibility';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
 import {
@@ -89,6 +91,30 @@ describe('venue categories', () => {
 });
 
 describe('VenuesService search amenities and categories', () => {
+  const mediaCleanup = {
+    deleteStoredUpload: jest.fn(),
+    deleteStoredUploads: jest.fn(),
+  } as unknown as MediaCleanupService;
+
+  function updateOwnedPrisma(
+    venue: Record<string, unknown>,
+    accountStatus: AccountLifecycleStatus | null = AccountLifecycleStatus.ACTIVE,
+  ) {
+    return {
+      user: {
+        findUnique: jest.fn().mockResolvedValue(
+          accountStatus === null
+            ? null
+            : { accountStatus },
+        ),
+      },
+      venue: {
+        findUnique: jest.fn().mockResolvedValue(venue),
+        update: jest.fn().mockImplementation(async ({ data }) => data),
+      },
+    };
+  }
+
   function setup() {
     const prisma = {
       venue: { findMany: jest.fn() },
@@ -215,25 +241,17 @@ describe('VenuesService search amenities and categories', () => {
   });
 
   it('não apaga categoria de catálogo quando o cliente envia string vazia', async () => {
-    const prisma = {
-      venue: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'venue-1',
-          ownerUserId: 'owner-1',
-          category: '🍣 Culinária Asiática',
-          city: 'São Paulo',
-          state: 'SP',
-          contacts: {},
-          logoUrl: null,
-          coverUrl: null,
-        }),
-        update: jest.fn().mockImplementation(async ({ data }) => data),
-      },
-    };
-    const service = new VenuesService(
-      prisma as never,
-      { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
-    );
+    const prisma = updateOwnedPrisma({
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      category: '🍣 Culinária Asiática',
+      city: 'São Paulo',
+      state: 'SP',
+      contacts: {},
+      logoUrl: null,
+      coverUrl: null,
+    });
+    const service = new VenuesService(prisma as never, mediaCleanup);
 
     await service.updateOwned('owner-1', 'venue-1', {
       name: 'Sushi',
@@ -247,25 +265,17 @@ describe('VenuesService search amenities and categories', () => {
   });
 
   it('categoria nova enviada pelo app é gravada no texto que o 1.0.1+11 já conhece', async () => {
-    const prisma = {
-      venue: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'venue-1',
-          ownerUserId: 'owner-1',
-          category: '🍣 Culinária Internacional',
-          city: 'São Paulo',
-          state: 'SP',
-          contacts: { hasWifi: true, phone: '11' },
-          logoUrl: null,
-          coverUrl: null,
-        }),
-        update: jest.fn().mockImplementation(async ({ data }) => data),
-      },
-    };
-    const service = new VenuesService(
-      prisma as never,
-      { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
-    );
+    const prisma = updateOwnedPrisma({
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      category: '🍣 Culinária Internacional',
+      city: 'São Paulo',
+      state: 'SP',
+      contacts: { hasWifi: true, phone: '11' },
+      logoUrl: null,
+      coverUrl: null,
+    });
+    const service = new VenuesService(prisma as never, mediaCleanup);
 
     await service.updateOwned('owner-1', 'venue-1', {
       category: '🍣 Culinária Asiática',
@@ -281,25 +291,17 @@ describe('VenuesService search amenities and categories', () => {
 
   it('labels novos de esportes e hamburguerias continuam gravados no texto do 1.0.1+11', async () => {
     async function save(current: string, incoming: string) {
-      const prisma = {
-        venue: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'venue-1',
-            ownerUserId: 'owner-1',
-            category: current,
-            city: 'São Paulo',
-            state: 'SP',
-            contacts: {},
-            logoUrl: null,
-            coverUrl: null,
-          }),
-          update: jest.fn().mockImplementation(async ({ data }) => data),
-        },
-      };
-      const service = new VenuesService(
-        prisma as never,
-        { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
-      );
+      const prisma = updateOwnedPrisma({
+        id: 'venue-1',
+        ownerUserId: 'owner-1',
+        category: current,
+        city: 'São Paulo',
+        state: 'SP',
+        contacts: {},
+        logoUrl: null,
+        coverUrl: null,
+      });
+      const service = new VenuesService(prisma as never, mediaCleanup);
       await service.updateOwned('owner-1', 'venue-1', { category: incoming });
       return prisma.venue.update.mock.calls[0][0].data.category as string;
     }
@@ -325,25 +327,17 @@ describe('VenuesService search amenities and categories', () => {
 
   it('app 1.0.1+11 não apaga categoria nova que não reconhece', async () => {
     for (const category of ['🍢 Espetaria', '🥟 Salgaderia', '🎉 Serv-Festas']) {
-      const prisma = {
-        venue: {
-          findUnique: jest.fn().mockResolvedValue({
-            id: 'venue-1',
-            ownerUserId: 'owner-1',
-            category,
-            city: 'São Paulo',
-            state: 'SP',
-            contacts: { hasWifi: true },
-            logoUrl: null,
-            coverUrl: null,
-          }),
-          update: jest.fn().mockImplementation(async ({ data }) => data),
-        },
-      };
-      const service = new VenuesService(
-        prisma as never,
-        { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
-      );
+      const prisma = updateOwnedPrisma({
+        id: 'venue-1',
+        ownerUserId: 'owner-1',
+        category,
+        city: 'São Paulo',
+        state: 'SP',
+        contacts: { hasWifi: true },
+        logoUrl: null,
+        coverUrl: null,
+      });
+      const service = new VenuesService(prisma as never, mediaCleanup);
 
       await service.updateOwned('owner-1', 'venue-1', {
         name: 'Local',
@@ -360,25 +354,17 @@ describe('VenuesService search amenities and categories', () => {
   });
 
   it('Música ao Vivo legado exige uma categoria atual e não é convertida sozinha', async () => {
-    const prisma = {
-      venue: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'venue-1',
-          ownerUserId: 'owner-1',
-          category: LEGACY_LIVE_MUSIC_CATEGORY,
-          city: 'São Paulo',
-          state: 'SP',
-          contacts: {},
-          logoUrl: null,
-          coverUrl: null,
-        }),
-        update: jest.fn().mockImplementation(async ({ data }) => data),
-      },
-    };
-    const service = new VenuesService(
-      prisma as never,
-      { deleteStoredUpload: jest.fn(), deleteStoredUploads: jest.fn() } as unknown as MediaCleanupService,
-    );
+    const prisma = updateOwnedPrisma({
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      category: LEGACY_LIVE_MUSIC_CATEGORY,
+      city: 'São Paulo',
+      state: 'SP',
+      contacts: {},
+      logoUrl: null,
+      coverUrl: null,
+    });
+    const service = new VenuesService(prisma as never, mediaCleanup);
 
     await expect(
       service.updateOwned('owner-1', 'venue-1', { category: '' }),
@@ -401,26 +387,92 @@ describe('VenuesService search amenities and categories', () => {
   });
 
   it('outro estabelecimento não edita o local', async () => {
-    const prisma = {
-      venue: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'venue-1',
-          ownerUserId: 'owner-1',
-          category: '🍻 Bares e Botecos',
-          city: 'São Paulo',
-          state: 'SP',
-          contacts: {},
-        }),
-        update: jest.fn(),
-      },
-    };
-    const service = new VenuesService(
-      prisma as never,
-      { deleteStoredUpload: jest.fn() } as unknown as MediaCleanupService,
-    );
+    const prisma = updateOwnedPrisma({
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      category: '🍻 Bares e Botecos',
+      city: 'São Paulo',
+      state: 'SP',
+      contacts: {},
+    });
+    prisma.venue.update = jest.fn();
+    const service = new VenuesService(prisma as never, mediaCleanup);
     await expect(
       service.updateOwned('other', 'venue-1', { name: 'Hack' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.venue.update).not.toHaveBeenCalled();
+  });
+
+  describe('updateOwned account status (soft delete)', () => {
+    const ownedVenue = {
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      category: '🍻 Bares e Botecos',
+      city: 'São Paulo',
+      state: 'SP',
+      contacts: {},
+      logoUrl: null,
+      coverUrl: null,
+    };
+
+    it('permite updateOwned para conta ACTIVE autorizada', async () => {
+      const prisma = updateOwnedPrisma(ownedVenue);
+      const service = new VenuesService(prisma as never, mediaCleanup);
+      await service.updateOwned('owner-1', 'venue-1', { name: 'Atualizado' });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'owner-1' },
+        select: { accountStatus: true },
+      });
+      expect(prisma.venue.update).toHaveBeenCalled();
+    });
+
+    it('bloqueia updateOwned para conta PENDING_DELETION', async () => {
+      const prisma = updateOwnedPrisma(
+        ownedVenue,
+        AccountLifecycleStatus.PENDING_DELETION,
+      );
+      const service = new VenuesService(prisma as never, mediaCleanup);
+      await expect(
+        service.updateOwned('owner-1', 'venue-1', { name: 'Hack' }),
+      ).rejects.toMatchObject({
+        response: { message: ACCOUNT_PENDING_OPERATION_MESSAGE },
+      });
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+    });
+
+    it('bloqueia updateOwned para conta PURGED', async () => {
+      const prisma = updateOwnedPrisma(
+        ownedVenue,
+        AccountLifecycleStatus.PURGED,
+      );
+      const service = new VenuesService(prisma as never, mediaCleanup);
+      await expect(
+        service.updateOwned('owner-1', 'venue-1', { name: 'Hack' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+    });
+
+    it('bloqueia updateOwned quando o usuário não existe', async () => {
+      const prisma = updateOwnedPrisma(ownedVenue, null);
+      const service = new VenuesService(prisma as never, mediaCleanup);
+      await expect(
+        service.updateOwned('missing', 'venue-1', { name: 'Hack' }),
+      ).rejects.toMatchObject({
+        response: { message: ACCOUNT_PENDING_OPERATION_MESSAGE },
+      });
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+    });
+
+    it('sem permissão de dono continua retornando ForbiddenException', async () => {
+      const prisma = updateOwnedPrisma(ownedVenue);
+      prisma.venue.update = jest.fn();
+      const service = new VenuesService(prisma as never, mediaCleanup);
+      await expect(
+        service.updateOwned('intruder', 'venue-1', { name: 'Hack' }),
+      ).rejects.toMatchObject({
+        message: 'Sem permissão para editar este local',
+      });
+      expect(prisma.venue.update).not.toHaveBeenCalled();
+    });
   });
 });

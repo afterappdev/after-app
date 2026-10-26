@@ -20,7 +20,8 @@ export async function assertUserAccountActive(
   });
   if (
     !user ||
-    user.accountStatus === AccountLifecycleStatus.PENDING_DELETION
+    user.accountStatus === AccountLifecycleStatus.PENDING_DELETION ||
+    user.accountStatus === AccountLifecycleStatus.PURGED
   ) {
     throw new ForbiddenException(ACCOUNT_PENDING_OPERATION_MESSAGE);
   }

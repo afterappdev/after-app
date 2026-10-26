@@ -28,4 +28,17 @@ describe('assertUserAccountActive', () => {
       assertUserAccountActive(prisma as never, 'u1'),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('bloqueia conta PURGED', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          accountStatus: AccountLifecycleStatus.PURGED,
+        }),
+      },
+    };
+    await expect(
+      assertUserAccountActive(prisma as never, 'u1'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
 });
