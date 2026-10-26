@@ -632,6 +632,8 @@ model BannerSchedule {
   ibgeCityId       Int?
   /// Existing rows stay common. VIP requires a persisted credit proof.
   tier             PublicationTier  @default(COMMON)
+  /// Horário escolhido do aviso push VIP. Null em publicações antigas ou dias comuns.
+  vipPushTiming    VipPushTiming?
   vipCreditEntryId String?          @unique
   vipCreditEntry   VipCreditEntry?  @relation(fields: [vipCreditEntryId], references: [id], onDelete: SetNull)
   promoPushEvents  PromoPushEvent[]
@@ -771,6 +773,12 @@ model PromoPushEvent {
 enum PublicationTier {
   COMMON
   VIP
+}
+
+enum VipPushTiming {
+  IMMEDIATE
+  SLOT_11
+  SLOT_17
 }
 
 /// One attempt row per event and device. tokenId is not a foreign key so disabling a token keeps the cap history.
