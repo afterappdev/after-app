@@ -82,6 +82,24 @@ enum PromoPushDeliveryStatus {
   SKIPPED
 }
 
+/// Consumer account lifecycle. PENDING_DELETION keeps data for the recovery window.
+enum AccountLifecycleStatus {
+  ACTIVE
+  PENDING_DELETION
+  /// Personal data removed; row may remain when financial retention requires venue/purchase FKs.
+  PURGED
+}
+
+/// Outbox for the eventual hard-delete worker. No FK to User so completed rows
+/// can retain the user id for audit after the account row is removed.
+enum AccountPurgeJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 model User {
   id                String                   @id @default(cuid())
   name              String
@@ -121,11 +139,23 @@ model User {
   lastAuthorizedCityAt      DateTime?
   devicePushTokens          DevicePushToken[]
   promoPushDeliveries       PromoPushDelivery[]
+  /// ACTIVE by default for existing rows. PENDING_DELETION is set when the owner
+  /// schedules deletion; behavior is wired in later phases.
+  accountStatus             AccountLifecycleStatus @default(ACTIVE)
+  deletionRequestedAt       DateTime?
+  permanentDeletionAt       DateTime?
+  deletionConfirmedAt       DateTime?
+  deletionCancelledAt       DateTime?
+  /// JWTs issued before this instant should be rejected once session checks ship.
+  sessionInvalidatedAt      DateTime?
+  /// Bumped when global session invalidation occurs; normal JWTs carry claim sv.
+  sessionVersion            Int                      @default(0)
 
   @@index([role, createdAt])
   @@index([ibgeCityId])
   @@index([promoNotificationsEnabled, ibgeCityId])
   @@index([lastAuthorizedIbgeCityId, lastAuthorizedCityAt])
+  @@index([accountStatus, permanentDeletionAt])
 }
 
 enum AdminPushEventType {
@@ -203,6 +233,32 @@ model AccountDeletionRequest {
   createdAt DateTime  @default(now())
 
   @@index([userId])
+}
+
+/// One row per scheduled hard delete. userId is unique while a purge is in flight.
+/// CANCELLED when the owner recovers the account. COMPLETED/FAILED keep userId
+/// without a User FK so audit survives the final delete.
+model AccountPurgeJob {
+  id            String                @id @default(cuid())
+  userId        String                @unique
+  scheduledFor  DateTime
+  status        AccountPurgeJobStatus @default(PENDING)
+  attempts      Int                   @default(0)
+  lastError     String?
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  lockedUntil   DateTime?
+  lockedBy      String?
+  /// Incremented on each claim; workers must match to mutate a PROCESSING job.
+  leaseEpoch    Int                   @default(0)
+  /// ELIGIBILITY | FINANCIAL | MANIFEST | DATA | UPLOADS | DONE
+  progressStage String?
+  uploadManifest Json?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([status, scheduledFor, lockedUntil])
 }
 
 model Venue {
