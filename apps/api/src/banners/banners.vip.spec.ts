@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { quotePublication } from './banner-quote';
+import { mockActiveUserPrisma } from './banners.test-helpers';
 
 describe('quotePublication', () => {
   it('sexta comum, sábado VIP e domingo comum', () => {
@@ -56,7 +57,7 @@ describe('BannersService VIP', () => {
     const entries: { operationKey: string }[] = [];
     let created = false;
     let scheduleSequence = 0;
-    const prisma = {
+    const prisma: Record<string, unknown> = {
       venue: {
         findUnique: jest.fn(async () => ({
           id: 'venue-1',
@@ -128,6 +129,78 @@ describe('BannersService VIP', () => {
           throw error;
         }
       }),
+    };
+    mockActiveUserPrisma(prisma);
+    const idempotency = new Map<
+      string,
+      {
+        requestHash: string;
+        status: 'PROCESSING' | 'COMPLETED';
+        bannerId: string | null;
+      }
+    >();
+    prisma.bannerPublicationIdempotency = {
+      create: jest.fn(
+        async ({
+          data,
+        }: {
+          data: {
+            venueId: string;
+            idempotencyKey: string;
+            requestHash: string;
+            status: 'PROCESSING';
+          };
+        }) => {
+          const key = `${data.venueId}:${data.idempotencyKey}`;
+          if (idempotency.has(key)) {
+            const err = new Error('unique') as Error & { code: string };
+            err.code = 'P2002';
+            throw err;
+          }
+          idempotency.set(key, {
+            requestHash: data.requestHash,
+            status: 'PROCESSING',
+            bannerId: null,
+          });
+        },
+      ),
+      findUnique: jest.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            venueId_idempotencyKey: { venueId: string; idempotencyKey: string };
+          };
+        }) => {
+          const key = `${where.venueId_idempotencyKey.venueId}:${where.venueId_idempotencyKey.idempotencyKey}`;
+          return idempotency.get(key) ?? null;
+        },
+      ),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: {
+            venueId_idempotencyKey: { venueId: string; idempotencyKey: string };
+          };
+          data: { status: 'COMPLETED'; bannerId: string };
+        }) => {
+          const key = `${where.venueId_idempotencyKey.venueId}:${where.venueId_idempotencyKey.idempotencyKey}`;
+          const row = idempotency.get(key);
+          if (row) {
+            row.status = data.status;
+            row.bannerId = data.bannerId;
+          }
+        },
+      ),
+    };
+    prisma.banner = {
+      ...(prisma.banner as object),
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) => ({
+        id: where.id,
+        schedules: [],
+      })),
     };
     const service = new BannersService(
       prisma as never,
@@ -206,6 +279,35 @@ describe('BannersService VIP', () => {
     expect(wallet).toEqual({ balance: 2, vipBalance: 1 });
   });
 
+  it('VIP sem município IBGE é rejeitado antes do débito', async () => {
+    const { prisma, service, wallet, wasCreated } = setup({
+      balance: 0,
+      vipBalance: 2,
+    });
+    prisma.venue.findUnique.mockResolvedValueOnce({
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      name: 'Bar',
+      city: 'Cidade Ambígua',
+      state: 'SP',
+      ibgeCityId: null,
+    });
+    await expect(
+      service.create(
+        'owner-1',
+        'https://cdn.example/a.jpg',
+        [],
+        'Título',
+        'Texto',
+        null,
+        ['2026-10-24'],
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(wallet.vipBalance).toBe(2);
+    expect(wasCreated()).toBe(false);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('republicar a mesma data VIP consome outro crédito', async () => {
     const { service, wallet, entries } = setup({ balance: 0, vipBalance: 2 });
     await service.create(
@@ -228,5 +330,24 @@ describe('BannersService VIP', () => {
     );
     expect(wallet.vipBalance).toBe(0);
     expect(entries).toHaveLength(2);
+  });
+
+  it('mesma chave de idempotência não debita duas vezes', async () => {
+    const { service, wallet, entries } = setup({ balance: 0, vipBalance: 2 });
+    const key = 'd'.repeat(16);
+    const args = [
+      'owner-1',
+      'https://cdn.example/a.jpg',
+      [],
+      'Título',
+      'Texto',
+      null,
+      ['2026-10-24'],
+      key,
+    ] as const;
+    await service.create(...args);
+    await service.create(...args);
+    expect(wallet.vipBalance).toBe(1);
+    expect(entries).toHaveLength(1);
   });
 });

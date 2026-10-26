@@ -3,13 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PromoPushPublisher } from '../promo-push/promo-push.publisher';
+import { mockActiveUserPrisma } from './banners.test-helpers';
 
 describe('BannersService promotional outbox', () => {
   function setup() {
     let inside = false;
     let debited = false;
     let rolledBack = false;
-    const prisma = {
+    const prisma: Record<string, unknown> = {
       venue: {
         findUnique: jest.fn(async () => ({
           id: 'venue-1',
@@ -47,7 +48,13 @@ describe('BannersService promotional outbox', () => {
         upsert: jest.fn(),
       },
       $transaction: jest.fn(),
+      bannerPublicationIdempotency: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
     };
+    mockActiveUserPrisma(prisma);
     prisma.$transaction.mockImplementation(
       async (fn: (tx: typeof prisma) => Promise<unknown>) => {
         inside = true;
