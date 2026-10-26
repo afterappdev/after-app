@@ -6,24 +6,61 @@ import '../../core/theme/app_theme.dart';
 import '../../core/validation/br_document_validator.dart';
 import '../credits/fiscal_invoice_controller.dart';
 
-/// Later fill for venues created before CPF/CNPJ was required.
-/// The value stays in memory only while this card is open.
-class VenueDocumentCard extends StatefulWidget {
-  const VenueDocumentCard({super.key, required this.venueId});
+/// Dedicated screen for venue CPF/CNPJ (moved out of profile main view).
+class VenueFiscalDocumentScreen extends StatelessWidget {
+  const VenueFiscalDocumentScreen({super.key, required this.venueId});
 
   final String venueId;
 
   @override
-  State<VenueDocumentCard> createState() => _VenueDocumentCardState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF6F8F7),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF6F8F7),
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+        title: const Text(
+          'Dados fiscais',
+          style: TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            color: Color(0xFF282829),
+          ),
+        ),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            child: VenueFiscalDocumentForm(venueId: venueId),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _VenueDocumentCardState extends State<VenueDocumentCard> {
+class VenueFiscalDocumentForm extends StatefulWidget {
+  const VenueFiscalDocumentForm({super.key, required this.venueId});
+
+  final String venueId;
+
+  @override
+  State<VenueFiscalDocumentForm> createState() => _VenueFiscalDocumentFormState();
+}
+
+class _VenueFiscalDocumentFormState extends State<VenueFiscalDocumentForm> {
   static const _accent = Color(0xFFF58634);
   final _document = TextEditingController();
   String _type = 'CPF';
   String? _savedMasked;
   bool _loading = true;
   bool _saving = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -38,6 +75,10 @@ class _VenueDocumentCardState extends State<VenueDocumentCard> {
   }
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final data = await context.read<ApiClient>().get(
             '/venues/${widget.venueId}/fiscal-document',
@@ -54,8 +95,19 @@ class _VenueDocumentCardState extends State<VenueDocumentCard> {
               : BrDocumentValidator.formatCpf(digits);
         }
       });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = e.message;
+      });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadError = 'Não foi possível carregar o documento.';
+        });
+      }
     }
   }
 
@@ -91,6 +143,9 @@ class _VenueDocumentCardState extends State<VenueDocumentCard> {
             : BrDocumentValidator.formatCpf(digits);
         _document.clear();
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Documento salvo com sucesso.')),
+      );
     } on ApiException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -105,35 +160,53 @@ class _VenueDocumentCardState extends State<VenueDocumentCard> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Padding(
-        padding: EdgeInsets.only(bottom: 16),
-        child: LinearProgressIndicator(color: _accent, minHeight: 2),
+        padding: EdgeInsets.only(top: 24),
+        child: Center(
+          child: CircularProgressIndicator(color: _accent),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            _loadError!,
+            key: const Key('venue-document-load-error'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 14,
+              color: Color(0xFF282829),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton(onPressed: _load, child: const Text('Tentar novamente')),
+        ],
       );
     }
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Documento fiscal',
-            style: TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: Color(0xFF282829),
-            ),
-          ),
-          const SizedBox(height: 6),
           Text(
             _savedMasked == null
-                ? 'Informe o CPF ou CNPJ do estabelecimento. Contas antigas continuam podendo entrar.'
-                : 'Documento informado: $_savedMasked',
+                ? 'Informe o CPF ou CNPJ do estabelecimento.'
+                : 'Documento atual: $_savedMasked',
+            key: const Key('venue-document-current'),
             style: const TextStyle(
               fontFamily: AppTheme.fontFamily,
               fontSize: 13,
