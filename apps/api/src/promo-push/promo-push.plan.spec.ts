@@ -87,4 +87,23 @@ describe('planPromoPushEvents', () => {
     });
     expect(drafts).toEqual([]);
   });
+
+  it('VIP com pushTiming gera um único evento', () => {
+    const drafts = planPromoPushEvents({
+      bannerId: 'banner-1',
+      venueId: 'venue-1',
+      contentKind: 'PROMOTION',
+      now,
+      slots,
+      schedules: [
+        {
+          ...vip('timed', '2026-10-21'),
+          pushTiming: 'SLOT_17',
+        },
+      ],
+    });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.slot).toBe(2);
+    expect(drafts[0]?.bannerScheduleId).toBe('timed');
+  });
 });

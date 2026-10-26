@@ -18,6 +18,23 @@ describe('hashBannerCreateRequest', () => {
     });
     expect(a).toBe(b);
   });
+
+  it('modalidade VIP diferente altera o hash', () => {
+    const base = {
+      imageUrl: 'https://cdn/a.jpg',
+      dates: [],
+      vipDates: ['2099-01-01'],
+    };
+    const a = hashBannerCreateRequest({
+      ...base,
+      vipPublications: [{ date: '2099-01-01', pushTiming: 'SLOT_11' }],
+    });
+    const b = hashBannerCreateRequest({
+      ...base,
+      vipPublications: [{ date: '2099-01-01', pushTiming: 'SLOT_17' }],
+    });
+    expect(a).not.toBe(b);
+  });
 });
 
 describe('claimBannerPublicationIdempotency', () => {

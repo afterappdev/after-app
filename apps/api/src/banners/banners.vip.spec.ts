@@ -52,6 +52,18 @@ describe('quotePublication', () => {
 });
 
 describe('BannersService VIP', () => {
+  const VIP_A = '2099-06-10';
+  const VIP_B = '2099-06-11';
+  const COMMON_A = '2099-06-09';
+  const COMMON_B = '2099-06-12';
+
+  function vipPublications(...dates: string[]) {
+    return dates.map((date) => ({
+      date,
+      pushTiming: 'SLOT_11' as const,
+    }));
+  }
+
   function setup(balance: { balance: number; vipBalance: number }) {
     const wallet = { ...balance };
     const entries: { operationKey: string }[] = [];
@@ -215,11 +227,13 @@ describe('BannersService VIP', () => {
     await service.create(
       'owner-1',
       'https://cdn.example/a.jpg',
-      ['2026-10-23', '2026-10-25'],
+      [COMMON_A, COMMON_B],
       'Fim de semana',
       'Texto',
       null,
-      ['2026-10-24'],
+      [VIP_A],
+      undefined,
+      vipPublications(VIP_A),
     );
     expect(wallet).toEqual({ balance: 0, vipBalance: 0 });
     expect(entries.map((item) => item.operationKey)).toEqual(['vip-consume:sch-2']);
@@ -232,11 +246,13 @@ describe('BannersService VIP', () => {
       service.create(
         'owner-1',
         'https://cdn.example/a.jpg',
-        ['2026-10-23'],
+        [COMMON_A],
         'Título',
         'Texto',
         null,
-        ['2026-10-24'],
+        [VIP_A],
+        undefined,
+        vipPublications(VIP_A),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(wallet).toEqual({ balance: 5, vipBalance: 0 });
@@ -255,7 +271,9 @@ describe('BannersService VIP', () => {
         'Título',
         'Texto',
         null,
-        ['2026-10-24'],
+        [VIP_A],
+        undefined,
+        vipPublications(VIP_A),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(state.wallet).toEqual({ balance: 1, vipBalance: 1 });
@@ -269,11 +287,13 @@ describe('BannersService VIP', () => {
       service.create(
         'owner-1',
         'https://cdn.example/a.jpg',
-        ['2026-10-23'],
+        [COMMON_A],
         'Título',
         'Texto',
         null,
-        ['2026-10-24'],
+        [VIP_A],
+        undefined,
+        vipPublications(VIP_A),
       ),
     ).rejects.toThrow('disk');
     expect(wallet).toEqual({ balance: 2, vipBalance: 1 });
@@ -300,7 +320,9 @@ describe('BannersService VIP', () => {
         'Título',
         'Texto',
         null,
-        ['2026-10-24'],
+        [VIP_A],
+        undefined,
+        vipPublications(VIP_A),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(wallet.vipBalance).toBe(2);
@@ -317,7 +339,9 @@ describe('BannersService VIP', () => {
       'Título',
       'Texto',
       null,
-      ['2026-10-24'],
+      [VIP_A],
+      undefined,
+      vipPublications(VIP_A),
     );
     await service.create(
       'owner-1',
@@ -326,7 +350,9 @@ describe('BannersService VIP', () => {
       'Outra',
       'Texto',
       null,
-      ['2026-10-24'],
+      [VIP_A],
+      undefined,
+      vipPublications(VIP_A),
     );
     expect(wallet.vipBalance).toBe(0);
     expect(entries).toHaveLength(2);
@@ -342,8 +368,9 @@ describe('BannersService VIP', () => {
       'Título',
       'Texto',
       null,
-      ['2026-10-24'],
+      [VIP_A],
       key,
+      vipPublications(VIP_A),
     ] as const;
     await service.create(...args);
     await service.create(...args);
