@@ -334,19 +334,29 @@ export function verifyMercadoPagoWebhookSignature(input: {
   }
   if (!ts || !hash) return false;
 
-  // Orders manual still says to lowercase alphanumeric ids. Mercado Pago signs
-  // the original query value (sdk-nodejs#439). A numeric simulation is unchanged
-  // either way; an uppercase Order id is not.
+  // Orders documentation lowercases alphanumeric ids. The Node SDK signs the
+  // query value as received. Both manifests are checked. The Order lookup
+  // keeps the original id; this function does not rewrite it.
   const dataId = (input.dataId ?? '').trim();
   const requestId = (input.xRequestId ?? '').trim();
-  const parts: string[] = [];
-  if (dataId) parts.push(`id:${dataId}`);
-  if (requestId) parts.push(`request-id:${requestId}`);
-  parts.push(`ts:${ts}`);
-  const manifest = `${parts.join(';')};`;
-
-  const computed = createHmac('sha256', secret).update(manifest).digest('hex');
-  return timingSafeEqualHex(computed, hash);
+  const manifestFor = (id: string) => {
+    const parts: string[] = [];
+    if (id) parts.push(`id:${id}`);
+    if (requestId) parts.push(`request-id:${requestId}`);
+    parts.push(`ts:${ts}`);
+    return `${parts.join(';')};`;
+  };
+  const originalHex = createHmac('sha256', secret)
+    .update(manifestFor(dataId))
+    .digest('hex');
+  const lowerId = dataId.toLowerCase();
+  const lowerHex =
+    lowerId === dataId
+      ? originalHex
+      : createHmac('sha256', secret).update(manifestFor(lowerId)).digest('hex');
+  const originalMatch = timingSafeEqualHex(originalHex, hash);
+  const lowerMatch = timingSafeEqualHex(lowerHex, hash);
+  return ((originalMatch ? 1 : 0) | (lowerMatch ? 1 : 0)) === 1;
 }
 
 const SAFE_DIAGNOSTIC_KEYS = [

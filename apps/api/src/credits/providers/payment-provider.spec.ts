@@ -227,7 +227,7 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
     ).toBeNull();
   });
 
-  it('aceita a ordem em maiúsculas com a caixa original e rejeita o manifesto em minúsculas', () => {
+  it('aceita a Order em maiúsculas assinada na caixa original ou em minúsculas', () => {
     const secret = 'whsec_test';
     const dataId = 'ORDTST01M4EJXGH4C0JXW2Z603Y25GBB';
     const requestId = '2066ca19-c6f1-498a-be75-1923005edd06';
@@ -252,7 +252,8 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
         xRequestId: requestId,
         dataId,
       }),
-    ).toBe(false);
+    ).toBe(true);
+    expect(extractMercadoPagoOrderId({}, { 'data.id': dataId })).toBe(dataId);
     expect(
       verifyMercadoPagoWebhookSignature({
         secret,
@@ -269,6 +270,58 @@ describe('Mercado Pago Orders mapping + webhook HMAC', () => {
         dataId,
       }),
     ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret: 'whsec_other',
+        xSignature: `ts=${ts},v1=${sign(dataId.toLowerCase())}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${sign('ORD01OUTRAORDEM')}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${sign('ord01outraordem')}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `v1=${sign(dataId)}`,
+        xRequestId: requestId,
+        dataId,
+      }),
+    ).toBe(false);
+
+    const numeric = '123456';
+    const numericSign = createHmac('sha256', secret)
+      .update(`id:${numeric};request-id:${requestId};ts:${ts};`)
+      .digest('hex');
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        xSignature: `ts=${ts},v1=${numericSign}`,
+        xRequestId: requestId,
+        dataId: numeric,
+      }),
+    ).toBe(true);
   });
 
   it('confere o manifesto literal da documentação e não trata o v1 ilustrativo como vetor', () => {

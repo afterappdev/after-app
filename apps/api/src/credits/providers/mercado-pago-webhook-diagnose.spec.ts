@@ -30,7 +30,7 @@ describe('diagnóstico independente do HMAC Mercado Pago', () => {
     expect(documentedManifest(dataId, '', ts)).toBe(`id:${dataId};ts:${ts};`);
   });
 
-  it('aceita a caixa original e recusa segredo, v1 ilustrativo e manifesto em minúsculas', () => {
+  it('aceita a caixa original e a minúscula, e recusa segredo ou v1 ilustrativo', () => {
     const diagnosis = diagnoseMercadoPagoWebhookHmac({
       secret,
       dataId,
@@ -66,6 +66,16 @@ describe('diagnóstico independente do HMAC Mercado Pago', () => {
         dataId,
         xRequestId: requestId,
         xSignature: signature(manifest),
+      }),
+    ).toBe(true);
+    expect(
+      verifyMercadoPagoWebhookSignature({
+        secret,
+        dataId,
+        xRequestId: requestId,
+        xSignature: signature(
+          documentedManifest(dataId.toLowerCase(), requestId, ts),
+        ),
       }),
     ).toBe(true);
   });

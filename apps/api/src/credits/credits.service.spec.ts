@@ -3103,6 +3103,64 @@ describe('CreditsService billing', () => {
     expect(memory.audits).toHaveLength(0);
   });
 
+  it('assinatura em minúsculas consulta a Order original e não duplica crédito', async () => {
+    const memory = installCardMemory(prisma);
+    const row = seedCardRow(memory);
+    const purchaseId = row.id as string;
+    const orderId = 'ORD01CARD';
+    const secret = 'whsec_notification_test';
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET = secret;
+    process.env.MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-test-token-secret';
+    const requestId = 'req-webhook-lower';
+    const ts = '1742505638683';
+    const manifest = `id:${orderId.toLowerCase()};request-id:${requestId};ts:${ts};`;
+    const v1 = createHmac('sha256', secret).update(manifest).digest('hex');
+    const clientGetOrder = jest.fn().mockResolvedValue({
+      status: 200,
+      data: {
+        id: orderId,
+        status: 'processed',
+        status_detail: 'accredited',
+        total_amount: String(UNIT.priceBrl),
+        currency: 'BRL',
+        external_reference: purchaseId,
+      },
+    });
+    payments.pixProvider.mockReturnValue(
+      new PixPaymentProvider({ getOrder: clientGetOrder } as never),
+    );
+    const cardGet = jest.fn().mockResolvedValue(cardOrder(purchaseId));
+    const createCharge = jest.fn();
+    payments.cardProvider.mockReturnValue({
+      id: 'card',
+      isConfigured: true,
+      publicKey: 'TEST-public-key',
+      createCharge,
+      getOrder: cardGet,
+    });
+    const notice = {
+      payload: { type: 'order', id: '123456', data: { id: '123456' } },
+      meta: {
+        xSignature: `ts=${ts},v1=${v1}`,
+        xRequestId: requestId,
+        query: { 'data.id': orderId, type: 'order' },
+      },
+    };
+
+    const first = await service.handlePixWebhook(notice.payload, notice.meta);
+    const second = await service.handlePixWebhook(notice.payload, notice.meta);
+
+    expect(first).toEqual(expect.objectContaining({ status: 'PAID', provider: 'card' }));
+    expect(second).toEqual(expect.objectContaining({ status: 'PAID' }));
+    expect(memory.balance()).toBe(UNIT.credits);
+    expect(prisma.creditWallet.upsert).toHaveBeenCalledTimes(1);
+    expect(createCharge).not.toHaveBeenCalled();
+    expect(clientGetOrder.mock.calls.map((call) => call[1])).toEqual([orderId, orderId]);
+    expect(cardGet.mock.calls.map((call) => call[0])).toEqual([orderId, orderId]);
+    expect(JSON.stringify(clientGetOrder.mock.calls)).not.toContain(orderId.toLowerCase());
+    expect(JSON.stringify(cardGet.mock.calls)).not.toContain(orderId.toLowerCase());
+  });
+
   it('rejeita assinatura inválida sem consultar a Orders API', async () => {
     const { memory, row } = await seedPaidCardBalance(21);
     const armed = armSignedCardWebhook(row.id as string);
