@@ -33,4 +33,30 @@ void main() {
       [VipPushTiming.slot11, VipPushTiming.slot17],
     );
   });
+
+  test('multidata não exige interseção global', () {
+    final now = DateTime.utc(2026, 10, 26, 22); // 19h SP
+    expect(
+      allowedVipPushTimingsForDateLabel('2026-10-26', now),
+      [VipPushTiming.immediate],
+    );
+    expect(
+      allowedVipPushTimingsForDateLabel('2026-10-28', now),
+      [VipPushTiming.slot11, VipPushTiming.slot17],
+    );
+    expect(
+      allowedVipPushTimingsForAllDateLabels(['2026-10-26', '2026-10-28'], now),
+      isEmpty,
+    );
+  });
+
+  test('resumo por data lista cada dia', () {
+    expect(
+      vipPushScheduleSummaryByDate({
+        '2026-10-26': VipPushTiming.immediate,
+        '2026-10-28': VipPushTiming.slot17,
+      }),
+      '26/10/2026 • Envio imediato\n28/10/2026 • 17:00 (horário oficial)',
+    );
+  });
 }

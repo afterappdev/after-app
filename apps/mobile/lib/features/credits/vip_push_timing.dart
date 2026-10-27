@@ -75,17 +75,24 @@ String labelVipPushTiming(VipPushTiming timing) {
   }
 }
 
+String _displayDateBr(String raw) {
+  final parts = raw.split('-');
+  if (parts.length != 3) return raw;
+  return '${parts[2]}/${parts[1]}/${parts[0]}';
+}
+
 String vipPushScheduleSummary({
   required Iterable<String> displayDates,
   required VipPushTiming timing,
 }) {
   final dates = displayDates.toList()..sort();
-  final br = dates
-      .map((raw) {
-        final parts = raw.split('-');
-        if (parts.length != 3) return raw;
-        return '${parts[2]}/${parts[1]}/${parts[0]}';
-      })
-      .join(', ');
+  final br = dates.map(_displayDateBr).join(', ');
   return '$br • ${labelVipPushTiming(timing)}';
+}
+
+String vipPushScheduleSummaryByDate(Map<String, VipPushTiming> timingByDate) {
+  final dates = timingByDate.keys.toList()..sort();
+  return dates
+      .map((date) => '${_displayDateBr(date)} • ${labelVipPushTiming(timingByDate[date]!)}')
+      .join('\n');
 }

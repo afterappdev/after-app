@@ -32,7 +32,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
   int _creditPerDay = 1;
   int _vipCreditPerDay = 1;
   PublicationBillingPlan _billingPlan = PublicationBillingPlan.common;
-  VipPushTiming? _vipPushTiming;
+  final Map<String, VipPushTiming> _vipPushTimingByDate = {};
   String? _error;
   int _balance = 0;
   int _vipBalance = 0;
@@ -169,24 +169,41 @@ class _CreditsScreenState extends State<CreditsScreen> {
       } else {
         _selectedDates.add(day);
       }
-      _syncVipPushTiming();
+      _syncVipPushTimingByDate();
     });
   }
 
-  void _syncVipPushTiming() {
-    if (_billingPlan != PublicationBillingPlan.vip || _selectedDates.isEmpty) {
-      _vipPushTiming = null;
+  void _syncVipPushTimingByDate() {
+    if (_billingPlan != PublicationBillingPlan.vip) {
+      _vipPushTimingByDate.clear();
       return;
     }
-    final labels = _selectedDates.map(_fmt).toList();
-    final options = allowedVipPushTimingsForAllDateLabels(labels, DateTime.now());
-    if (options.isEmpty) {
-      _vipPushTiming = null;
-      return;
+    final now = DateTime.now();
+    final labels = _selectedDates.map(_fmt).toSet();
+    _vipPushTimingByDate.removeWhere((key, _) => !labels.contains(key));
+    for (final label in labels) {
+      final options = allowedVipPushTimingsForDateLabel(label, now);
+      if (options.isEmpty) {
+        _vipPushTimingByDate.remove(label);
+        continue;
+      }
+      final current = _vipPushTimingByDate[label];
+      if (current == null || !options.contains(current)) {
+        _vipPushTimingByDate[label] = options.first;
+      }
     }
-    if (_vipPushTiming == null || !options.contains(_vipPushTiming)) {
-      _vipPushTiming = options.first;
+  }
+
+  bool _vipPushSelectionReady() {
+    if (_selectedDates.isEmpty) return false;
+    final now = DateTime.now();
+    for (final day in _selectedDates) {
+      final label = _fmt(day);
+      final timing = _vipPushTimingByDate[label];
+      final options = allowedVipPushTimingsForDateLabel(label, now);
+      if (timing == null || !options.contains(timing)) return false;
     }
+    return true;
   }
 
   bool _sameDay(DateTime a, DateTime b) =>
@@ -230,11 +247,12 @@ class _CreditsScreenState extends State<CreditsScreen> {
     final cost = dayCount * (isVip ? _vipCreditPerDay : _creditPerDay);
     final available = isVip ? _vipBalance : _balance;
     if (isVip) {
-      _syncVipPushTiming();
-      final labels = _selectedDates.map(_fmt).toList();
-      final options = allowedVipPushTimingsForAllDateLabels(labels, DateTime.now());
-      if (options.isEmpty || _vipPushTiming == null) {
-        _snack('Escolha datas compatíveis e um horário de aviso push VIP.');
+      _syncVipPushTimingByDate();
+      if (!_vipPushSelectionReady()) {
+        _snack(
+          'Escolha um horário de aviso push VIP para cada data. '
+          'Se um horário expirou, selecione outra opção.',
+        );
         return;
       }
     }
@@ -249,13 +267,12 @@ class _CreditsScreenState extends State<CreditsScreen> {
       return;
     }
 
-    final dateLabels = _selectedDates.map(_fmt).toList()..sort();
     final confirmed = await showPublishPromotionDialog(
       context,
       credits: cost,
       isVip: isVip,
-      vipPushSummary: isVip && _vipPushTiming != null
-          ? vipPushScheduleSummary(displayDates: dateLabels, timing: _vipPushTiming!)
+      vipPushSummary: isVip && _vipPushSelectionReady()
+          ? vipPushScheduleSummaryByDate(_vipPushTimingByDate)
           : null,
     );
     if (!confirmed || !mounted || _publishing) return;
@@ -277,7 +294,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
                 .map(
                   (date) => {
                     'date': date,
-                    'pushTiming': vipPushTimingApiValue(_vipPushTiming!),
+                    'pushTiming': vipPushTimingApiValue(_vipPushTimingByDate[date]!),
                   },
                 )
                 .toList(),
@@ -293,7 +310,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _title.clear();
         _description.clear();
         _billingPlan = PublicationBillingPlan.common;
-        _vipPushTiming = null;
+        _vipPushTimingByDate.clear();
         _publishIdempotencyKey = null;
       });
       _snack(isVip ? 'Publicação VIP agendada na HOME.' : 'Publicação agendada na HOME.');
@@ -545,7 +562,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                     vipBalance: _vipBalance,
                                     onPlanChanged: (plan) => setState(() {
                                       _billingPlan = plan;
-                                      _syncVipPushTiming();
+                                      _syncVipPushTimingByDate();
                                     }),
                                   ),
                                   const SizedBox(height: 22),
@@ -608,8 +625,10 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                     const SizedBox(height: 18),
                                     VipPushTimingSelector(
                                       dateLabels: sortedDates.map(_fmt).toList(),
-                                      selected: _vipPushTiming,
-                                      onSelected: (timing) => setState(() => _vipPushTiming = timing),
+                                      selectedByDate: _vipPushTimingByDate,
+                                      onSelected: (date, timing) => setState(
+                                        () => _vipPushTimingByDate[date] = timing,
+                                      ),
                                       now: DateTime.now(),
                                     ),
                                   ],

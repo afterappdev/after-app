@@ -605,48 +605,25 @@ class _PublicationPlanTile extends StatelessWidget {
   }
 }
 
-/// Horário do aviso push para publicação VIP (America/Sao_Paulo).
+/// Horário do aviso push por dia VIP (America/Sao_Paulo).
 class VipPushTimingSelector extends StatelessWidget {
   const VipPushTimingSelector({
     super.key,
     required this.dateLabels,
-    required this.selected,
+    required this.selectedByDate,
     required this.onSelected,
     required this.now,
   });
 
   final List<String> dateLabels;
-  final VipPushTiming? selected;
-  final ValueChanged<VipPushTiming> onSelected;
+  final Map<String, VipPushTiming> selectedByDate;
+  final void Function(String dateLabel, VipPushTiming timing) onSelected;
   final DateTime now;
 
   @override
   Widget build(BuildContext context) {
-    final options = allowedVipPushTimingsForAllDateLabels(dateLabels, now);
     if (dateLabels.isEmpty) return const SizedBox.shrink();
-
-    if (options.isEmpty) {
-      return Container(
-        key: const Key('vip-push-timing-empty'),
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF4F4),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE8B4B4)),
-        ),
-        child: const Text(
-          'As datas selecionadas não permitem o mesmo horário de aviso push. '
-          'Ajuste as datas ou publique em etapas separadas.',
-          style: TextStyle(
-            fontFamily: AppTheme.fontFamily,
-            fontSize: 12,
-            height: 1.35,
-            color: kCreditsInk,
-          ),
-        ),
-      );
-    }
+    final sorted = dateLabels.toList()..sort();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -662,8 +639,8 @@ class VipPushTimingSelector extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'Fuso: America/Sao_Paulo. O envio imediato agenda o processamento agora; '
-          'a entrega pelo celular pode levar alguns minutos.',
+          'Fuso: America/Sao_Paulo. Escolha o horário de cada dia VIP. '
+          'O envio imediato só está disponível para o dia de hoje após 17h.',
           style: TextStyle(
             fontFamily: AppTheme.fontFamily,
             fontSize: 11,
@@ -672,57 +649,106 @@ class VipPushTimingSelector extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        ...options.map((timing) {
-          final isSelected = selected == timing;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              key: Key('vip-push-${vipPushTimingApiValue(timing)}'),
-              color: isSelected ? _pubLilac : Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: isSelected ? _pubPurple : const Color(0xFFE4E4EA),
-                  width: isSelected ? 1.6 : 1,
+        ...sorted.map((dateLabel) {
+          final options = allowedVipPushTimingsForDateLabel(dateLabel, now);
+          final br = dateLabel.split('-');
+          final dateTitle = br.length == 3 ? '${br[2]}/${br[1]}/${br[0]}' : dateLabel;
+          if (options.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                key: Key('vip-push-empty-$dateLabel'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF4F4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE8B4B4)),
                 ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => onSelected(timing),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isSelected
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_off,
-                        size: 20,
-                        color: isSelected ? _pubPurple : kCreditsMuted,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          labelVipPushTiming(timing),
-                          style: TextStyle(
-                            fontFamily: AppTheme.fontFamily,
-                            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 13,
-                            color: kCreditsInk,
-                          ),
-                        ),
-                      ),
-                    ],
+                child: Text(
+                  '$dateTitle: nenhum horário de push disponível. Remova a data ou escolha outro dia.',
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 12,
+                    height: 1.35,
+                    color: kCreditsInk,
                   ),
                 ),
               ),
+            );
+          }
+          final selected = selectedByDate[dateLabel];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  dateTitle,
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: kCreditsInk,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ...options.map((timing) {
+                  final isSelected = selected == timing;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      key: Key('vip-push-$dateLabel-${vipPushTimingApiValue(timing)}'),
+                      color: isSelected ? _pubLilac : Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: isSelected ? _pubPurple : const Color(0xFFE4E4EA),
+                          width: isSelected ? 1.6 : 1,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => onSelected(dateLabel, timing),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isSelected
+                                    ? Icons.radio_button_checked
+                                    : Icons.radio_button_off,
+                                size: 20,
+                                color: isSelected ? _pubPurple : kCreditsMuted,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  labelVipPushTiming(timing),
+                                  style: TextStyle(
+                                    fontFamily: AppTheme.fontFamily,
+                                    fontWeight:
+                                        isSelected ? FontWeight.w700 : FontWeight.w500,
+                                    fontSize: 13,
+                                    color: kCreditsInk,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
             ),
           );
         }),
-        if (selected != null && dateLabels.isNotEmpty) ...[
+        if (selectedByDate.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
-            vipPushScheduleSummary(displayDates: dateLabels, timing: selected!),
+            vipPushScheduleSummaryByDate(selectedByDate),
             style: TextStyle(
               fontFamily: AppTheme.fontFamily,
               fontSize: 12,
