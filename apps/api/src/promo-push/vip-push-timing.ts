@@ -92,6 +92,62 @@ export function allowedVipPushTimingsForAllDates(
   return options;
 }
 
+/** Opções de horário VIP por dia civil (sem interseção global). */
+export function allowedVipPushTimingsByDate(
+  dates: string[],
+  now: Date,
+): Record<string, VipPushTimingChoice[]> {
+  const byDate: Record<string, VipPushTimingChoice[]> = {};
+  for (const date of dates) {
+    const trimmed = date.trim();
+    if (!DATE.test(trimmed)) continue;
+    byDate[trimmed] = allowedVipPushTimings(trimmed, now);
+  }
+  return byDate;
+}
+
+export type VipPublicationInputMode =
+  | 'none'
+  | 'explicit_vip_publications'
+  | 'legacy_vip_dates_only';
+
+function normalizeVipDateList(vipDates: string[]): string[] {
+  const seen = new Set<string>();
+  const dates: string[] = [];
+  for (const value of vipDates) {
+    const date = value.trim();
+    if (!DATE.test(date)) {
+      throw new BadRequestException(`Data VIP inválida: ${value}`);
+    }
+    if (seen.has(date)) {
+      throw new BadRequestException(`Data VIP repetida: ${date}`);
+    }
+    seen.add(date);
+    dates.push(date);
+  }
+  return dates.sort((a, b) => a.localeCompare(b));
+}
+
+function assertMatchingVipDateSets(
+  vipDates: string[],
+  plans: VipPublicationPlan[],
+): void {
+  const fromPlans = [...plans.map((p) => p.date)].sort((a, b) => a.localeCompare(b));
+  const fromDates = [...vipDates].sort((a, b) => a.localeCompare(b));
+  if (fromPlans.length !== fromDates.length) {
+    throw new BadRequestException(
+      'Payload VIP inconsistente: vipDates e vipPublications devem listar os mesmos dias.',
+    );
+  }
+  for (let i = 0; i < fromPlans.length; i += 1) {
+    if (fromPlans[i] !== fromDates[i]) {
+      throw new BadRequestException(
+        'Payload VIP inconsistente: vipDates e vipPublications devem listar os mesmos dias.',
+      );
+    }
+  }
+}
+
 export function validateVipPublicationPlans(
   plans: VipPublicationPlan[],
   now: Date,
@@ -122,20 +178,45 @@ export function normalizeVipPublicationInput(
   vipDates: string[] | undefined,
   vipPublications: VipPublicationPlan[] | undefined,
   now: Date,
-): { vipDates: string[]; plans: VipPublicationPlan[] } {
-  if (vipPublications?.length) {
-    const plans = validateVipPublicationPlans(vipPublications, now);
+): {
+  vipDates: string[];
+  plans: VipPublicationPlan[];
+  inputMode: VipPublicationInputMode;
+} {
+  const hasVipDates = (vipDates?.length ?? 0) > 0;
+  const publicationsProvided = vipPublications !== undefined;
+  const hasPublications = (vipPublications?.length ?? 0) > 0;
+
+  if (publicationsProvided && !hasPublications && hasVipDates) {
+    throw new BadRequestException(
+      'Payload VIP inválido: vipPublications vazio com vipDates preenchido. ' +
+        'Use vipPublications com horário por dia ou envie apenas vipDates (cliente legado).',
+    );
+  }
+
+  if (hasPublications) {
+    const plans = validateVipPublicationPlans(vipPublications!, now);
+    const normalizedDates = normalizeVipDateList(vipDates ?? plans.map((p) => p.date));
+    if (hasVipDates) {
+      assertMatchingVipDateSets(normalizedDates, plans);
+    }
     return {
       vipDates: plans.map((p) => p.date),
       plans,
+      inputMode: 'explicit_vip_publications',
     };
   }
-  if (vipDates?.length) {
-    throw new BadRequestException(
-      'Informe o horário do aviso push para cada dia VIP (vipPublications).',
-    );
+
+  if (hasVipDates) {
+    const dates = normalizeVipDateList(vipDates!);
+    return {
+      vipDates: dates,
+      plans: [],
+      inputMode: 'legacy_vip_dates_only',
+    };
   }
-  return { vipDates: [], plans: [] };
+
+  return { vipDates: [], plans: [], inputMode: 'none' };
 }
 
 export function timingToSlot(timing: VipPushTimingChoice): number {

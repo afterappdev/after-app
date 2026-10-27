@@ -20,6 +20,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
+  allowedVipPushTimingsByDate,
   allowedVipPushTimingsForAllDates,
   VipPushTimingChoice,
 } from '../promo-push/vip-push-timing';
@@ -102,9 +103,13 @@ export class BannersController {
         ?.split(',')
         .map((item) => item.trim())
         .filter((item) => item.length > 0) ?? [];
-    const options = allowedVipPushTimingsForAllDates(list, new Date());
+    const now = new Date();
+    const byDate = allowedVipPushTimingsByDate(list, now);
+    const options = allowedVipPushTimingsForAllDates(list, now);
     return {
       dates: list,
+      byDate,
+      /** Interseção global (compatibilidade); preferir `byDate` por dia. */
       options,
       officialSlots: ['11:00', '17:00'],
       timeZone: 'America/Sao_Paulo',
