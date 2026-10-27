@@ -135,7 +135,7 @@ async function seed(): Promise<Fixture> {
       name: 'Estabelecimento fictício',
       email: `${prefix}@example.test`,
       passwordHash: 'fixture-not-a-credential',
-      role: 'USER',
+      role: 'VENUE',
       state: 'SP',
       city: 'Campinas',
     },
@@ -146,6 +146,7 @@ async function seed(): Promise<Fixture> {
       name: 'Casa fictícia',
       city: 'Campinas',
       state: 'SP',
+      ibgeCityId: 3509502,
     },
   });
   await prisma.creditWallet.create({
