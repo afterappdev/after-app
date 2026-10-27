@@ -22,8 +22,8 @@ import { Type } from 'class-transformer';
 import {
   allowedVipPushTimingsByDate,
   allowedVipPushTimingsForAllDates,
-  VipPushTimingChoice,
 } from '../promo-push/vip-push-timing';
+import type { VipPushTimingChoice } from '../promo-push/vip-push-timing';
 import {
   AuthUser,
   CurrentUser,

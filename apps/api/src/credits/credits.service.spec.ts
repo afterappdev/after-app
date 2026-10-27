@@ -4,6 +4,7 @@ import {
   VerificationStatus,
 } from '@apple/app-store-server-library';
 import { BadRequestException, ForbiddenException, Logger, ServiceUnavailableException, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { mockActiveUserPrisma } from '../common/account/mock-active-user-prisma';
 import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { CardPayDto } from './credits.controller';
 import { CreditsService } from './credits.service';
@@ -81,6 +82,7 @@ function createPrisma() {
     fn(prisma),
   );
   prisma.venue.findUnique.mockResolvedValue(VENUE);
+  mockActiveUserPrisma(prisma);
   return prisma;
 }
 

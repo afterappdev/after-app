@@ -1,6 +1,10 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
+
+export type BannerWithSchedules = Prisma.BannerGetPayload<{
+  include: { schedules: true };
+}>;
 import { PromoContentKind } from '../promo-push/promo-push.copy';
 import { VipPublicationPlan } from '../promo-push/vip-push-timing';
 
@@ -70,13 +74,13 @@ type IdempotencyTx = {
     findUnique(args: {
       where: { id: string };
       include: { schedules: true };
-    }): Promise<unknown>;
+    }): Promise<BannerWithSchedules | null>;
   };
 };
 
 export type IdempotencyClaim =
   | { kind: 'create' }
-  | { kind: 'replay'; banner: unknown };
+  | { kind: 'replay'; banner: BannerWithSchedules };
 
 /**
  * Claims an idempotency slot inside the same Prisma transaction as the debit.

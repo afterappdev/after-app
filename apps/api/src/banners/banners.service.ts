@@ -18,6 +18,7 @@ import {
 } from '../promo-push/promo-push.publisher';
 import { assertUserAccountActive } from '../common/account/account-eligibility';
 import {
+  type BannerWithSchedules,
   claimBannerPublicationIdempotency,
   completeBannerPublicationIdempotency,
   hashBannerCreateRequest,
@@ -162,7 +163,7 @@ export class BannersService {
       : undefined;
 
     let runSideEffects = true;
-    const banner = await this.prisma.$transaction(async (tx) => {
+    const banner = await this.prisma.$transaction<BannerWithSchedules>(async (tx) => {
       if (idempotencyKey && requestHash) {
         const claim = await claimBannerPublicationIdempotency(tx, {
           venueId: venue.id,
@@ -171,9 +172,7 @@ export class BannersService {
         });
         if (claim.kind === 'replay') {
           runSideEffects = false;
-          return claim.banner as Awaited<
-            ReturnType<typeof tx.banner.create>
-          >;
+          return claim.banner;
         }
       }
 

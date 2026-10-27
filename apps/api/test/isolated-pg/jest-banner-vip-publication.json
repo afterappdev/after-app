@@ -1,0 +1,11 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "../..",
+  "testEnvironment": "node",
+  "testRegex": "test/isolated-pg/banner-vip-publication\\.isolated-pg\\.ts$",
+  "transform": {
+    "^.+\\.ts$": "ts-jest"
+  },
+  "maxWorkers": 1,
+  "testTimeout": 120000
+}

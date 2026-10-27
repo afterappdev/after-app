@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { mockActiveUserPrisma } from '../common/account/mock-active-user-prisma';
 import { CouponsService } from './coupons.service';
 
 const venueUser: AuthUser = {
@@ -72,6 +73,7 @@ function setup(push?: { notifyCouponRedeemed: jest.Mock }) {
     name: 'Bar Central',
     city: 'São Paulo',
   });
+  mockActiveUserPrisma(prisma);
   const service = new CouponsService(prisma as never, push as never);
   return { prisma, service, push };
 }
