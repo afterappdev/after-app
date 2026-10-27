@@ -87,14 +87,39 @@ export type IdempotencyClaim =
  * Concurrent duplicates with the same key: one proceeds, others see PROCESSING
  * or COMPLETED (replay) without a second debit.
  */
+const IDEMPOTENCY_SAVEPOINT = 'banner_idem_claim';
+
+type IdempotencyTxClient = IdempotencyTx & {
+  $executeRawUnsafe?: (query: string) => Promise<unknown>;
+};
+
+async function idempotencySavepoint(tx: IdempotencyTxClient): Promise<void> {
+  if (typeof tx.$executeRawUnsafe === 'function') {
+    await tx.$executeRawUnsafe(`SAVEPOINT ${IDEMPOTENCY_SAVEPOINT}`);
+  }
+}
+
+async function releaseIdempotencySavepoint(tx: IdempotencyTxClient): Promise<void> {
+  if (typeof tx.$executeRawUnsafe === 'function') {
+    await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${IDEMPOTENCY_SAVEPOINT}`);
+  }
+}
+
+async function rollbackIdempotencySavepoint(tx: IdempotencyTxClient): Promise<void> {
+  if (typeof tx.$executeRawUnsafe === 'function') {
+    await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${IDEMPOTENCY_SAVEPOINT}`);
+  }
+}
+
 export async function claimBannerPublicationIdempotency(
-  tx: IdempotencyTx,
+  tx: IdempotencyTxClient,
   input: {
     venueId: string;
     idempotencyKey: string;
     requestHash: string;
   },
 ): Promise<IdempotencyClaim> {
+  await idempotencySavepoint(tx);
   try {
     await tx.bannerPublicationIdempotency.create({
       data: {
@@ -104,9 +129,11 @@ export async function claimBannerPublicationIdempotency(
         status: 'PROCESSING',
       },
     });
+    await releaseIdempotencySavepoint(tx);
     return { kind: 'create' };
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
+    await rollbackIdempotencySavepoint(tx);
     const existing = await tx.bannerPublicationIdempotency.findUnique({
       where: {
         venueId_idempotencyKey: {
