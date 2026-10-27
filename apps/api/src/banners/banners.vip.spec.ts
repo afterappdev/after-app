@@ -358,6 +358,84 @@ describe('BannersService VIP', () => {
     expect(entries).toHaveLength(2);
   });
 
+  it('cliente legado com só vipDates publica sem vipPushTiming', async () => {
+    const { service, wallet, prisma } = setup({ balance: 0, vipBalance: 1 });
+    let capturedTiming: string | null | undefined = 'unset';
+    (prisma.banner as { create: jest.Mock }).create.mockImplementationOnce(
+      async ({ data }: { data: { schedules: { create: { tier: string; vipPushTiming?: string | null }[] } } }) => ({
+        id: 'banner-legacy',
+        schedules: data.schedules.create.map((row, index) => {
+          capturedTiming = row.vipPushTiming ?? null;
+          return {
+            id: `sch-leg-${index}`,
+            displayDate: new Date('2099-06-10T00:00:00.000Z'),
+            ibgeCityId: 3550308,
+            tier: row.tier,
+            vipCreditEntryId: null,
+            vipPushTiming: row.vipPushTiming ?? null,
+          };
+        }),
+      }),
+    );
+    await service.create(
+      'owner-1',
+      'https://cdn.example/legacy.jpg',
+      [],
+      'Legado',
+      'Texto',
+      null,
+      [VIP_A],
+    );
+    expect(wallet.vipBalance).toBe(0);
+    expect(capturedTiming).toBeNull();
+  });
+
+  it('vipPublications multidata com horários distintos', async () => {
+    const { service, wallet, prisma } = setup({ balance: 0, vipBalance: 2 });
+    const captured: { date: string; timing: string | null | undefined }[] = [];
+    (prisma.banner as { create: jest.Mock }).create.mockImplementationOnce(
+      async ({ data }: { data: { schedules: { create: { displayDate: Date; tier: string; vipPushTiming?: string | null }[] } } }) => ({
+        id: 'banner-multi',
+        schedules: data.schedules.create.map((row, index) => {
+          const y = row.displayDate.getUTCFullYear();
+          const mo = String(row.displayDate.getUTCMonth() + 1).padStart(2, '0');
+          const d = String(row.displayDate.getUTCDate()).padStart(2, '0');
+          captured.push({
+            date: `${y}-${mo}-${d}`,
+            timing: row.vipPushTiming ?? null,
+          });
+          return {
+            id: `sch-m-${index}`,
+            displayDate: row.displayDate,
+            ibgeCityId: 3550308,
+            tier: row.tier,
+            vipCreditEntryId: null,
+            vipPushTiming: row.vipPushTiming ?? null,
+          };
+        }),
+      }),
+    );
+    await service.create(
+      'owner-1',
+      'https://cdn.example/multi.jpg',
+      [],
+      'Multi',
+      'Texto',
+      null,
+      [VIP_A, VIP_B],
+      undefined,
+      [
+        { date: VIP_A, pushTiming: 'SLOT_11' },
+        { date: VIP_B, pushTiming: 'SLOT_17' },
+      ],
+    );
+    expect(wallet.vipBalance).toBe(0);
+    expect(captured).toEqual([
+      { date: VIP_A, timing: 'SLOT_11' },
+      { date: VIP_B, timing: 'SLOT_17' },
+    ]);
+  });
+
   it('mesma chave de idempotência não debita duas vezes', async () => {
     const { service, wallet, entries } = setup({ balance: 0, vipBalance: 2 });
     const key = 'd'.repeat(16);

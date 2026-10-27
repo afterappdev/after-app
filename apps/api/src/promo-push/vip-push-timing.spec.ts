@@ -1,8 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   allowedVipPushTimings,
+  allowedVipPushTimingsByDate,
   allowedVipPushTimingsForAllDates,
   minutesSinceMidnightSp,
+  normalizeVipPublicationInput,
   planVipPushEventForSchedule,
   validateVipPublicationPlans,
   VIP_PUSH_IMMEDIATE_SLOT,
@@ -71,6 +73,77 @@ describe('validateVipPublicationPlans', () => {
         now,
       ),
     ).toThrow(BadRequestException);
+  });
+
+  it('rejeita IMMEDIATE em data futura', () => {
+    const now = sp('2026-10-26T22:00:00.000Z');
+    expect(() =>
+      validateVipPublicationPlans(
+        [{ date: '2026-10-28', pushTiming: 'IMMEDIATE' }],
+        now,
+      ),
+    ).toThrow(BadRequestException);
+  });
+});
+
+describe('allowedVipPushTimingsByDate', () => {
+  it('expõe opções independentes por dia', () => {
+    const now = sp('2026-10-26T22:00:00.000Z'); // 19h SP hoje
+    expect(
+      allowedVipPushTimingsByDate(['2026-10-26', '2026-10-28'], now),
+    ).toEqual({
+      '2026-10-26': ['IMMEDIATE'],
+      '2026-10-28': ['SLOT_11', 'SLOT_17'],
+    });
+  });
+});
+
+describe('normalizeVipPublicationInput', () => {
+  const now = sp('2026-10-25T15:00:00.000Z');
+
+  it('aceita cliente legado só com vipDates', () => {
+    expect(
+      normalizeVipPublicationInput(['2099-06-10', '2099-06-11'], undefined, now),
+    ).toEqual({
+      vipDates: ['2099-06-10', '2099-06-11'],
+      plans: [],
+      inputMode: 'legacy_vip_dates_only',
+    });
+  });
+
+  it('rejeita vipPublications vazio com vipDates', () => {
+    expect(() =>
+      normalizeVipPublicationInput(['2099-06-10'], [], now),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejeita conjuntos de datas divergentes', () => {
+    expect(() =>
+      normalizeVipPublicationInput(
+        ['2099-06-10'],
+        [{ date: '2099-06-11', pushTiming: 'SLOT_11' }],
+        now,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('aceita vipPublications explícito', () => {
+    expect(
+      normalizeVipPublicationInput(
+        undefined,
+        [
+          { date: '2099-06-10', pushTiming: 'SLOT_11' },
+          { date: '2099-06-11', pushTiming: 'SLOT_17' },
+        ],
+        now,
+      ),
+    ).toMatchObject({
+      inputMode: 'explicit_vip_publications',
+      plans: [
+        { date: '2099-06-10', pushTiming: 'SLOT_11' },
+        { date: '2099-06-11', pushTiming: 'SLOT_17' },
+      ],
+    });
   });
 });
 
