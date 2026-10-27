@@ -39,6 +39,22 @@ describe('allowedVipPushTimings', () => {
     expect(allowedVipPushTimings('2026-10-26', now)).not.toContain('SLOT_11');
   });
 
+  it('10:59:59 SP ainda permite slot 11h', () => {
+    const now = sp('2026-10-26T13:59:59.000Z');
+    expect(allowedVipPushTimings('2026-10-26', now)).toEqual([
+      'SLOT_11',
+      'SLOT_17',
+    ]);
+  });
+
+  it('16:59:59 SP permite 17h e imediato', () => {
+    const now = sp('2026-10-26T19:59:59.000Z');
+    expect(allowedVipPushTimings('2026-10-26', now)).toEqual([
+      'SLOT_17',
+      'IMMEDIATE',
+    ]);
+  });
+
   it('exatamente 17h não permite slots programados no mesmo dia', () => {
     const now = sp('2026-10-26T20:00:00.000Z'); // 17:00 SP
     expect(allowedVipPushTimings('2026-10-26', now)).toEqual(['IMMEDIATE']);

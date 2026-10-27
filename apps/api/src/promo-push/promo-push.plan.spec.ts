@@ -52,7 +52,6 @@ describe('planPromoPushEvents', () => {
     expect(drafts.map((item) => [item.bannerScheduleId, item.slot])).toEqual([
       ['today', 2],
       ['future', 1],
-      ['future', 2],
     ]);
     expect(drafts.find((item) => item.slot === 2 && item.bannerScheduleId === 'today')?.availableAt.toISOString()).toBe(
       '2026-10-20T21:00:00.000Z',

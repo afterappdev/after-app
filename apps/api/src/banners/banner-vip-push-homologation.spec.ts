@@ -115,7 +115,7 @@ describe('homologação VIP push (unitária, sem FCM)', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('legado: até um evento por slot configurado', () => {
+  it('legado: no máximo um evento por agendamento VIP', () => {
     const events = planPromoPushEvents({
       bannerId: 'b',
       venueId: 'v',
@@ -133,6 +133,7 @@ describe('homologação VIP push (unitária, sem FCM)', () => {
       slots,
       now,
     });
-    expect(events.length).toBe(2);
+    expect(events.length).toBe(1);
+    expect(events[0]?.slot).toBe(1);
   });
 });

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -44,15 +45,21 @@ class _CreditsScreenState extends State<CreditsScreen> {
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _scroll = ScrollController();
+  Timer? _vipPushClock;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _vipPushClock = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || _billingPlan != PublicationBillingPlan.vip) return;
+      setState(_syncVipPushTimingByDate);
+    });
   }
 
   @override
   void dispose() {
+    _vipPushClock?.cancel();
     _title.dispose();
     _description.dispose();
     _scroll.dispose();

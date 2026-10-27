@@ -29,9 +29,10 @@ export type PromoPushEventDraft = {
 };
 
 /**
- * One pending event per configured VIP slot. Common days create nothing.
- * A slot that is already due at confirmation is omitted, so it is not
- * sent retroactively. The pair (schedule, slot) is the idempotency key.
+ * VIP with explicit pushTiming: one pending event per schedule.
+ * Legacy VIP (no pushTiming): one event — the earliest configured slot
+ * still in the future (no retroactive sends). Common days create nothing.
+ * The pair (schedule, slot) is the idempotency key.
  */
 export function planPromoPushEvents(input: {
   bannerId: string;
@@ -83,6 +84,7 @@ export function planPromoPushEvents(input: {
         availableAt,
         expiresAt: window.expiresAt,
       });
+      break;
     }
   }
   return drafts;

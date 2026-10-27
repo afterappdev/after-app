@@ -307,7 +307,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.textContaining('Saldo insuficiente'), findsWidgets);
+    expect(find.textContaining('Saldo comum insuficiente'), findsWidgets);
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
     expect(

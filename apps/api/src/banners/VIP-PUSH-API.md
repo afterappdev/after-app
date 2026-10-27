@@ -27,8 +27,8 @@ Clientes antigos enviam apenas `vipDates` (sem `vipPublications`).
 
 - A publicação VIP **continua** (débito de crédito VIP, exibição na Home).
 - `BannerSchedule.vipPushTiming` permanece **null**.
-- O planejamento de push usa o caminho legado de `planPromoPushEvents`: **até um evento por slot** configurado em `PROMO_PUSH_VIP_SLOT_TIMES` (comportamento anterior à escolha explícita de horário).
-- **Risco:** se o ambiente tiver dois slots oficiais configurados, o cliente legado pode gerar **até dois pushes** no mesmo dia VIP (não duplica débito; idempotência por `(schedule, slot)`).
+- O planejamento de push usa o caminho legado de `planPromoPushEvents`: **um evento por agendamento VIP** — o **primeiro slot configurado** em `PROMO_PUSH_VIP_SLOT_TIMES` que ainda não passou na confirmação (sem envio retroativo).
+- Não duplica débito; idempotência por `(schedule, slot)`.
 - Não atribuímos `IMMEDIATE` nem `SLOT_*` silenciosamente a clientes legados.
 
 Payloads inválidos (distintos do legado):
