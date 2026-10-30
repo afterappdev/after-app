@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../../core/location/open_url.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
 import 'public_chrome.dart';
+import 'store_listing_urls.dart';
 
 class LandingProtoAssets {
   static const heroText = 'assets/images/landing_proto/landing_hero_text.png';
@@ -651,10 +653,11 @@ class _StoreBadgeHotspots extends StatelessWidget {
               child: GestureDetector(
                 key: const Key('landing-badge-play'),
                 behavior: HitTestBehavior.translucent,
-                onTap: null,
+                onTap: () => openExternalUrl(kGooglePlayStoreUrl),
                 child: Semantics(
                   button: true,
                   label: 'Google Play',
+                  link: true,
                   child: const SizedBox.expand(),
                 ),
               ),
@@ -667,10 +670,11 @@ class _StoreBadgeHotspots extends StatelessWidget {
               child: GestureDetector(
                 key: const Key('landing-badge-store'),
                 behavior: HitTestBehavior.translucent,
-                onTap: null,
+                onTap: () => openExternalUrl(kAppleAppStoreUrl),
                 child: Semantics(
                   button: true,
                   label: 'App Store',
+                  link: true,
                   child: const SizedBox.expand(),
                 ),
               ),

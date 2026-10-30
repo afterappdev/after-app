@@ -184,7 +184,7 @@ void main() {
     expect(find.text('Bem-vindo(a)!'), findsOneWidget);
   });
 
-  testWidgets('badges das lojas não navegam (links ainda não publicados)', (
+  testWidgets('badges das lojas abrem URLs oficiais (sem sair da landing no test VM)', (
     tester,
   ) async {
     await _surface(tester, const Size(1200, 900));
@@ -461,7 +461,7 @@ void main() {
     expect(find.text('Bem-vindo(a)!'), findsOneWidget);
   });
 
-  testWidgets('badges mobile não navegam', (tester) async {
+  testWidgets('badges mobile disparam toque sem quebrar a landing', (tester) async {
     await _surface(tester, const Size(390, 1200));
     await tester.pumpWidget(_publicSite());
     await tester.pumpAndSettle();

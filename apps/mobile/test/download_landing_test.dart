@@ -43,18 +43,20 @@ void main() {
     expect(page, contains('name="after-download-page"'));
   });
 
-  test('lojas ficam sem URL e os destinos fixos estão corretos', () {
-    expect(page, contains("const googlePlayUrl = '';"));
-    expect(page, contains("const appStoreUrl = '';"));
-    expect(page, contains('href="https://app-after.com.br"'));
+  test('links oficiais Play, App Store e WhatsApp', () {
+    expect(
+      page,
+      contains(
+        'href="https://play.google.com/store/apps/details?id=com.r2p.after.after_app"',
+      ),
+    );
+    expect(
+      page,
+      contains('href="https://apps.apple.com/br/app/after/id6812746791"'),
+    );
     expect(page, contains('href="https://wa.me/5517996470194"'));
-    expect(page.contains('play.google.com'), isFalse);
-    expect(page.contains('apps.apple.com'), isFalse);
-    expect(page.contains('itunes.apple.com'), isFalse);
-    expect(page.contains('wa.me/5517996470194?'), isFalse);
-    expect(page.contains('instagram.com'), isFalse);
-    expect(page.contains('facebook.com'), isFalse);
-    expect(page.contains('tiktok.com'), isFalse);
+    expect(page, contains('href="https://app-after.com.br"'));
+    expect(page.contains('const googlePlayUrl'), isFalse);
   });
 
   test('o shell do app só desvia /baixar e continua carregando o Flutter', () {
