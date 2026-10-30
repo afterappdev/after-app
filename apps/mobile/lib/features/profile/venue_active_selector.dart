@@ -127,9 +127,11 @@ class VenueActiveSelector extends StatelessWidget {
     if (venues.length < 2) return;
 
     final messenger = ScaffoldMessenger.maybeOf(context);
+    final activeBefore = auth.managingVenueId;
 
-    await showModalBottomSheet<void>(
+    final pickedVenueId = await showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -139,172 +141,116 @@ class VenueActiveSelector extends StatelessWidget {
         return _VenuePickerSheet(
           auth: auth,
           venues: venues,
-          scaffoldMessenger: messenger,
         );
       },
     );
+
+    if (pickedVenueId == null ||
+        pickedVenueId.isEmpty ||
+        pickedVenueId == activeBefore) {
+      return;
+    }
+
+    final err = await auth.switchActiveVenue(pickedVenueId);
+    if (err != null && context.mounted) {
+      messenger?.showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 }
 
-/// Conteúdo do modal: [State] persistente para sobreviver a notifyListeners do [AuthController].
-class _VenuePickerSheet extends StatefulWidget {
+/// Fecha o modal de forma síncrona com [Navigator.pop] antes de qualquer await.
+class _VenuePickerSheet extends StatelessWidget {
   const _VenuePickerSheet({
     required this.auth,
     required this.venues,
-    required this.scaffoldMessenger,
   });
 
   final AuthController auth;
   final List<OwnedVenueSummary> venues;
-  final ScaffoldMessengerState? scaffoldMessenger;
 
-  @override
-  State<_VenuePickerSheet> createState() => _VenuePickerSheetState();
-}
+  void _onVenueTap(BuildContext modalContext, OwnedVenueSummary venue) {
+    if (auth.switchingActiveVenue) return;
 
-class _VenuePickerSheetState extends State<_VenuePickerSheet> {
-  NavigatorState? _modalNavigator;
-  String? _pendingVenueId;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.auth.addListener(_onAuthChanged);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _modalNavigator ??= Navigator.of(context);
-  }
-
-  @override
-  void dispose() {
-    widget.auth.removeListener(_onAuthChanged);
-    super.dispose();
-  }
-
-  void _onAuthChanged() {
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  void _dismissModal() {
-    final nav = _modalNavigator;
-    if (nav != null && nav.mounted) {
-      nav.pop();
-    }
-  }
-
-  Future<void> _onVenueSelected(OwnedVenueSummary venue) async {
-    if (widget.auth.switchingActiveVenue) return;
-
-    final currentActive = widget.auth.managingVenueId;
-    if (venue.id == currentActive) {
-      _dismissModal();
+    final activeId = auth.managingVenueId;
+    if (venue.id == activeId) {
+      Navigator.of(modalContext).pop();
       return;
     }
 
-    final nav = _modalNavigator;
-    setState(() => _pendingVenueId = venue.id);
-
-    final err = await widget.auth.switchActiveVenue(venue.id);
-
-    if (!mounted) {
-      if (err == null && nav != null && nav.mounted) {
-        nav.pop();
-      }
-      return;
-    }
-
-    setState(() => _pendingVenueId = null);
-
-    if (err != null) {
-      widget.scaffoldMessenger?.showSnackBar(SnackBar(content: Text(err)));
-      return;
-    }
-
-    _dismissModal();
+    Navigator.of(modalContext).pop(venue.id);
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = widget.auth;
-    final activeId = auth.managingVenueId;
-    final switching = auth.switchingActiveVenue;
-    final venues = widget.venues;
+    return ListenableBuilder(
+      listenable: auth,
+      builder: (modalContext, _) {
+        final activeId = auth.managingVenueId;
+        final switching = auth.switchingActiveVenue;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E6),
-                  borderRadius: BorderRadius.circular(2),
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E0E6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Seus estabelecimentos',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Créditos, banners e cupons usam o local selecionado.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 13,
+                    color: AppTheme.muted.withValues(alpha: 0.95),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: venues.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) {
+                      final venue = venues[index];
+                      final selected = venue.id == activeId;
+                      return _VenueTile(
+                        venue: venue,
+                        selected: selected,
+                        enabled: !switching,
+                        onTap: switching
+                            ? null
+                            : () => _onVenueTap(modalContext, venue),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Seus estabelecimentos',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-                color: AppTheme.ink,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Créditos, banners e cupons usam o local selecionado.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontSize: 13,
-                color: AppTheme.muted.withValues(alpha: 0.95),
-              ),
-            ),
-            if (switching) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(
-                minHeight: 2,
-                color: Color(0xFFF58634),
-                backgroundColor: Color(0xFFE8E8EE),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: venues.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (_, index) {
-                  final venue = venues[index];
-                  final selected = venue.id == activeId;
-                  final pending = _pendingVenueId == venue.id && switching;
-                  return _VenueTile(
-                    venue: venue,
-                    selected: selected,
-                    pending: pending,
-                    enabled: !switching,
-                    onTap: switching
-                        ? null
-                        : () => _onVenueSelected(venue),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -315,12 +261,10 @@ class _VenueTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.enabled = true,
-    this.pending = false,
   });
 
   final OwnedVenueSummary venue;
   final bool selected;
-  final bool pending;
   final VoidCallback? onTap;
   final bool enabled;
 
@@ -382,16 +326,7 @@ class _VenueTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (pending)
-                const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: _orange,
-                  ),
-                )
-              else if (selected)
+              if (selected)
                 const Icon(Icons.check_circle, color: _purple, size: 22),
             ],
           ),

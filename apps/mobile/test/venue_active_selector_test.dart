@@ -276,9 +276,7 @@ void main() {
     expect(auth.user!.activeVenueId, 'v1');
   });
 
-  testWidgets('falha na troca mantém o sheet aberto e exibe erro', (
-    tester,
-  ) async {
+  testWidgets('falha na troca fecha o sheet e exibe erro', (tester) async {
     final auth = await _authWithClient(
       MockClient((request) async {
         if (request.method == 'PUT') {
@@ -294,7 +292,7 @@ void main() {
     await tester.tap(_barBInSheet());
     await tester.pumpAndSettle();
 
-    expect(find.text('Seus estabelecimentos'), findsOneWidget);
+    expect(find.text('Seus estabelecimentos'), findsNothing);
     expect(find.text('Sem permissão'), findsOneWidget);
     expect(auth.user!.activeVenueId, 'v1');
   });
