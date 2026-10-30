@@ -5,6 +5,7 @@ describe('publicVenueWhere', () => {
   it('oculta venues moderados e proprietários pendentes de exclusão', () => {
     expect(publicVenueWhere()).toEqual({
       moderationHiddenAt: null,
+      ownerArchivedAt: null,
       owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
     });
   });
@@ -12,6 +13,7 @@ describe('publicVenueWhere', () => {
   it('adiciona notIn quando há bloqueios', () => {
     expect(publicVenueWhere(['a', 'b'])).toEqual({
       moderationHiddenAt: null,
+      ownerArchivedAt: null,
       owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
       id: { notIn: ['a', 'b'] },
     });
@@ -36,6 +38,13 @@ describe('isVenuePubliclyVisible', () => {
       isVenuePubliclyVisible({
         moderationHiddenAt: null,
         owner: { accountStatus: AccountLifecycleStatus.PENDING_DELETION },
+      }),
+    ).toBe(false);
+    expect(
+      isVenuePubliclyVisible({
+        moderationHiddenAt: null,
+        ownerArchivedAt: new Date(),
+        owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
       }),
     ).toBe(false);
   });

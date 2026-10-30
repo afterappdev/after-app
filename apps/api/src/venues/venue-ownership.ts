@@ -3,13 +3,17 @@ import { Prisma } from '@prisma/client';
 
 type VenueOwnerRow = { id: string; ownerUserId: string };
 
+const activeOwnedVenueWhere = {
+  ownerArchivedAt: null,
+} satisfies Prisma.VenueWhereInput;
+
 export async function findOwnedVenue(
   db: Prisma.TransactionClient | { venue: Prisma.VenueDelegate },
   userId: string,
   venueId: string,
 ): Promise<VenueOwnerRow> {
   const venue = await db.venue.findFirst({
-    where: { id: venueId, ownerUserId: userId },
+    where: { id: venueId, ownerUserId: userId, ...activeOwnedVenueWhere },
     select: { id: true, ownerUserId: true },
   });
   if (!venue) {
@@ -45,7 +49,7 @@ export async function resolveOwnedVenueId(
   }
 
   const owned = await db.venue.findMany({
-    where: { ownerUserId: userId },
+    where: { ownerUserId: userId, ...activeOwnedVenueWhere },
     select: { id: true },
     orderBy: { createdAt: 'asc' },
     take: 2,

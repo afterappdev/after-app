@@ -10,6 +10,7 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
 import '../public/public_chrome.dart';
+import 'account_recovery_screen.dart';
 import 'auth_controller.dart';
 import 'social_auth.dart';
 
@@ -249,6 +250,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (context.watch<AuthController>().pendingAccountRecovery != null) {
+      return const AccountRecoveryScreen();
+    }
     return Scaffold(
       backgroundColor: const Color(0xFFF6F8F7),
       body: SafeArea(

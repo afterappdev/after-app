@@ -8,9 +8,11 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
+import '../auth/models/owned_venue_summary.dart';
 import '../venue/add_venue_screen.dart';
 import 'delete_account_button.dart';
 import 'venue_active_selector.dart';
+import 'venue_archive_dialog.dart';
 import 'venue_fiscal_document_screen.dart';
 
 class VenueAccountScreen extends StatefulWidget {
@@ -309,6 +311,11 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                             ),
                           const SizedBox(height: 16),
                           const VenueActiveSelector(),
+                          if (user?.isVenue == true &&
+                              user!.venues.length == 1) ...[
+                            const SizedBox(height: 8),
+                            _ArchiveSingleVenueTile(venue: user.venues.first),
+                          ],
                           const _SectionLabel('GERENCIAR'),
                           const SizedBox(height: 8),
                           _InfoCard(
@@ -511,6 +518,72 @@ class _AccountRow extends StatelessWidget {
               color: Color(0xFFB0B0B8),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArchiveSingleVenueTile extends StatelessWidget {
+  const _ArchiveSingleVenueTile({required this.venue});
+
+  final OwnedVenueSummary venue;
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthController>();
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: const Key('venue-archive-single'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: auth.archivingOwnedVenue
+            ? null
+            : () async {
+                final ok = await confirmVenueArchive(
+                  context,
+                  venueName: venue.name,
+                );
+                if (!ok || !context.mounted) return;
+                final err = await auth.archiveOwnedVenue(venue.id);
+                if (err != null && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(err)),
+                  );
+                }
+              },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE8E8EE)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline, color: Color(0xFFC62828)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Excluir estabelecimento',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: auth.archivingOwnedVenue
+                        ? AppTheme.muted
+                        : const Color(0xFFC62828),
+                  ),
+                ),
+              ),
+              if (auth.archivingOwnedVenue)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
         ),
       ),
     );

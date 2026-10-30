@@ -4,6 +4,7 @@ export const ACTIVE_VENUE_HEADER = 'x-after-active-venue-id';
 
 export const authUserVenueInclude = {
   ownedVenues: {
+    where: { ownerArchivedAt: null },
     orderBy: { createdAt: 'asc' as const },
     select: {
       id: true,

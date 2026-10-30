@@ -5,6 +5,7 @@ import '../../core/config/api_config.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/owned_venue_summary.dart';
+import 'venue_archive_dialog.dart';
 
 /// Seletor de estabelecimento ativo (contas VENUE com 2+ locais).
 class VenueActiveSelector extends StatelessWidget {
@@ -168,6 +169,28 @@ class _VenuePickerSheet extends StatelessWidget {
   final AuthController auth;
   final List<OwnedVenueSummary> venues;
 
+  Future<void> _archiveVenue(
+    BuildContext modalContext,
+    AuthController auth,
+    OwnedVenueSummary venue,
+  ) async {
+    final root = modalContext;
+    final confirmed = await confirmVenueArchive(
+      root,
+      venueName: venue.name,
+    );
+    if (!confirmed) return;
+    if (modalContext.mounted) {
+      Navigator.of(modalContext).pop();
+    }
+    final err = await auth.archiveOwnedVenue(venue.id);
+    if (err != null && root.mounted) {
+      ScaffoldMessenger.maybeOf(root)?.showSnackBar(
+        SnackBar(content: Text(err)),
+      );
+    }
+  }
+
   void _onVenueTap(BuildContext modalContext, OwnedVenueSummary venue) {
     if (auth.switchingActiveVenue) return;
 
@@ -238,10 +261,17 @@ class _VenuePickerSheet extends StatelessWidget {
                       return _VenueTile(
                         venue: venue,
                         selected: selected,
-                        enabled: !switching,
+                        enabled: !switching && !auth.archivingOwnedVenue,
                         onTap: switching
                             ? null
                             : () => _onVenueTap(modalContext, venue),
+                        onArchive: switching || auth.archivingOwnedVenue
+                            ? null
+                            : () => _archiveVenue(
+                                  modalContext,
+                                  auth,
+                                  venue,
+                                ),
                       );
                     },
                   ),
@@ -260,12 +290,14 @@ class _VenueTile extends StatelessWidget {
     required this.venue,
     required this.selected,
     required this.onTap,
+    this.onArchive,
     this.enabled = true,
   });
 
   final OwnedVenueSummary venue;
   final bool selected;
   final VoidCallback? onTap;
+  final VoidCallback? onArchive;
   final bool enabled;
 
   static const _orange = Color(0xFFF58634);
@@ -328,6 +360,33 @@ class _VenueTile extends StatelessWidget {
               ),
               if (selected)
                 const Icon(Icons.check_circle, color: _purple, size: 22),
+              if (onArchive != null) ...[
+                const SizedBox(width: 4),
+                PopupMenuButton<String>(
+                  key: Key('venue-archive-menu-${venue.id}'),
+                  enabled: enabled,
+                  onSelected: (value) {
+                    if (value == 'archive') onArchive!();
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'archive',
+                      child: Text(
+                        'Excluir estabelecimento',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontFamily,
+                          color: Color(0xFFC62828),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: AppTheme.muted.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

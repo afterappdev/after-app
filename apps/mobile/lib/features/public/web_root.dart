@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../auth/account_recovery_screen.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
 import '../home/home_screen.dart';
@@ -21,6 +22,9 @@ class WebRoot extends StatelessWidget {
       return const ColoredBox(color: AppTheme.canvas);
     }
     if (auth.user != null) return const HomeScreen();
+    if (auth.pendingAccountRecovery != null) {
+      return const AccountRecoveryScreen();
+    }
     if (auth.pendingSocialOnboarding != null) {
       return const RegisterScreen(showPublicHomeLink: true);
     }
@@ -39,6 +43,9 @@ class LoginScreenRoute extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    if (auth.pendingAccountRecovery != null) {
+      return const AccountRecoveryScreen();
+    }
     if (auth.user != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!context.mounted) return;
