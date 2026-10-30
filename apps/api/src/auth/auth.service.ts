@@ -217,7 +217,9 @@ export class AuthService {
       allowedWebOrigins,
     );
     const welcomeSecret =
-      profile.mode === 'enriched' && profile.venueDocument
+      VENUE_SIGNUP_BONUS_CREDITS > 0 &&
+      profile.mode === 'enriched' &&
+      profile.venueDocument
         ? readWelcomeCreditSecret(this.config)
         : null;
     try {
@@ -361,7 +363,9 @@ export class AuthService {
       allowedWebOrigins,
     );
     const welcomeSecret =
-      profile.mode === 'enriched' && profile.venueDocument
+      VENUE_SIGNUP_BONUS_CREDITS > 0 &&
+      profile.mode === 'enriched' &&
+      profile.venueDocument
         ? readWelcomeCreditSecret(this.config)
         : null;
     const passwordHash = dto.password
@@ -1180,7 +1184,7 @@ export class AuthService {
     } | null,
     welcomeSecret: string | null,
   ) {
-    if (venue && !welcomeSecret) {
+    if (venue && VENUE_SIGNUP_BONUS_CREDITS > 0 && !welcomeSecret) {
       throw new ServiceUnavailableException('Não foi possível concluir o cadastro agora.');
     }
     const ownerUserId = randomBytes(16).toString('hex');
@@ -1191,8 +1195,9 @@ export class AuthService {
         documentDigits: venue.documentDigits,
       });
     }
-    const reserved = venue
-      ? await reserveWelcomeCredit(
+    const reserved =
+      venue && VENUE_SIGNUP_BONUS_CREDITS > 0
+        ? await reserveWelcomeCredit(
           tx,
           { documentType: venue.documentType, documentDigits: venue.documentDigits },
           welcomeSecret as string,
@@ -1233,7 +1238,9 @@ export class AuthService {
     if (!venueId) {
       throw new Error('legacy venue create failed');
     }
-    await recordWelcomeVenueProvision(tx, venueId);
+    if (VENUE_SIGNUP_BONUS_CREDITS > 0) {
+      await recordWelcomeVenueProvision(tx, venueId);
+    }
     return user;
   }
 
@@ -1245,15 +1252,19 @@ export class AuthService {
           city,
           state,
           wallet: { create: { balance: VENUE_SIGNUP_BONUS_CREDITS } },
-          purchases: {
-            create: {
-              packageKey: 'welcome',
-              amountPaid: 0,
-              credits: VENUE_SIGNUP_BONUS_CREDITS,
-              status: PurchaseStatus.PAID,
-              confirmedAt: new Date(),
-            },
-          },
+          ...(VENUE_SIGNUP_BONUS_CREDITS > 0
+            ? {
+                purchases: {
+                  create: {
+                    packageKey: 'welcome',
+                    amountPaid: 0,
+                    credits: VENUE_SIGNUP_BONUS_CREDITS,
+                    status: PurchaseStatus.PAID,
+                    confirmedAt: new Date(),
+                  },
+                },
+              }
+            : {}),
         },
       },
     };

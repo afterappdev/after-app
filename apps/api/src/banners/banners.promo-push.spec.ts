@@ -157,13 +157,13 @@ describe('BannersService promotional outbox', () => {
     expect(kept.schedules.create[0].ibgeCityId).toBe(3550308);
   });
 
-  it('saldo insuficiente não abre transação', async () => {
+  it('saldo insuficiente não cria publicação', async () => {
     const { prisma, publisher, service } = setup();
     prisma.creditWallet.findUnique.mockResolvedValueOnce({ balance: 0 });
     await expect(
       service.create('owner-1', 'https://cdn.example/a.jpg', ['2026-10-20'], 'Título', 'Texto'),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(publisher.recordSchedules).not.toHaveBeenCalled();
   });
 

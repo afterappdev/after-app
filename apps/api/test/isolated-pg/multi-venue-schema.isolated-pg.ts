@@ -12,6 +12,8 @@ import {
 } from '../../src/credits/isolated-pg-guard';
 import { assertVenueDocumentAvailableForOwner } from '../../src/venues/venue-document-policy';
 import { assertVenueOwned } from '../../src/venues/venue-ownership';
+import { VenuesService } from '../../src/venues/venues.service';
+import { VENUE_SIGNUP_BONUS_CREDITS } from '../../src/common/constants/credits';
 
 const suite = isolatedSuiteRunAuthorized(process.env) ? describe : describe.skip;
 
@@ -270,5 +272,48 @@ suite('multi-venue schema (disposable PostgreSQL)', () => {
         assertVenueDocumentAvailableForOwner(tx, b.id, doc),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('does not auto-grant welcome credits on first or second owned venue', async () => {
+    expect(VENUE_SIGNUP_BONUS_CREDITS).toBe(0);
+    const owner = await prisma.user.create({
+      data: {
+        name: 'No Bonus Owner',
+        email: `no-bonus-${Date.now()}@after.local`,
+        passwordHash: 'x',
+        role: Role.VENUE,
+        state: 'SP',
+        city: 'São Paulo',
+      },
+    });
+    const first = await prisma.venue.create({
+      data: {
+        ownerUserId: owner.id,
+        name: 'First Zero',
+        city: 'São Paulo',
+        state: 'SP',
+        wallet: { create: { balance: 0, vipBalance: 0 } },
+      },
+    });
+    const venuesService = new VenuesService(
+      prisma as never,
+      { deleteStoredUploads: jest.fn() } as never,
+      undefined,
+      undefined,
+    );
+    const second = await venuesService.createOwnedVenue(owner.id, {
+      name: 'Second Zero',
+      city: 'São Paulo',
+      state: 'SP',
+    });
+    const w1 = await prisma.creditWallet.findUnique({ where: { venueId: first.id } });
+    const w2 = await prisma.creditWallet.findUnique({ where: { venueId: second.id } });
+    expect(w1).toEqual(expect.objectContaining({ balance: 0, vipBalance: 0 }));
+    expect(w2).toEqual(expect.objectContaining({ balance: 0, vipBalance: 0 }));
+    expect(
+      await prisma.creditPurchase.count({
+        where: { venueId: { in: [first.id, second.id] }, packageKey: 'welcome' },
+      }),
+    ).toBe(0);
   });
 });

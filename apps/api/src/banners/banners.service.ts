@@ -125,10 +125,6 @@ export class BannersService {
       vipInput.plans.map((plan) => [plan.date, plan.pushTiming]),
     );
     const venue = await this.requireVenueOwned(userId, activeVenueId);
-    const wallet = await this.prisma.creditWallet.findUnique({
-      where: { venueId: venue.id },
-    });
-    assertBalances(wallet, quote.commonCredits, quote.vipCredits);
 
     let resolvedIbge: number | null = null;
     try {
@@ -176,6 +172,11 @@ export class BannersService {
           return claim.banner;
         }
       }
+
+      const wallet = await tx.creditWallet.findUnique({
+        where: { venueId: venue.id },
+      });
+      assertBalances(wallet, quote.commonCredits, quote.vipCredits);
 
       const updated = await tx.creditWallet.updateMany({
         where: {

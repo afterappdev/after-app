@@ -148,7 +148,7 @@ describe('cadastro de estabelecimento com documento', () => {
     expect(JSON.stringify(session)).not.toContain('documentDigits');
   });
 
-  it('cadastro social legado de estabelecimento concede 1 crédito sem documento', async () => {
+  it('cadastro social legado de estabelecimento inicia com saldo zero sem documento', async () => {
     prisma.socialOnboardingToken.updateMany.mockResolvedValue({ count: 1 });
     prisma.socialOnboardingToken.findUnique.mockResolvedValue({
       id: 'jti-1',
@@ -194,10 +194,11 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
     });
-    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.purchases.create.packageKey).toBe(
-      'welcome',
-    );
-    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.documentDigits).toBeUndefined();
+    const venueCreate = prisma.user.create.mock.calls[0][0].data.ownedVenues.create;
+    expect(venueCreate.wallet.create.balance).toBe(0);
+    expect(venueCreate.purchases).toBeUndefined();
+    expect(venueCreate.documentDigits).toBeUndefined();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('After Web exige documento no cadastro social de estabelecimento', async () => {

@@ -256,12 +256,13 @@ describe('BannersService VIP', () => {
         null,
         [VIP_A],
         undefined,
+        undefined,
         vipPublications(VIP_A),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(wallet).toEqual({ balance: 5, vipBalance: 0 });
     expect(wasCreated()).toBe(false);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('corrida com saldo para uma publicação não deixa débito parcial', async () => {
@@ -445,6 +446,27 @@ describe('BannersService VIP', () => {
       { date: VIP_A, timing: 'SLOT_11' },
       { date: VIP_B, timing: 'SLOT_17' },
     ]);
+  });
+
+  it('replay com saldo comum zerado após o primeiro débito', async () => {
+    const { service, wallet } = setup({ balance: 1, vipBalance: 0 });
+    const key = 'e'.repeat(16);
+    const args = [
+      'owner-1',
+      'https://cdn.example/common-retry.jpg',
+      ['2099-06-15'],
+      'Comum',
+      'Texto',
+      null,
+      [],
+      undefined,
+      key,
+      undefined,
+    ] as const;
+    await service.create(...args);
+    expect(wallet.balance).toBe(0);
+    await service.create(...args);
+    expect(wallet.balance).toBe(0);
   });
 
   it('mesma chave de idempotência não debita duas vezes', async () => {

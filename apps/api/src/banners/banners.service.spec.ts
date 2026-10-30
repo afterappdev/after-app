@@ -210,7 +210,7 @@ describe('BannersService cancel', () => {
       service.create('owner-1', 'https://cdn.example/promo-x.jpg', ['2026-10-20'], 'Título', 'Texto'),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.banner.create).not.toHaveBeenCalled();
     expect(prisma.banner.update).not.toHaveBeenCalled();
   });

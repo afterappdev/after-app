@@ -105,19 +105,14 @@ describe('compatibilidade cadastro apps publicados', () => {
     expect(data.ownedVenues).toBeUndefined();
   });
 
-  it('cadastro de estabelecimento legado concede 1 crédito comum e provisão persistente', async () => {
+  it('cadastro de estabelecimento legado inicia com saldo zero e sem bônus welcome', async () => {
     await service.register(legacyVenueRegister);
     const venue = prisma.user.create.mock.calls[0][0].data.ownedVenues.create;
-    expect(venue.wallet.create.balance).toBe(VENUE_SIGNUP_BONUS_CREDITS);
-    expect(venue.purchases.create).toEqual(
-      expect.objectContaining({
-        packageKey: 'welcome',
-        credits: VENUE_SIGNUP_BONUS_CREDITS,
-      }),
-    );
+    expect(venue.wallet.create.balance).toBe(0);
+    expect(venue.purchases).toBeUndefined();
     expect(venue.documentType).toBeUndefined();
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
-    expect(prisma.$executeRaw).toHaveBeenCalled();
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('After Web sem faixa continua bloqueado', async () => {
