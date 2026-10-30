@@ -7,6 +7,8 @@
  *
  * Never point at Railway, production, or after-api-v2-db.
  */
+import { execSync } from 'child_process';
+import { join } from 'path';
 import { PrismaClient, Role } from '@prisma/client';
 import {
   countUsersByAgeBand,
@@ -38,10 +40,17 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
   let prisma: PrismaClient;
   const tag = `it-${Date.now()}`;
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    const apiRoot = join(__dirname, '..', '..');
+    execSync('npx prisma migrate deploy', {
+      cwd: apiRoot,
+      env: { ...process.env, DATABASE_URL: itUrl! },
+      stdio: 'pipe',
+    });
     prisma = new PrismaClient({
       datasources: { db: { url: itUrl! } },
     });
+    await prisma.$connect();
   });
 
   afterAll(async () => {
@@ -118,7 +127,7 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
         role: Role.VENUE,
         state: 'PR',
         city: 'Curitiba',
-        venue: {
+        ownedVenues: {
           create: {
             name: `${tag} Bar`,
             category: ' Bar ',
@@ -127,7 +136,7 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
           },
         },
       },
-      include: { venue: true },
+      include: { ownedVenues: true },
     });
     void venueUser;
 
@@ -154,7 +163,7 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
         role: Role.VENUE,
         state: 'SP',
         city: 'Campinas',
-        venue: {
+        ownedVenues: {
           create: {
             name: `${tag} Pay Venue`,
             state: 'SP',
@@ -163,9 +172,9 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
           },
         },
       },
-      include: { venue: true },
+      include: { ownedVenues: true },
     });
-    const venueId = owner.venue!.id;
+    const venueId = owner.ownedVenues[0]!.id;
     const confirmedAt = new Date('2026-09-15T15:00:00.000Z');
 
     await prisma.creditPurchase.createMany({
@@ -288,7 +297,7 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
         role: Role.VENUE,
         state: 'RJ',
         city: 'Rio de Janeiro',
-        venue: {
+        ownedVenues: {
           create: {
             name: `${tag} Ref Venue`,
             state: 'RJ',
@@ -297,9 +306,9 @@ describeIt('admin aggregates on loopback PostgreSQL', () => {
           },
         },
       },
-      include: { venue: true },
+      include: { ownedVenues: true },
     });
-    const venueId = owner.venue!.id;
+    const venueId = owner.ownedVenues[0]!.id;
     const { start } = monthRangeUtc({ year: 2099, month: 3 });
     const confirmedAt = new Date(start.getTime() + 3_600_000);
     await prisma.creditPurchase.createMany({

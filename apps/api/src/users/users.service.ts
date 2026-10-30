@@ -22,6 +22,8 @@ import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { LocationsService } from '../locations/locations.service';
 import { resolveUserAgeBand } from './age-band';
 import { AccountLifecycleService } from './account-lifecycle.service';
+import { buildVenueAuthFields } from '../venues/venue-auth-payload';
+import { assertVenueOwned } from '../venues/venue-ownership';
 
 export type AdminPurgeStrategy = 'hard' | 'tombstone';
 
@@ -56,16 +58,83 @@ export class UsersService {
         city: true,
         avatarUrl: true,
         ageBand: true,
-        venue: { select: { id: true, name: true } },
+        activeVenueId: true,
+        ownedVenues: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            state: true,
+            logoUrl: true,
+          },
+        },
       },
     });
     if (!user) {
       throw new NotFoundException('Usuário não encontrado');
     }
     return {
-      ...user,
-      venueId: user.venue?.id ?? null,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      state: user.state,
+      city: user.city,
+      avatarUrl: user.avatarUrl,
+      ageBand: user.ageBand,
+      ...buildVenueAuthFields(user),
     };
+  }
+
+  async listMyVenues(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    if (user.role !== Role.VENUE) {
+      throw new ForbiddenException('Conta não é de estabelecimento');
+    }
+    const venues = await this.prisma.venue.findMany({
+      where: { ownerUserId: userId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        city: true,
+        state: true,
+        logoUrl: true,
+        category: true,
+        createdAt: true,
+      },
+    });
+    return { venues };
+  }
+
+  async setActiveVenue(userId: string, venueId: string) {
+    await assertVenueOwned(this.prisma, userId, venueId);
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { activeVenueId: venueId },
+      select: {
+        id: true,
+        activeVenueId: true,
+        ownedVenues: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            state: true,
+            logoUrl: true,
+          },
+        },
+      },
+    });
+    return buildVenueAuthFields(updated);
   }
 
   async updateMe(
@@ -343,7 +412,7 @@ export class UsersService {
     const user = await db.user.findUnique({
       where: { id: userId },
       include: {
-        venue: {
+        ownedVenues: {
           include: {
             photos: { select: { url: true } },
             banners: { select: { imageUrl: true } },
@@ -390,18 +459,18 @@ export class UsersService {
 
   collectUploadUrlsFromUser(user: {
     avatarUrl: string | null;
-    venue?: {
+    ownedVenues: Array<{
       logoUrl: string | null;
       coverUrl: string | null;
       photos: Array<{ url: string }>;
       banners: Array<{ imageUrl: string | null }>;
-    } | null;
+    }>;
   }): string[] {
     const urls: Array<string | null | undefined> = [user.avatarUrl];
-    if (user.venue) {
-      urls.push(user.venue.logoUrl, user.venue.coverUrl);
-      urls.push(...user.venue.photos.map((photo) => photo.url));
-      urls.push(...user.venue.banners.map((banner) => banner.imageUrl));
+    for (const venue of user.ownedVenues) {
+      urls.push(venue.logoUrl, venue.coverUrl);
+      urls.push(...venue.photos.map((photo) => photo.url));
+      urls.push(...venue.banners.map((banner) => banner.imageUrl));
     }
     return urls.filter((url): url is string => !!url?.trim());
   }
@@ -410,7 +479,7 @@ export class UsersService {
     return this.prisma.user.findUnique({
       where: { id: userId },
       include: {
-        venue: {
+        ownedVenues: {
           include: {
             photos: { select: { url: true } },
             banners: { select: { imageUrl: true } },
@@ -440,11 +509,11 @@ export class UsersService {
   }
 
   async anonymizeFinancialRetention(userId: string): Promise<void> {
-    const venue = await this.prisma.venue.findUnique({
+    const venues = await this.prisma.venue.findMany({
       where: { ownerUserId: userId },
       select: { id: true },
     });
-    if (venue) {
+    for (const venue of venues) {
       await anonymizeVenueFinancialPii(this.prisma, venue.id);
     }
   }
@@ -481,11 +550,11 @@ export class UsersService {
         sessionVersion: { increment: 1 },
       },
     });
-    const venue = await this.prisma.venue.findUnique({
+    const venues = await this.prisma.venue.findMany({
       where: { ownerUserId: userId },
       select: { id: true },
     });
-    if (venue) {
+    for (const venue of venues) {
       await this.prisma.venue.update({
         where: { id: venue.id },
         data: {

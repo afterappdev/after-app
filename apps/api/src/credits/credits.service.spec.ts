@@ -4,7 +4,7 @@ import {
   VerificationStatus,
 } from '@apple/app-store-server-library';
 import { BadRequestException, ForbiddenException, Logger, ServiceUnavailableException, UnauthorizedException, ValidationPipe } from '@nestjs/common';
-import { mockActiveUserPrisma } from '../common/account/mock-active-user-prisma';
+import { mockOwnedVenuePrisma } from '../common/test/owned-venue-prisma.mock';
 import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { CardPayDto } from './credits.controller';
 import { CreditsService } from './credits.service';
@@ -49,7 +49,11 @@ const COMBO_10 = CREDIT_PACKAGES.find((p) => p.key === 'combo_10')!;
 
 function createPrisma() {
   const prisma: {
-    venue: { findUnique: jest.Mock };
+    venue: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
+    };
     creditPurchase: {
       findUnique: jest.Mock;
       findMany: jest.Mock;
@@ -62,7 +66,11 @@ function createPrisma() {
     $queryRaw: jest.Mock;
     $executeRaw: jest.Mock;
   } = {
-    venue: { findUnique: jest.fn() },
+    venue: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+    },
     creditPurchase: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -81,8 +89,7 @@ function createPrisma() {
   prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) =>
     fn(prisma),
   );
-  prisma.venue.findUnique.mockResolvedValue(VENUE);
-  mockActiveUserPrisma(prisma);
+  mockOwnedVenuePrisma(prisma, VENUE);
   return prisma;
 }
 
@@ -2208,8 +2215,9 @@ describe('CreditsService billing', () => {
 
     process.env.NODE_ENV = 'test';
     delete process.env.MERCADO_PAGO_SANDBOX;
-    prisma.venue.findUnique.mockResolvedValueOnce({
-      ...VENUE,
+    prisma.venue.findUnique.mockResolvedValue({
+      id: VENUE.id,
+      ownerUserId: USER_ID,
       owner: { email: 'owner@after.local', name: 'Owner' },
     });
     await expect(service.payCard(USER_ID, cardInput())).rejects.toBeInstanceOf(

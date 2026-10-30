@@ -71,7 +71,11 @@ function createAuthPrisma() {
       create: jest.fn(),
       updateMany: jest.fn(),
     },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    $queryRaw: jest.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+      if (strings.join(' ').includes('FROM "Venue"')) return [];
+      return [{ id: 'claim-1' }];
+    }),
+    $executeRaw: jest.fn().mockResolvedValue(1),
     welcomeCreditClaim: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -100,7 +104,17 @@ function createdUser(role: Role, venue: { id: string; name: string } | null) {
     state: 'SP',
     city: 'São Paulo',
     avatarUrl: null,
-    venue,
+    ownedVenues: venue
+      ? [
+          {
+            id: venue.id,
+            name: venue.name,
+            city: 'São Paulo',
+            state: 'SP',
+            logoUrl: null,
+          },
+        ]
+      : [],
   };
 }
 

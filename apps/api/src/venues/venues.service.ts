@@ -9,7 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MediaType, PhotoKind, Prisma } from '@prisma/client';
+import { MediaType, PhotoKind, Prisma, Role } from '@prisma/client';
 import { computeIsOpen } from '../common/utils/hours';
 import {
   contactsStreetAddress,
@@ -48,6 +48,8 @@ import {
   shouldPreserveCategory,
   storedCategory,
 } from './venue-categories';
+import { assertVenueDocumentAvailableForOwner } from './venue-document-policy';
+import { CreateVenueDto } from './dto/create-venue.dto';
 
 export const AMENITY_BOOL_KEYS = [
   'acceptsMealVoucher',
@@ -611,6 +613,56 @@ export class VenuesService {
    * Owner-only fiscal identity. A missing document is an older account.
    * The document alone is not enough to issue an invoice.
    */
+  async createOwnedVenue(userId: string, dto: CreateVenueDto) {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!owner || owner.role !== Role.VENUE) {
+      throw new ForbiddenException('Conta não é de estabelecimento');
+    }
+
+    let document: ReturnType<typeof resolveVenueDocument> | null = null;
+    if (dto.documentType && dto.documentNumber) {
+      document = resolveVenueDocument({
+        documentType: dto.documentType,
+        documentNumber: dto.documentNumber,
+      });
+    } else if (dto.documentType || dto.documentNumber) {
+      throw new BadRequestException('Informe CPF/CNPJ completo.');
+    }
+
+    try {
+      const venue = await this.prisma.$transaction(async (tx) => {
+        if (document) {
+          await assertVenueDocumentAvailableForOwner(tx, userId, document);
+        }
+        return tx.venue.create({
+          data: {
+            ownerUserId: userId,
+            name: dto.name.trim(),
+            city: dto.city.trim(),
+            state: dto.state.trim().toUpperCase(),
+            category: dto.category?.trim() || undefined,
+            ...(document
+              ? {
+                  documentType: document.documentType,
+                  documentDigits: document.documentDigits,
+                }
+              : {}),
+            wallet: { create: { balance: 0 } },
+          },
+        });
+      });
+      return omitVenueDocument(venue);
+    } catch (error) {
+      if (isVenueDocumentConflict(error)) {
+        throw new ConflictException(VENUE_DOCUMENT_TAKEN);
+      }
+      throw error;
+    }
+  }
+
   async readFiscalDocument(userId: string, venueId: string) {
     const venue = await this.requireOwnedVenue(userId, venueId);
     return {
@@ -630,6 +682,12 @@ export class VenuesService {
     const document = resolveVenueDocument(input);
     try {
       await this.prisma.$transaction(async (tx) => {
+        await assertVenueDocumentAvailableForOwner(
+          tx,
+          userId,
+          document,
+          venueId,
+        );
         const credits = await welcomeCreditsForDocumentLink(tx, venueId);
         if (credits > 0) {
           const secret = readWelcomeCreditSecret(

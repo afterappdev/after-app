@@ -26,7 +26,10 @@ function createPrisma() {
       updateMany: jest.fn(),
       findUnique: jest.fn(),
     },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    $queryRaw: jest.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+      if (strings.join(' ').includes('FROM "Venue"')) return [];
+      return [{ id: 'claim-1' }];
+    }),
     $executeRaw: jest.fn().mockResolvedValue(1),
     welcomeCreditClaim: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -63,16 +66,25 @@ describe('cadastro de estabelecimento com documento', () => {
   });
 
   it('cadastro tradicional grava o documento normalizado uma vez', async () => {
-    prisma.user.create.mockImplementation(async (args: { data: { venue?: { create?: { documentDigits?: string } } } }) => ({
-      id: 'u1',
+    prisma.user.create.mockImplementation(async (args: { data: { id?: string; ownedVenues?: { create?: { documentDigits?: string; name?: string; city?: string; state?: string } } } }) => ({
+      id: args.data.id ?? 'u1',
       name: base.name,
       email: base.email,
       role: Role.VENUE,
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      ...args.data,
-      venue: { id: 'v1' },
+      activeVenueId: null,
+      ownedVenues: [
+        {
+          id: 'v1',
+          name: args.data.ownedVenues?.create?.name ?? base.name,
+          city: args.data.ownedVenues?.create?.city ?? 'São Paulo',
+          state: args.data.ownedVenues?.create?.state ?? 'SP',
+          logoUrl: null,
+          createdAt: new Date(),
+        },
+      ],
     }));
     const result = await service.register({
       ...base,
@@ -81,8 +93,8 @@ describe('cadastro de estabelecimento com documento', () => {
     });
     expect(result.user).not.toHaveProperty('documentDigits');
     expect(JSON.stringify(result)).not.toContain('12345678909');
-    expect(prisma.user.create.mock.calls[0][0].data.venue.create.documentDigits).toBe('12345678909');
-    expect(prisma.user.create.mock.calls[0][0].data.venue.create.documentType).toBe('CPF');
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.documentDigits).toBe('12345678909');
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.documentType).toBe('CPF');
   });
 
   it('usuário comum ignora documento e conta antiga entra sem ele', async () => {
@@ -94,7 +106,8 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      venue: null,
+      ownedVenues: [],
+      activeVenueId: null,
     });
     await service.register({
       name: 'Ana',
@@ -107,7 +120,7 @@ describe('cadastro de estabelecimento com documento', () => {
       documentType: 'CPF',
       documentNumber: '123.456.789-09',
     });
-    expect(prisma.user.create.mock.calls[0][0].data.venue).toBeUndefined();
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues).toBeUndefined();
 
     prisma.user.findUnique.mockResolvedValue({
       id: 'u-old',
@@ -118,7 +131,17 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      venue: { id: 'v-old' },
+      activeVenueId: null,
+      ownedVenues: [
+        {
+          id: 'v-old',
+          name: 'Antigo',
+          city: 'São Paulo',
+          state: 'SP',
+          logoUrl: null,
+          createdAt: new Date(),
+        },
+      ],
     });
     const session = await service.login({ email: 'old@after.local', password: 'senha123' });
     expect(session.user.venueId).toBe('v-old');
@@ -152,7 +175,17 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      venue: { id: 'v1' },
+      activeVenueId: null,
+      ownedVenues: [
+        {
+          id: 'v1',
+          name: 'Bar da Ada',
+          city: 'São Paulo',
+          state: 'SP',
+          logoUrl: null,
+          createdAt: new Date(),
+        },
+      ],
     });
     await service.completeSocialRegistration({
       onboardingToken: token,
@@ -161,10 +194,10 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
     });
-    expect(prisma.user.create.mock.calls[0][0].data.venue.create.purchases.create.packageKey).toBe(
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.purchases.create.packageKey).toBe(
       'welcome',
     );
-    expect(prisma.user.create.mock.calls[0][0].data.venue.create.documentDigits).toBeUndefined();
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.documentDigits).toBeUndefined();
   });
 
   it('After Web exige documento no cadastro social de estabelecimento', async () => {
@@ -228,7 +261,17 @@ describe('cadastro de estabelecimento com documento', () => {
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      venue: { id: 'v1' },
+      activeVenueId: null,
+      ownedVenues: [
+        {
+          id: 'v1',
+          name: 'Bar da Ada',
+          city: 'São Paulo',
+          state: 'SP',
+          logoUrl: null,
+          createdAt: new Date(),
+        },
+      ],
     });
     await service.completeSocialRegistration({
       onboardingToken: token,
@@ -239,29 +282,55 @@ describe('cadastro de estabelecimento com documento', () => {
       documentType: 'CNPJ',
       documentNumber: '11444777000161',
     });
-    expect(prisma.user.create.mock.calls[0][0].data.venue.create.documentDigits).toBe('11444777000161');
+    expect(prisma.user.create.mock.calls[0][0].data.ownedVenues.create.documentDigits).toBe('11444777000161');
   });
 
   it('cadastros simultâneos: o índice único impede o segundo sem expor o documento', async () => {
-    let calls = 0;
-    prisma.user.create.mockImplementation(async () => {
-      calls += 1;
-      if (calls === 1) {
-        return {
-          id: 'u1',
-          name: base.name,
-          email: 'a@after.local',
-          role: Role.VENUE,
-          state: 'SP',
-          city: 'São Paulo',
-          avatarUrl: null,
-          venue: { id: 'v1' },
-        };
+    const documentOwners = new Map<string, string>();
+    prisma.$queryRaw.mockImplementation(async (strings: TemplateStringsArray, ...bound: unknown[]) => {
+      const sql = strings.join(' ');
+      if (sql.includes('FROM "Venue"')) {
+        const docKey = `${bound[0]}:${bound[1]}`;
+        const ownerUserId = documentOwners.get(docKey);
+        if (!ownerUserId) return [];
+        return [{ id: 'v-existing', ownerUserId }];
       }
-      throw Object.assign(new Error('unique'), {
-        code: 'P2002',
-        meta: { target: ['documentType', 'documentDigits'] },
-      });
+      return [{ id: 'claim-1' }];
+    });
+    let calls = 0;
+    prisma.user.create.mockImplementation(async (args: { data: { id?: string; ownedVenues?: { create?: { documentType?: string; documentDigits?: string } } } }) => {
+      calls += 1;
+      const doc = args.data.ownedVenues?.create;
+      if (doc?.documentDigits) {
+        const docKey = `${doc.documentType}:${doc.documentDigits}`;
+        if (documentOwners.has(docKey)) {
+          throw new ConflictException(VENUE_DOCUMENT_TAKEN);
+        }
+        documentOwners.set(docKey, args.data.id ?? 'u1');
+      }
+      if (calls > 1) {
+        throw new ConflictException(VENUE_DOCUMENT_TAKEN);
+      }
+      return {
+        id: args.data.id ?? 'u1',
+        name: base.name,
+        email: 'a@after.local',
+        role: Role.VENUE,
+        state: 'SP',
+        city: 'São Paulo',
+        avatarUrl: null,
+        activeVenueId: null,
+        ownedVenues: [
+          {
+            id: 'v1',
+            name: base.name,
+            city: 'São Paulo',
+            state: 'SP',
+            logoUrl: null,
+            createdAt: new Date(),
+          },
+        ],
+      };
     });
     const input = {
       ...base,

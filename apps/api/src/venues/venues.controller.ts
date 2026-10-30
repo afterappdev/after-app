@@ -32,6 +32,7 @@ import {
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { VenuesService } from './venues.service';
+import { CreateVenueDto } from './dto/create-venue.dto';
 
 class VenueFiscalDocumentDto {
   @IsIn(['CPF', 'CNPJ'])
@@ -142,6 +143,12 @@ class ReplyReviewDto {
 @Controller('venues')
 export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
+
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  createVenue(@CurrentUser() user: AuthUser, @Body() dto: CreateVenueDto) {
+    return this.venuesService.createOwnedVenue(user.userId, dto);
+  }
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)

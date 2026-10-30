@@ -1,10 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
+import { mockOwnedVenuePrisma } from './banners.test-helpers';
 import { NotificationsService } from '../notifications/notifications.service';
 import { quotePublication } from './banner-quote';
-import { mockActiveUserPrisma } from './banners.test-helpers';
-
 describe('quotePublication', () => {
   it('sexta comum, sábado VIP e domingo comum', () => {
     expect(
@@ -142,7 +141,11 @@ describe('BannersService VIP', () => {
         }
       }),
     };
-    mockActiveUserPrisma(prisma);
+    mockOwnedVenuePrisma(prisma, {
+      id: 'venue-1',
+      ownerUserId: 'owner-1',
+      ibgeCityId: 3550308,
+    });
     const idempotency = new Map<
       string,
       {
@@ -233,6 +236,7 @@ describe('BannersService VIP', () => {
       null,
       [VIP_A],
       undefined,
+      undefined,
       vipPublications(VIP_A),
     );
     expect(wallet).toEqual({ balance: 0, vipBalance: 0 });
@@ -273,6 +277,7 @@ describe('BannersService VIP', () => {
         null,
         [VIP_A],
         undefined,
+        undefined,
         vipPublications(VIP_A),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -293,6 +298,7 @@ describe('BannersService VIP', () => {
         null,
         [VIP_A],
         undefined,
+        undefined,
         vipPublications(VIP_A),
       ),
     ).rejects.toThrow('disk');
@@ -304,13 +310,14 @@ describe('BannersService VIP', () => {
       balance: 0,
       vipBalance: 2,
     });
-    prisma.venue.findUnique.mockResolvedValueOnce({
+    prisma.venue.findUnique.mockResolvedValue({
       id: 'venue-1',
       ownerUserId: 'owner-1',
       name: 'Bar',
       city: 'Cidade Ambígua',
       state: 'SP',
       ibgeCityId: null,
+      owner: { email: 'bar@after.local', name: 'Bar' },
     });
     await expect(
       service.create(
@@ -321,6 +328,7 @@ describe('BannersService VIP', () => {
         'Texto',
         null,
         [VIP_A],
+        undefined,
         undefined,
         vipPublications(VIP_A),
       ),
@@ -341,6 +349,7 @@ describe('BannersService VIP', () => {
       null,
       [VIP_A],
       undefined,
+      undefined,
       vipPublications(VIP_A),
     );
     await service.create(
@@ -351,6 +360,7 @@ describe('BannersService VIP', () => {
       'Texto',
       null,
       [VIP_A],
+      undefined,
       undefined,
       vipPublications(VIP_A),
     );
@@ -424,6 +434,7 @@ describe('BannersService VIP', () => {
       null,
       [VIP_A, VIP_B],
       undefined,
+      undefined,
       [
         { date: VIP_A, pushTiming: 'SLOT_11' },
         { date: VIP_B, pushTiming: 'SLOT_17' },
@@ -447,6 +458,7 @@ describe('BannersService VIP', () => {
       'Texto',
       null,
       [VIP_A],
+      undefined,
       key,
       vipPublications(VIP_A),
     ] as const;

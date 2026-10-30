@@ -11,6 +11,10 @@ import { plainToInstance } from 'class-transformer';
 import { AuthService } from './auth.service';
 import { CompleteSocialRegistrationDto } from './dto/complete-social-registration.dto';
 import { JwtStrategy } from './jwt.strategy';
+import { AccountLifecycleStatus } from '@prisma/client';
+import {
+  ownedVenueSummary,
+} from './test/auth-user-row.mock';
 import {
   SOCIAL_EMAIL_TAKEN_MESSAGE,
   SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
@@ -43,6 +47,7 @@ function createPrisma() {
     };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
+    $executeRaw: jest.Mock;
     welcomeCreditClaim: { updateMany: jest.Mock };
     creditPurchase: { create: jest.Mock };
   } = {
@@ -59,7 +64,11 @@ function createPrisma() {
       updateMany: jest.fn(),
     },
     $transaction: jest.fn(),
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    $queryRaw: jest.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+      if (strings.join(' ').includes('FROM "Venue"')) return [];
+      return [{ id: 'claim-1' }];
+    }),
+    $executeRaw: jest.fn().mockResolvedValue(0),
     welcomeCreditClaim: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -87,7 +96,10 @@ const EXISTING_USER = {
   state: 'SP',
   city: 'São Paulo',
   avatarUrl: null,
-  venue: null,
+  sessionVersion: 1,
+  accountStatus: AccountLifecycleStatus.ACTIVE,
+  activeVenueId: null,
+  ownedVenues: [] as ReturnType<typeof ownedVenueSummary>[],
 };
 
 describe('AuthService social onboarding', () => {
@@ -420,9 +432,18 @@ describe('AuthService social onboarding', () => {
       avatarUrl: null,
     });
     prisma.user.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
-      id: 'u-venue',
       ...args.data,
-      venue: { id: 'v1' },
+      id: 'u-venue',
+      name: 'Bar da Ada',
+      email: 'hidden@privaterelay.appleid.com',
+      role: Role.VENUE,
+      state: 'SP',
+      city: 'São Paulo',
+      avatarUrl: null,
+      sessionVersion: 1,
+      accountStatus: AccountLifecycleStatus.ACTIVE,
+      activeVenueId: null,
+      ownedVenues: [ownedVenueSummary('v1', 'Bar da Ada')],
     }));
     const result = await service.completeSocialRegistration({
       onboardingToken: issued.onboardingToken,
@@ -439,7 +460,7 @@ describe('AuthService social onboarding', () => {
           role: Role.VENUE,
           appleId: 'aid-new',
           email: 'hidden@privaterelay.appleid.com',
-          venue: expect.objectContaining({
+          ownedVenues: expect.objectContaining({
             create: expect.objectContaining({
               name: 'Bar da Ada',
               city: 'São Paulo',
@@ -677,6 +698,16 @@ describe('AuthService social onboarding', () => {
   });
 
   function localAccount(overrides: Record<string, unknown> = {}) {
+    const ownedVenues =
+      (overrides.ownedVenues as typeof EXISTING_USER.ownedVenues | undefined) ??
+      [];
+    const { venue: _venue, ...rest } = overrides;
+    void _venue;
+    if (overrides.venue && typeof overrides.venue === 'object' && 'id' in overrides.venue) {
+      ownedVenues.push(
+        ownedVenueSummary(String((overrides.venue as { id: string }).id)),
+      );
+    }
     return {
       id: 'u-existing',
       name: 'Ana',
@@ -687,8 +718,11 @@ describe('AuthService social onboarding', () => {
       avatarUrl: null,
       googleId: null as string | null,
       passwordHash: 'hash-local',
-      venue: null as { id: string } | null,
-      ...overrides,
+      sessionVersion: 1,
+      accountStatus: AccountLifecycleStatus.ACTIVE,
+      activeVenueId: null,
+      ownedVenues,
+      ...rest,
     };
   }
 

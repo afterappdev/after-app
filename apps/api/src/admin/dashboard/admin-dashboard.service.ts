@@ -74,7 +74,11 @@ export class AdminDashboardService {
           email: true,
           role: true,
           createdAt: true,
-          venue: { select: { id: true, name: true } },
+          ownedVenues: {
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { id: true, name: true },
+          },
         },
       }),
       this.prisma.creditPurchase.findMany({
@@ -151,8 +155,11 @@ export class AdminDashboardService {
         email: user.email,
         role: user.role,
         createdAt: user.createdAt,
-        ...(user.role === Role.VENUE && user.venue
-          ? { venueId: user.venue.id, venueName: user.venue.name }
+        ...(user.role === Role.VENUE && user.ownedVenues[0]
+          ? {
+              venueId: user.ownedVenues[0].id,
+              venueName: user.ownedVenues[0].name,
+            }
           : {}),
       })),
       recentSales: recentSales.map((sale) => ({

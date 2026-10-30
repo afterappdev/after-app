@@ -39,7 +39,11 @@ function createPrisma() {
       findUnique: jest.fn(),
       deleteMany: jest.fn(),
     },
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 'claim-1' }]),
+    $queryRaw: jest.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+      if (strings.join(' ').includes('FROM "Venue"')) return [];
+      return [{ id: 'claim-1' }];
+    }),
+    $executeRaw: jest.fn().mockResolvedValue(1),
     welcomeCreditClaim: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -99,10 +103,30 @@ describe('cadastro de usuário com faixa etária', () => {
   beforeEach(() => {
     prisma = createPrisma();
     prisma.user.findUnique.mockResolvedValue(null);
-    prisma.user.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
-      ...createdUser(args.data),
-      venue: args.data.venue ? { id: 'v-age' } : null,
-    }));
+    prisma.user.create.mockImplementation(
+      async (args: {
+        data: Record<string, unknown> & {
+          ownedVenues?: { create?: { name?: string } };
+        };
+      }) => {
+        const row = createdUser(args.data);
+        if (args.data.ownedVenues) {
+          return {
+            ...row,
+            ownedVenues: [
+              {
+                id: 'v-age',
+                name: args.data.ownedVenues.create?.name ?? 'Bar',
+                city: 'São Paulo',
+                state: 'SP',
+                logoUrl: null,
+              },
+            ],
+          };
+        }
+        return { ...row, ownedVenues: [] };
+      },
+    );
     service = new AuthService(
       prisma as never,
       new JwtService({ secret: 'test-secret' }),
@@ -166,8 +190,8 @@ describe('cadastro de usuário com faixa etária', () => {
     });
     const data = prisma.user.create.mock.calls[0][0].data;
     expect(data.ageBand).toBeUndefined();
-    expect(data.venue.create.documentDigits).toBe('12345678909');
-    expect(data.venue.create.documentType).toBe('CPF');
+    expect(data.ownedVenues.create.documentDigits).toBe('12345678909');
+    expect(data.ownedVenues.create.documentType).toBe('CPF');
   });
 
   it('conta antiga sem faixa entra normalmente', async () => {

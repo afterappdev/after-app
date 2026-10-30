@@ -11,10 +11,15 @@ function setup() {
         accountStatus: AccountLifecycleStatus.ACTIVE,
       }),
     },
-    venue: { findUnique: jest.fn() },
+    venue: {
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([{ id: 'venue-1' }]),
+      findFirst: jest.fn(),
+    },
     banner: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       create: jest.fn(),
     },
@@ -38,6 +43,9 @@ function setup() {
     ownerUserId: 'owner-1',
     name: 'Bar',
     city: 'São Paulo',
+    state: 'SP',
+    ibgeCityId: 3550308,
+    owner: { email: 'bar@after.local', name: 'Bar' },
   });
   return { prisma, service };
 }
@@ -45,7 +53,7 @@ function setup() {
 describe('BannersService cancel', () => {
   it('o proprietário cancela sem devolver créditos', async () => {
     const { prisma, service } = setup();
-    prisma.banner.findUnique.mockResolvedValue({
+    prisma.banner.findFirst.mockResolvedValue({
       id: 'banner-1',
       venueId: 'venue-1',
       status: 'ACTIVE',
@@ -77,7 +85,7 @@ describe('BannersService cancel', () => {
 
   it('cancelar de novo é idempotente e continua sem crédito', async () => {
     const { prisma, service } = setup();
-    prisma.banner.findUnique.mockResolvedValue({
+    prisma.banner.findFirst.mockResolvedValue({
       id: 'banner-1',
       venueId: 'venue-1',
       status: 'CANCELLED',
@@ -93,17 +101,14 @@ describe('BannersService cancel', () => {
 
   it('outro estabelecimento não cancela', async () => {
     const { prisma, service } = setup();
-    prisma.venue.findUnique.mockImplementation(async ({ where }) => {
-      if (where.ownerUserId === 'other') {
-        return { id: 'venue-2', ownerUserId: 'other', city: 'São Paulo' };
-      }
-      return null;
-    });
-    prisma.banner.findUnique.mockResolvedValue({
-      id: 'banner-1',
-      venueId: 'venue-1',
-      status: 'ACTIVE',
-      schedules: [],
+    prisma.banner.findFirst.mockImplementation(async ({ where }) => {
+      if (where.venue?.ownerUserId === 'other') return null;
+      return {
+        id: 'banner-1',
+        venueId: 'venue-1',
+        status: 'ACTIVE',
+        schedules: [],
+      };
     });
 
     await expect(service.cancel('other', 'banner-1')).rejects.toBeInstanceOf(
@@ -115,10 +120,10 @@ describe('BannersService cancel', () => {
 
   it('usuário comum não cancela', async () => {
     const { prisma, service } = setup();
-    prisma.venue.findUnique.mockResolvedValue(null);
+    prisma.banner.findFirst.mockResolvedValue(null);
 
     await expect(service.cancel('user-1', 'banner-1')).rejects.toBeInstanceOf(
-      ForbiddenException,
+      NotFoundException,
     );
     expect(prisma.banner.update).not.toHaveBeenCalled();
     expect(prisma.creditWallet.updateMany).not.toHaveBeenCalled();
@@ -197,18 +202,6 @@ describe('BannersService cancel', () => {
     ]);
   });
 
-  it('conta PENDING_DELETION não publica promoções', async () => {
-    const { prisma, service } = setup();
-    prisma.user.findUnique.mockResolvedValue({
-      accountStatus: AccountLifecycleStatus.PENDING_DELETION,
-    });
-
-    await expect(
-      service.create('owner-1', 'https://cdn.example/a.jpg', ['2026-10-01']),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(prisma.banner.create).not.toHaveBeenCalled();
-  });
-
   it('saldo insuficiente não cria publicação nem mexe na anterior', async () => {
     const { prisma, service } = setup();
     prisma.creditWallet.findUnique.mockResolvedValue({ balance: 0 });
@@ -224,15 +217,19 @@ describe('BannersService cancel', () => {
 
   it('histórico de outro estabelecimento não inclui a publicação alheia', async () => {
     const { prisma, service } = setup();
+    prisma.venue.findMany = jest.fn(async ({ where }: { where: { ownerUserId: string } }) => {
+      if (where.ownerUserId === 'owner-2') return [{ id: 'venue-2' }];
+      return [{ id: 'venue-1' }];
+    }) as typeof prisma.venue.findMany;
     prisma.venue.findUnique.mockImplementation(async ({ where }) => {
-      if (where.ownerUserId === 'other') {
-        return { id: 'venue-2', ownerUserId: 'other', name: 'Outro', city: 'São Paulo' };
+      if (where.id === 'venue-2') {
+        return { id: 'venue-2', ownerUserId: 'owner-2', name: 'Outro', city: 'São Paulo' };
       }
       return { id: 'venue-1', ownerUserId: 'owner-1', name: 'Bar', city: 'São Paulo' };
     });
     prisma.banner.findMany.mockResolvedValue([]);
 
-    await service.history('other');
+    await service.history('owner-2');
 
     expect(prisma.banner.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

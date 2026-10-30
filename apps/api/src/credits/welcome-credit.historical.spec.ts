@@ -103,8 +103,13 @@ function createStore() {
         walletWrites.push('upsert');
       }),
     },
+    $executeRaw: jest.fn().mockResolvedValue(1),
     $queryRaw: jest.fn(async (strings: TemplateStringsArray, ...bound: unknown[]) => {
       const sql = strings.join(' ');
+      if (sql.includes('FROM "Venue"')) {
+        if (!state.venue.documentDigits) return [];
+        return [{ id: state.venue.id, ownerUserId: 'owner' }];
+      }
       if (gate) {
         waiting += 1;
         if (waiting === 2) releaseGate?.();
@@ -239,7 +244,7 @@ describe('vinculação histórica do benefício', () => {
     await save(store, 'CPF', CPF);
     expect(store.state.claims.size).toBe(0);
     expect(store.state.venue.documentDigits).toBe(CPF);
-    expect(store.prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(store.prisma.$queryRaw).toHaveBeenCalled();
     expect(store.state.wallet).toEqual({ balance: 8, vipBalance: 3 });
   });
 

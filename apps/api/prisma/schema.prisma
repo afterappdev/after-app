@@ -117,7 +117,11 @@ model User {
   avatarUrl         String?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
-  venue             Venue?
+  /// Venues owned by this account (VENUE role). A user may own many venues.
+  ownedVenues       Venue[]                  @relation("VenueOwner")
+  /// Selected venue for implicit API routes (credits, banners, etc.).
+  activeVenueId     String?
+  activeVenue       Venue?                   @relation("UserActiveVenue", fields: [activeVenueId], references: [id], onDelete: SetNull)
   favorites         Favorite[]
   reviews           Review[]
   notifications     Notification[]
@@ -155,6 +159,7 @@ model User {
   @@index([ibgeCityId])
   @@index([promoNotificationsEnabled, ibgeCityId])
   @@index([lastAuthorizedIbgeCityId, lastAuthorizedCityAt])
+  @@index([activeVenueId])
   @@index([accountStatus, permanentDeletionAt])
 }
 
@@ -263,8 +268,9 @@ model AccountPurgeJob {
 
 model Venue {
   id            String           @id @default(cuid())
-  ownerUserId   String           @unique
-  owner         User             @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUserId   String
+  owner         User             @relation("VenueOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  usersActive   User[]           @relation("UserActiveVenue")
   name          String
   description   String?
   category      String?
@@ -301,7 +307,8 @@ model Venue {
   vipCreditEntries    VipCreditEntry[]
   welcomeCreditVenueProvision WelcomeCreditVenueProvision?
 
-  @@unique([documentType, documentDigits])
+  @@index([ownerUserId])
+  @@index([documentType, documentDigits])
   @@index([moderationHiddenAt])
   @@index([ibgeCityId])
 }

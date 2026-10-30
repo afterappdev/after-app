@@ -85,6 +85,7 @@ describe('POST /credits/coupons/redeem', () => {
     expect(coupons.redeem).toHaveBeenCalledWith(
       expect.objectContaining({ role: 'VENUE', userId: 'id-VENUE' }),
       'AFTER2',
+      undefined,
     );
   });
 });

@@ -6,6 +6,7 @@ import {
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { CouponsService } from './coupons.service';
+import { ActiveVenueId } from '../common/decorators/active-venue.decorator';
 
 class RedeemCouponDto {
   @IsString()
@@ -19,7 +20,11 @@ export class CouponRedeemController {
   constructor(private readonly coupons: CouponsService) {}
 
   @Post('redeem')
-  redeem(@CurrentUser() user: AuthUser, @Body() dto: RedeemCouponDto) {
-    return this.coupons.redeem(user, dto.code);
+  redeem(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RedeemCouponDto,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.coupons.redeem(user, dto.code, activeVenueId);
   }
 }

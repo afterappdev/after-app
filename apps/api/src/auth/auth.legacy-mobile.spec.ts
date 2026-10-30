@@ -69,7 +69,8 @@ describe('compatibilidade cadastro apps publicados', () => {
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.user.create.mockImplementation(async (args: { data: Record<string, unknown> }) => {
       const data = args.data;
-      const hasVenue = data.venue != null;
+      const nested = data.ownedVenues as { create?: object } | undefined;
+      const hasVenue = nested?.create != null;
       return {
         id: 'u1',
         name: (data.name as string) ?? 'x',
@@ -78,7 +79,19 @@ describe('compatibilidade cadastro apps publicados', () => {
         state: (data.state as string) ?? 'SP',
         city: (data.city as string) ?? 'Campinas',
         avatarUrl: null,
-        venue: hasVenue ? { id: 'v-legacy' } : null,
+        activeVenueId: null,
+        ownedVenues: hasVenue
+          ? [
+              {
+                id: 'v-legacy',
+                name: (data.name as string) ?? 'Bar',
+                city: (data.city as string) ?? 'Campinas',
+                state: (data.state as string) ?? 'SP',
+                logoUrl: null,
+                createdAt: new Date(),
+              },
+            ]
+          : [],
       };
     });
     service = new AuthService(prisma as never, new JwtService({ secret: 'test-secret' }), config());
@@ -89,12 +102,12 @@ describe('compatibilidade cadastro apps publicados', () => {
     expect(prisma.user.create).toHaveBeenCalled();
     const data = prisma.user.create.mock.calls[0][0].data;
     expect(data.ageBand).toBeUndefined();
-    expect(data.venue).toBeUndefined();
+    expect(data.ownedVenues).toBeUndefined();
   });
 
   it('cadastro de estabelecimento legado concede 1 crédito comum e provisão persistente', async () => {
     await service.register(legacyVenueRegister);
-    const venue = prisma.user.create.mock.calls[0][0].data.venue.create;
+    const venue = prisma.user.create.mock.calls[0][0].data.ownedVenues.create;
     expect(venue.wallet.create.balance).toBe(VENUE_SIGNUP_BONUS_CREDITS);
     expect(venue.purchases.create).toEqual(
       expect.objectContaining({

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcrypt';
+import { AccountLifecycleStatus } from '@prisma/client';
 import { AuthService } from './auth.service';
 import {
   SOCIAL_GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
@@ -100,7 +101,10 @@ describe('AuthService Google web OAuth', () => {
       state: 'SP',
       city: 'São Paulo',
       avatarUrl: null,
-      venue: null,
+      sessionVersion: 1,
+      accountStatus: AccountLifecycleStatus.ACTIVE,
+      activeVenueId: null,
+      ownedVenues: [],
     });
     const result = await service.login({
       email: 'ana@after.local',
@@ -119,7 +123,10 @@ describe('AuthService Google web OAuth', () => {
     city: 'São Paulo',
     avatarUrl: null,
     googleId: null as string | null,
-    venue: null as { id: string } | null,
+    sessionVersion: 1,
+    accountStatus: AccountLifecycleStatus.ACTIVE,
+    activeVenueId: null,
+    ownedVenues: [] as { id: string; name: string; city: string; state: string; logoUrl: string | null }[],
   };
 
   function mockVerifiedGoogle(sub = 'gid-1', email = 'ana@after.local') {

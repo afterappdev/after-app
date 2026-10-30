@@ -6,9 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 import {
   AuthUser,
   CurrentUser,
@@ -44,6 +45,13 @@ class UpdateUserDto {
   ageBand?: (typeof AGE_BANDS)[number];
 }
 
+class SetActiveVenueDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  venueId!: string;
+}
+
 class ChangePasswordDto {
   @IsString()
   currentPassword!: string;
@@ -61,6 +69,21 @@ export class UsersController {
   @UseGuards(SessionJwtAuthGuard)
   me(@CurrentUser() user: AuthUser) {
     return this.usersService.getMe(user.userId);
+  }
+
+  @Get('me/venues')
+  @UseGuards(SessionJwtAuthGuard)
+  myVenues(@CurrentUser() user: AuthUser) {
+    return this.usersService.listMyVenues(user.userId);
+  }
+
+  @Put('me/active-venue')
+  @UseGuards(SessionJwtAuthGuard)
+  setActiveVenue(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: SetActiveVenueDto,
+  ) {
+    return this.usersService.setActiveVenue(user.userId, dto.venueId);
   }
 
   @Patch('me')

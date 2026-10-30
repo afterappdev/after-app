@@ -3,10 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { AdminPurgeStrategy } from '../../users/users.service';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UsersService } from '../../users/users.service';
+import { AdminPurgeStrategy, UsersService } from '../../users/users.service';
 import {
   consumerTotals,
   countUsersByAgeBand,
@@ -14,6 +13,7 @@ import {
   listConsumerCityLocations,
 } from '../aggregates';
 import { paginate, paginationMeta } from '../pagination';
+import { legacyPrimaryVenueId } from '../../venues/venue-auth-payload';
 import { AdminAccountsQueryDto } from './admin-accounts.query';
 import { AdminAccountsStatsQueryDto } from './admin-accounts.stats.query';
 
@@ -49,23 +49,30 @@ export class AdminAccountsService {
           state: true,
           city: true,
           createdAt: true,
-          venue: { select: { id: true, name: true } },
+          ownedVenues: {
+            orderBy: { createdAt: 'asc' },
+            take: 1,
+            select: { id: true, name: true },
+          },
         },
       }),
     ]);
 
     return {
-      items: rows.map((user) => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        state: user.state,
-        city: user.city,
-        createdAt: user.createdAt,
-        venueId: user.venue?.id ?? null,
-        venueName: user.venue?.name ?? null,
-      })),
+      items: rows.map((user) => {
+        const primary = user.ownedVenues[0];
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          state: user.state,
+          city: user.city,
+          createdAt: user.createdAt,
+          venueId: primary?.id ?? null,
+          venueName: primary?.name ?? null,
+        };
+      }),
       ...paginationMeta(page, limit, total),
     };
   }
@@ -83,11 +90,8 @@ export class AdminAccountsService {
         avatarUrl: true,
         createdAt: true,
         updatedAt: true,
-        accountStatus: true,
-        deletionRequestedAt: true,
-        permanentDeletionAt: true,
-        deletionCancelledAt: true,
-        venue: {
+        ownedVenues: {
+          orderBy: { createdAt: 'asc' },
           select: {
             id: true,
             name: true,
@@ -108,18 +112,6 @@ export class AdminAccountsService {
       throw new NotFoundException('Conta não encontrada');
     }
 
-    const job = await this.prisma.accountPurgeJob.findUnique({
-      where: { userId: id },
-      select: {
-        status: true,
-        attempts: true,
-        progressStage: true,
-        scheduledFor: true,
-        cancelledAt: true,
-        completedAt: true,
-        lastError: true,
-      },
-    });
     return {
       id: user.id,
       name: user.name,
@@ -130,39 +122,32 @@ export class AdminAccountsService {
       avatarUrl: user.avatarUrl,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
-      lifecycle: {
-        accountStatus: user.accountStatus,
-        deletionRequestedAt: user.deletionRequestedAt,
-        permanentDeletionAt: user.permanentDeletionAt,
-        deletionCancelledAt: user.deletionCancelledAt,
-      },
-      purgeJob: job
-        ? {
-            status: job.status,
-            attempts: job.attempts,
-            progressStage: job.progressStage,
-            scheduledFor: job.scheduledFor,
-            cancelledAt: job.cancelledAt,
-            completedAt: job.completedAt,
-            lastError: job.lastError
-              ? job.lastError.slice(0, 200)
-              : null,
-          }
-        : null,
-      venue: user.venue
-        ? {
-            id: user.venue.id,
-            name: user.venue.name,
-            description: user.venue.description,
-            category: user.venue.category,
-            city: user.venue.city,
-            state: user.venue.state,
-            logoUrl: user.venue.logoUrl,
-            coverUrl: user.venue.coverUrl,
-            createdAt: user.venue.createdAt,
-            creditBalance: user.venue.wallet?.balance ?? 0,
-          }
-        : null,
+      venue: (() => {
+        const primaryId = legacyPrimaryVenueId(user.ownedVenues);
+        const primary = user.ownedVenues.find((v) => v.id === primaryId);
+        return primary
+          ? {
+              id: primary.id,
+              name: primary.name,
+              description: primary.description,
+              category: primary.category,
+              city: primary.city,
+              state: primary.state,
+              logoUrl: primary.logoUrl,
+              coverUrl: primary.coverUrl,
+              createdAt: primary.createdAt,
+              creditBalance: primary.wallet?.balance ?? 0,
+            }
+          : null;
+      })(),
+      venues: user.ownedVenues.map((v) => ({
+        id: v.id,
+        name: v.name,
+        city: v.city,
+        state: v.state,
+        createdAt: v.createdAt,
+        creditBalance: v.wallet?.balance ?? 0,
+      })),
     };
   }
 
@@ -238,7 +223,11 @@ export class AdminAccountsService {
       where.OR = [
         { name: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
-        { venue: { name: { contains: q, mode: 'insensitive' } } },
+        {
+          ownedVenues: {
+            some: { name: { contains: q, mode: 'insensitive' } },
+          },
+        },
       ];
     }
     this.applyCityStateFilter(where, query.city, query.state);

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { BannersService } from './banners.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PromoPushPublisher } from '../promo-push/promo-push.publisher';
-import { mockActiveUserPrisma } from './banners.test-helpers';
+import { mockOwnedVenuePrisma } from './banners.test-helpers';
 
 describe('BannersService promotional outbox', () => {
   function setup() {
@@ -24,6 +24,7 @@ describe('BannersService promotional outbox', () => {
       },
       banner: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(async ({ data }: { data: { status: string } }) => ({
           id: 'banner-1',
           status: data.status,
@@ -54,7 +55,7 @@ describe('BannersService promotional outbox', () => {
         update: jest.fn(),
       },
     };
-    mockActiveUserPrisma(prisma);
+    mockOwnedVenuePrisma(prisma, { id: 'venue-1', ownerUserId: 'owner-1' });
     prisma.$transaction.mockImplementation(
       async (fn: (tx: typeof prisma) => Promise<unknown>) => {
         inside = true;
@@ -140,13 +141,14 @@ describe('BannersService promotional outbox', () => {
     const created = prisma.banner.create.mock.calls[0][0].data;
     expect(created.schedules.create[0].ibgeCityId).toBeNull();
 
-    prisma.venue.findUnique.mockResolvedValueOnce({
+    prisma.venue.findUnique.mockResolvedValue({
       id: 'venue-1',
       ownerUserId: 'owner-1',
       name: 'Bar Central',
       city: 'São Paulo',
       state: 'SP',
       ibgeCityId: 3550308,
+      owner: { email: 'bar@after.local', name: 'Bar Central' },
     });
     (publisher.resolveVenueCity as jest.Mock).mockResolvedValueOnce(null);
     await service.create('owner-1', 'https://cdn.example/a.jpg', ['2026-10-20'], 'Título', 'Texto');
@@ -167,7 +169,7 @@ describe('BannersService promotional outbox', () => {
 
   it('cancelar não devolve crédito e marca o evento', async () => {
     const { prisma, publisher, service } = setup();
-    prisma.banner.findUnique.mockResolvedValue({
+    prisma.banner.findFirst.mockResolvedValue({
       id: 'banner-1',
       venueId: 'venue-1',
       status: 'ACTIVE',

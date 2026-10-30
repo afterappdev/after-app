@@ -29,6 +29,7 @@ import {
   normalizeVipPublicationInput,
   VipPublicationPlan,
 } from '../promo-push/vip-push-timing';
+import { loadOwnedVenueContext } from '../venues/venue-context';
 
 @Injectable()
 export class BannersService {
@@ -46,8 +47,8 @@ export class BannersService {
     this.promoPush = promoPush ?? new NoopPromoPushPublisher();
   }
 
-  async history(userId: string) {
-    const venue = await this.requireVenueOwned(userId);
+  async history(userId: string, activeVenueId?: string) {
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     return this.prisma.banner.findMany({
       where: { venueId: venue.id },
       include: { schedules: true },
@@ -69,13 +70,12 @@ export class BannersService {
    * Credits already spent stay spent. The row is kept for audit.
    */
   async cancel(userId: string, bannerId: string) {
-    const venue = await this.requireVenueOwned(userId);
-    const banner = await this.prisma.banner.findUnique({
-      where: { id: bannerId },
+    const banner = await this.prisma.banner.findFirst({
+      where: { id: bannerId, venue: { ownerUserId: userId } },
       include: { schedules: true },
     });
-    if (!banner || banner.venueId !== venue.id) {
-      throw new NotFoundException('Promoção não encontrada');
+    if (!banner) {
+      throw new NotFoundException('Promo��o n�o encontrada');
     }
     if (banner.status === 'CANCELLED') {
       return banner;
@@ -106,6 +106,7 @@ export class BannersService {
     description?: string,
     contentKind?: PromoContentKind,
     vipDates: string[] = [],
+    activeVenueId?: string,
     idempotencyKeyRaw?: string,
     vipPublications?: VipPublicationPlan[],
   ) {
@@ -123,7 +124,7 @@ export class BannersService {
     const timingByDate = new Map(
       vipInput.plans.map((plan) => [plan.date, plan.pushTiming]),
     );
-    const venue = await this.requireVenueOwned(userId);
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     const wallet = await this.prisma.creditWallet.findUnique({
       where: { venueId: venue.id },
     });
@@ -327,15 +328,9 @@ export class BannersService {
     return Number.isFinite(perDay) && perDay > 0 ? perDay : 1;
   }
 
-  private async requireVenueOwned(userId: string) {
+  private async requireVenueOwned(userId: string, requestedVenueId?: string) {
     await assertUserAccountActive(this.prisma, userId);
-    const venue = await this.prisma.venue.findUnique({
-      where: { ownerUserId: userId },
-    });
-    if (!venue) {
-      throw new ForbiddenException('Conta não é de estabelecimento');
-    }
-    return venue;
+    return loadOwnedVenueContext(this.prisma, userId, requestedVenueId);
   }
 }
 

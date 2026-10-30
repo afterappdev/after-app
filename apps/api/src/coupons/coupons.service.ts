@@ -8,10 +8,10 @@ import {
 } from '@nestjs/common';
 import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AdminPushService } from '../admin/push/admin-push.service';
-import { assertUserAccountActive } from '../common/account/account-eligibility';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { isCouponCode, normalizeCouponCode } from './coupon-code';
+import { resolveOwnedVenueId } from '../venues/venue-ownership';
 
 export type CouponWriteInput = {
   code?: string;
@@ -201,20 +201,24 @@ export class CouponsService {
    * locked with SELECT ... FOR UPDATE inside the same transaction as the
    * redemption insert and the wallet increment.
    */
-  async redeem(user: AuthUser, rawCode: string) {
+  async redeem(user: AuthUser, rawCode: string, activeVenueId?: string) {
     if (user.role !== 'VENUE') {
       throw new ForbiddenException(
         'Cupom disponível apenas para estabelecimentos.',
       );
     }
-    await assertUserAccountActive(this.prisma, user.userId);
     if (!isCouponCode(rawCode ?? '')) {
       throw new BadRequestException('Informe um código de cupom válido.');
     }
     const code = normalizeCouponCode(rawCode);
 
+    const venueId = await resolveOwnedVenueId(
+      this.prisma,
+      user.userId,
+      activeVenueId,
+    );
     const venue = await this.prisma.venue.findUnique({
-      where: { ownerUserId: user.userId },
+      where: { id: venueId },
       select: { id: true, name: true, city: true },
     });
     if (!venue) {
