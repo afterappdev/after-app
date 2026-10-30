@@ -216,6 +216,22 @@ void main() {
     expect(api.locations, isEmpty);
   });
 
+  test('VIP parse keeps title, body and optional logo URL', () {
+    final vip = PromoPushMessage.parse(
+      title: 'Bar Central publicou "Happy Hour"',
+      body: 'Confira o que está rolando na sua cidade. Toque para ver!',
+      data: {
+        'type': 'PROMO_PUBLISHED',
+        'eventId': 'event-1',
+        'bannerId': 'banner-1',
+        'venueId': 'venue-1',
+        'imageUrl': 'https://media.app-after.com.br/uploads/logo.jpg',
+      },
+    );
+    expect(vip!.title, 'Bar Central publicou "Happy Hour"');
+    expect(vip.imageUrl, 'https://media.app-after.com.br/uploads/logo.jpg');
+  });
+
   test('notification text keeps the backend wording', () {
     final promotion = PromoPushMessage.parse(
       title: 'Bar Central publicou uma promoção para hoje!',

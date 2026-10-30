@@ -30,3 +30,19 @@ export function fcmCollapseKey(eventId: string): string {
   const cleaned = eventId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
   return cleaned || 'promo';
 }
+
+/** VIP push title shown on devices: venue name + publication title in quotes. */
+export function vipPushCopy(
+  venueName: string,
+  bannerTitle: string | null | undefined,
+): { title: string; body: string } {
+  const name = venueName.trim() || 'Um estabelecimento';
+  const publication = bannerTitle?.trim();
+  const title = publication
+    ? `${name} publicou "${publication}"`
+    : `${name} publicou uma novidade VIP`;
+  return {
+    title,
+    body: 'Confira o que está rolando na sua cidade. Toque para ver!',
+  };
+}

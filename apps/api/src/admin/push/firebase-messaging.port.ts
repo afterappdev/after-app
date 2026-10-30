@@ -5,16 +5,18 @@ export type AdminPushPayload = {
   /** Optional. Admin messages omit it, so their multicast shape stays the same. */
   collapseKey?: string;
   androidChannelId?: string;
+  /** Optional HTTPS image (VIP venue logo). Omitted when invalid or absent. */
+  imageUrl?: string;
 };
 
 export type FcmMulticastMessage = {
   tokens: string[];
-  notification: { title: string; body: string };
+  notification: { title: string; body: string; imageUrl?: string };
   data: Record<string, string>;
   android: {
     priority: 'high';
     collapseKey?: string;
-    notification?: { channelId: string };
+    notification?: { channelId?: string; imageUrl?: string };
   };
   apns: {
     headers?: Record<string, string>;
@@ -30,9 +32,15 @@ export function buildFcmMulticast(
 ): FcmMulticastMessage {
   const collapseKey = message.collapseKey?.trim() || undefined;
   const channelId = message.androidChannelId?.trim() || undefined;
+  const imageUrl = message.imageUrl?.trim() || undefined;
   const android: FcmMulticastMessage['android'] = { priority: 'high' };
   if (collapseKey) android.collapseKey = collapseKey;
-  if (channelId) android.notification = { channelId };
+  if (channelId || imageUrl) {
+    android.notification = {
+      ...(channelId ? { channelId } : {}),
+      ...(imageUrl ? { imageUrl } : {}),
+    };
+  }
   const apns: FcmMulticastMessage['apns'] = {
     payload: { aps: { sound: 'default' } },
   };
@@ -41,7 +49,11 @@ export function buildFcmMulticast(
   }
   const built: FcmMulticastMessage = {
     tokens,
-    notification: { title: message.title, body: message.body },
+    notification: {
+      title: message.title,
+      body: message.body,
+      ...(imageUrl ? { imageUrl } : {}),
+    },
     data: message.data,
     android,
     apns,

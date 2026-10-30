@@ -25,6 +25,8 @@ describe('PrismaPromoPushStore', () => {
         ibgeCityId: 3550308,
         contentKind: null,
         venueName: 'Bar',
+        bannerTitle: null,
+        venueLogoUrl: null,
         bannerStatus: 'ACTIVE',
         venueHidden: false,
         scheduleTier: 'VIP',

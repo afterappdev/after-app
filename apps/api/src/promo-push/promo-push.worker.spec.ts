@@ -147,17 +147,28 @@ class MemoryStore implements PromoPushStore {
 
 class FakeMessaging implements FirebaseMessagingPort {
   configured = true;
-  calls: { tokens: string[]; title: string; data: Record<string, string> }[] = [];
+  calls: {
+    tokens: string[];
+    title: string;
+    imageUrl?: string;
+    data: Record<string, string>;
+  }[] = [];
   mode: 'ok' | 'invalid' | 'temporary' | 'throw' = 'ok';
   onCall: (() => void) | null = null;
 
   sendToTokens(
     tokens: string[],
-    message: { title: string; body: string; data: Record<string, string> },
+    message: {
+      title: string;
+      body: string;
+      imageUrl?: string;
+      data: Record<string, string>;
+    },
   ) {
     this.calls.push({
       tokens: [...tokens],
       title: message.title,
+      imageUrl: message.imageUrl,
       data: { ...message.data },
     });
     this.onCall?.();
@@ -181,6 +192,8 @@ function event(overrides: Partial<MemEvent> = {}): MemEvent {
     ibgeCityId: 3550308,
     contentKind: null,
     venueName: 'Bar Central',
+    bannerTitle: 'Promo do dia',
+    venueLogoUrl: 'https://media.app-after.com.br/uploads/logo.jpg',
     bannerStatus: 'ACTIVE',
     venueHidden: false,
     scheduleTier: 'VIP',
@@ -235,9 +248,15 @@ describe('PromoPushWorker', () => {
     expect(messaging.calls).toHaveLength(1);
     expect(messaging.calls[0].tokens).toEqual([SECRET]);
     expect(messaging.calls[0].title).toBe(
-      'Bar Central publicou uma novidade para hoje!',
+      'Bar Central publicou "Promo do dia"',
+    );
+    expect(messaging.calls[0].imageUrl).toBe(
+      'https://media.app-after.com.br/uploads/logo.jpg',
     );
     expect(messaging.calls[0].data.type).toBe('PROMO_PUBLISHED');
+    expect(messaging.calls[0].data.imageUrl).toBe(
+      'https://media.app-after.com.br/uploads/logo.jpg',
+    );
     expect(messaging.calls[0].data.bannerId).toBe('banner-1');
     expect(store.events.get('evt-1')?.status).toBe('SENT');
     expect(logs.join('\n')).not.toContain(SECRET);

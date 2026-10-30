@@ -6,6 +6,7 @@ class PromoPushMessage {
     required this.bannerId,
     required this.venueId,
     required this.scheduleId,
+    this.imageUrl,
   });
 
   final String title;
@@ -14,6 +15,7 @@ class PromoPushMessage {
   final String bannerId;
   final String venueId;
   final String scheduleId;
+  final String? imageUrl;
 
   bool get canOpen =>
       eventId.isNotEmpty && bannerId.isNotEmpty && venueId.isNotEmpty;
@@ -26,6 +28,7 @@ class PromoPushMessage {
     final payload = data ?? const <String, dynamic>{};
     if (payload['type']?.toString() != 'PROMO_PUBLISHED') return null;
     final receivedTitle = title?.trim() ?? '';
+    final image = payload['imageUrl']?.toString().trim();
     return PromoPushMessage(
       title: receivedTitle.isEmpty
           ? 'Um estabelecimento publicou uma novidade para hoje!'
@@ -37,6 +40,7 @@ class PromoPushMessage {
       bannerId: payload['bannerId']?.toString() ?? '',
       venueId: payload['venueId']?.toString() ?? '',
       scheduleId: payload['scheduleId']?.toString() ?? '',
+      imageUrl: image != null && image.isNotEmpty ? image : null,
     );
   }
 }

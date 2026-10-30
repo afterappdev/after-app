@@ -11,7 +11,8 @@ import {
   PromoPushMode,
   resolvePromoPushMode,
 } from './promo-push.config';
-import { fcmCollapseKey, promoPushCopy } from './promo-push.copy';
+import { fcmCollapseKey, vipPushCopy } from './promo-push.copy';
+import { resolveVipPushLogoUrl } from './promo-push-image';
 import {
   chunkList,
   formatPromoPushLog,
@@ -190,18 +191,21 @@ export class PromoPushWorker {
       return;
     }
 
-    const copy = promoPushCopy(event.venueName, event.contentKind);
+    const copy = vipPushCopy(event.venueName, event.bannerTitle);
+    const logoUrl = resolveVipPushLogoUrl(event.venueLogoUrl);
     const message = {
       title: copy.title,
       body: copy.body,
       collapseKey: fcmCollapseKey(event.id),
       androidChannelId: 'promo_alerts',
+      imageUrl: logoUrl,
       data: {
         type: 'PROMO_PUBLISHED',
         eventId: event.id,
         bannerId: event.bannerId,
         venueId: event.venueId,
         scheduleId: event.scheduleId,
+        ...(logoUrl ? { imageUrl: logoUrl } : {}),
       },
     };
 

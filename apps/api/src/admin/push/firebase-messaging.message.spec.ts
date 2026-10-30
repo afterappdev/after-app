@@ -30,4 +30,21 @@ describe('buildFcmMulticast', () => {
     expect(message.apns.headers).toEqual({ 'apns-collapse-id': 'evt-1' });
     expect(message.webpush?.headers.Topic).toBe('evt-1');
   });
+
+  it('inclui imagem HTTPS no notification e no android quando informada', () => {
+    const image = 'https://media.app-after.com.br/uploads/logo.jpg';
+    const message = buildFcmMulticast(['consumer-token'], {
+      title: 'Bar publicou "Promo"',
+      body: 'Toque',
+      collapseKey: 'evt-1',
+      androidChannelId: 'promo_alerts',
+      imageUrl: image,
+      data: { type: 'PROMO_PUBLISHED', imageUrl: image },
+    });
+    expect(message.notification.imageUrl).toBe(image);
+    expect(message.android.notification).toEqual({
+      channelId: 'promo_alerts',
+      imageUrl: image,
+    });
+  });
 });

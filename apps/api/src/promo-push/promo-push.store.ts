@@ -16,6 +16,8 @@ export type PromoPushEventView = {
   ibgeCityId: number;
   contentKind: PromoContentKind;
   venueName: string;
+  bannerTitle: string | null;
+  venueLogoUrl: string | null;
   bannerStatus: string;
   venueHidden: boolean;
   scheduleTier: string;
@@ -177,9 +179,11 @@ export class PrismaPromoPushStore implements PromoPushStore {
             banner: {
               select: {
                 status: true,
+                title: true,
                 venue: {
                   select: {
                     name: true,
+                    logoUrl: true,
                     moderationHiddenAt: true,
                     owner: { select: { accountStatus: true } },
                   },
@@ -199,6 +203,8 @@ export class PrismaPromoPushStore implements PromoPushStore {
       ibgeCityId: row.ibgeCityId,
       contentKind: row.contentKind,
       venueName: row.bannerSchedule.banner.venue.name,
+      bannerTitle: row.bannerSchedule.banner.title,
+      venueLogoUrl: row.bannerSchedule.banner.venue.logoUrl,
       bannerStatus: row.bannerSchedule.banner.status,
       venueHidden:
         row.bannerSchedule.banner.venue.moderationHiddenAt != null ||

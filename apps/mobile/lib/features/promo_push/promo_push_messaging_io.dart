@@ -8,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'promo_push_message.dart';
 import 'promo_push_messaging.dart';
+import 'promo_push_notification_image.dart';
 
 const promoAlertsChannelId = 'promo_alerts';
 
@@ -146,12 +147,24 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   Future<void> showForeground(PromoPushMessage message) async {
     if (!_ready) return;
     final id = message.eventId.hashCode & 0x7fffffff;
+    StyleInformation? styleInformation;
+    if (isAndroid && message.imageUrl != null) {
+      final bytes = await fetchPromoPushNotificationImage(message.imageUrl!);
+      if (bytes != null) {
+        styleInformation = BigPictureStyleInformation(
+          ByteArrayAndroidBitmap(bytes),
+          hideExpandedLargeIcon: true,
+          contentTitle: message.title,
+          summaryText: message.body,
+        );
+      }
+    }
     await _local.show(
       id,
       message.title,
       message.body,
       NotificationDetails(
-        android: const AndroidNotificationDetails(
+        android: AndroidNotificationDetails(
           promoAlertsChannelId,
           'Promoções e eventos',
           channelDescription:
@@ -159,7 +172,8 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_promo_notification',
-          color: Color(0xFFF58634),
+          color: const Color(0xFFF58634),
+          styleInformation: styleInformation,
         ),
         iOS: const DarwinNotificationDetails(),
       ),
@@ -171,6 +185,7 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
         'bannerId': message.bannerId,
         'venueId': message.venueId,
         'scheduleId': message.scheduleId,
+        if (message.imageUrl != null) 'imageUrl': message.imageUrl,
       }),
     );
   }
@@ -203,10 +218,19 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   }
 
   PromoPushMessage? _fromRemote(RemoteMessage message) {
+    final data = Map<String, dynamic>.from(message.data);
+    final imageFromData = data['imageUrl']?.toString();
+    final imageFromNotification =
+        message.notification?.android?.imageUrl?.trim();
+    if ((imageFromData == null || imageFromData.isEmpty) &&
+        imageFromNotification != null &&
+        imageFromNotification.isNotEmpty) {
+      data['imageUrl'] = imageFromNotification;
+    }
     return PromoPushMessage.parse(
       title: message.notification?.title ?? message.data['title']?.toString(),
       body: message.notification?.body ?? message.data['body']?.toString(),
-      data: Map<String, dynamic>.from(message.data),
+      data: data,
     );
   }
 }
