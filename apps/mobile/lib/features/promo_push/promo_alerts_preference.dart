@@ -6,9 +6,9 @@ import 'promo_push_coordinator.dart';
 class PromoAlertsPreference extends StatelessWidget {
   const PromoAlertsPreference({super.key});
 
-  static const title = 'Receber promoções e eventos da minha cidade';
+  static const title = 'Receber notificações de promoções';
   static const description =
-      'Receba avisos quando estabelecimentos da sua cidade publicarem promoções ou eventos para hoje.';
+      'Avisos quando estabelecimentos da sua cidade publicarem novidades VIP e promoções para hoje.';
 
   @override
   Widget build(BuildContext context) {

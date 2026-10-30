@@ -85,6 +85,21 @@ void main() {
     expect(api.removed, ['fcm-1']);
   });
 
+  test('firebase indisponível informa antes de registrar o token', () async {
+    final api = RecordingPromoApi();
+    final messaging = FakePromoMessaging()
+      ..ready = false
+      ..permission = PromoOsPermission.granted
+      ..token = 'fcm-1';
+    final coordinator = _coordinator(api: api, messaging: messaging);
+    await coordinator.onAuthenticated(_user('user-a'));
+    await coordinator.setEnabled(true);
+
+    expect(api.storedEnabled, isTrue);
+    expect(api.registered, isEmpty);
+    expect(coordinator.statusMessage, PromoPushCoordinator.firebaseUnavailableMessage);
+  });
+
   test('a denied Android permission does not turn the preference on by itself', () async {
     final api = RecordingPromoApi();
     final messaging = FakePromoMessaging()
@@ -98,7 +113,7 @@ void main() {
     expect(api.registered, isEmpty);
     expect(
       coordinator.statusMessage,
-      'A preferência foi salva, mas o sistema está bloqueando os avisos.',
+      PromoPushCoordinator.permissionBlockedMessage,
     );
   });
 
@@ -698,13 +713,20 @@ class FakePromoMessaging implements PromoPushMessaging {
   String? token;
   PromoPushMessage? launch;
   int permissionRequests = 0;
+  bool ready = true;
   final shown = <PromoPushMessage>[];
   final refresh = StreamController<String>.broadcast();
   final foreground = StreamController<PromoPushMessage>.broadcast();
   final opened = StreamController<PromoPushMessage>.broadcast();
 
   @override
-  Future<bool> initialize() async => true;
+  Future<bool> initialize() async => ready;
+
+  @override
+  Future<bool> ensureReady() async => ready;
+
+  @override
+  bool get isReady => ready;
 
   @override
   Future<PromoOsPermission> currentPermission() async => permission;

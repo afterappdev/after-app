@@ -96,6 +96,14 @@ class PromoPushCoordinator extends ChangeNotifier {
   PromoPushMessage? pendingMessage;
   bool _started = false;
   bool _cityAttempted = false;
+
+  static const firebaseUnavailableMessage =
+      'Não foi possível preparar as notificações neste aparelho. '
+      'Use uma versão do app com Firebase configurado (google-services.json).';
+
+  static const permissionBlockedMessage =
+      'A preferência foi salva, mas o Android está bloqueando os avisos. '
+      'Abra Ajustes → Apps → After → Notificações e permita os alertas.';
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<PromoPushMessage>? _foregroundSub;
   StreamSubscription<PromoPushMessage>? _openedSub;
@@ -177,6 +185,11 @@ class PromoPushCoordinator extends ChangeNotifier {
         await unregisterDevice();
         statusMessage = null;
       } else {
+        if (!await _ensureMessagingReady()) {
+          saving = false;
+          notifyListeners();
+          return;
+        }
         final permission = await messaging.requestPermission();
         if (permission == PromoOsPermission.granted) {
           await syncToken(await messaging.getToken());
@@ -185,8 +198,9 @@ class PromoPushCoordinator extends ChangeNotifier {
                 'Preferência salva, mas este aparelho ainda não foi registrado.';
           }
         } else if (permission == PromoOsPermission.denied) {
-          statusMessage =
-              'A preferência foi salva, mas o sistema está bloqueando os avisos.';
+          statusMessage = permissionBlockedMessage;
+        } else if (permission == PromoOsPermission.unavailable) {
+          statusMessage = firebaseUnavailableMessage;
         }
         final session = _session;
         if (session != null) await refreshAuthorizedCity(session);
@@ -203,6 +217,7 @@ class PromoPushCoordinator extends ChangeNotifier {
   Future<void> syncToken(String? token) async {
     final next = token?.trim() ?? '';
     if (next.isEmpty || _userId == null || !enabled) return;
+    if (!await _ensureMessagingReady()) return;
     final permission = await messaging.currentPermission();
     if (permission != PromoOsPermission.granted) return;
     final previous = _token;
@@ -301,6 +316,16 @@ class PromoPushCoordinator extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<bool> _ensureMessagingReady() async {
+    if (messaging.isReady) return true;
+    final ready = await messaging.ensureReady();
+    if (!ready) {
+      statusMessage = firebaseUnavailableMessage;
+      notifyListeners();
+    }
+    return ready;
   }
 
   Future<bool> _foregroundAlreadyGranted(DeviceLocator locator) async {

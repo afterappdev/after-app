@@ -6,6 +6,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../../core/push/firebase_options_env.dart';
 import 'promo_push_message.dart';
 import 'promo_push_messaging.dart';
 import 'promo_push_notification_image.dart';
@@ -36,11 +37,26 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   bool get _supportsNativePromo => isAndroid || _isIos;
 
   @override
+  bool get isReady => _ready;
+
+  @override
+  Future<bool> ensureReady() async {
+    if (_ready) return true;
+    return initialize();
+  }
+
+  @override
   Future<bool> initialize() async {
     if (!_supportsNativePromo) return false;
+    if (_ready) return true;
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp();
+        final options = firebaseOptionsFromEnvironment();
+        if (options != null) {
+          await Firebase.initializeApp(options: options);
+        } else {
+          await Firebase.initializeApp();
+        }
       }
       _messaging = FirebaseMessaging.instance;
       if (_isIos) {
@@ -77,13 +93,29 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
       FirebaseMessaging.onBackgroundMessage(promoPushFirebaseBackground);
       _ready = true;
       return true;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('Promo FCM initialize failed: $error');
+        debugPrint('$stackTrace');
+      }
+      _ready = false;
+      _messaging = null;
       return false;
     }
   }
 
+  Future<bool> _androidNotificationsAllowed() async {
+    if (!isAndroid) return true;
+    final android = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (android == null) return true;
+    final granted = await android.requestNotificationsPermission();
+    return granted ?? true;
+  }
+
   @override
   Future<PromoOsPermission> currentPermission() async {
+    if (!await ensureReady()) return PromoOsPermission.unavailable;
     final messaging = _messaging;
     if (messaging == null) return PromoOsPermission.unavailable;
     final settings = await messaging.getNotificationSettings();
@@ -92,8 +124,13 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
 
   @override
   Future<PromoOsPermission> requestPermission() async {
+    if (!await ensureReady()) return PromoOsPermission.unavailable;
     final messaging = _messaging;
     if (messaging == null) return PromoOsPermission.unavailable;
+    if (isAndroid) {
+      final allowed = await _androidNotificationsAllowed();
+      if (!allowed) return PromoOsPermission.denied;
+    }
     final settings = await messaging.requestPermission(
       alert: true,
       badge: true,
@@ -103,8 +140,9 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   }
 
   @override
-  Future<String?> getToken() {
-    return _messaging?.getToken() ?? Future.value();
+  Future<String?> getToken() async {
+    if (!await ensureReady()) return null;
+    return _messaging?.getToken();
   }
 
   @override

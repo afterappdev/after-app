@@ -1,0 +1,23 @@
+{
+  "_comment": "Renomeie para google-services.json após baixar do Firebase Console.",
+  "_package": "com.r2p.after.after_app",
+  "_project": "after-adm (mesmo projeto do FCM da API)",
+  "project_info": {
+    "project_number": "SUBSTITUA",
+    "project_id": "after-adm",
+    "storage_bucket": "after-adm.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "SUBSTITUA:android:SUBSTITUA",
+        "android_client_info": {
+          "package_name": "com.r2p.after.after_app"
+        }
+      },
+      "api_key": [{ "current_key": "SUBSTITUA" }],
+      "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+    }
+  ],
+  "configuration_version": "1"
+}

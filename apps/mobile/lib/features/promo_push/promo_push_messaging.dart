@@ -5,6 +5,11 @@ enum PromoOsPermission { granted, denied, unavailable }
 abstract class PromoPushMessaging {
   Future<bool> initialize();
 
+  /// Retries [initialize] when the first attempt failed (ex.: Firebase ausente).
+  Future<bool> ensureReady() async => initialize();
+
+  bool get isReady => false;
+
   Future<PromoOsPermission> currentPermission();
 
   Future<PromoOsPermission> requestPermission();
@@ -29,6 +34,12 @@ abstract class PromoPushMessaging {
 class UnavailablePromoPushMessaging implements PromoPushMessaging {
   @override
   Future<bool> initialize() async => false;
+
+  @override
+  Future<bool> ensureReady() async => false;
+
+  @override
+  bool get isReady => false;
 
   @override
   Future<PromoOsPermission> currentPermission() async =>
