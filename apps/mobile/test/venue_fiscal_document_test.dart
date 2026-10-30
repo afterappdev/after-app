@@ -36,7 +36,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('perfil abre Dados fiscais e salva CPF', (tester) async {
+  testWidgets('perfil abre Documento fiscal e salva CPF', (tester) async {
     tester.view.physicalSize = const Size(390, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -82,11 +82,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('Dados fiscais'), findsOneWidget);
-    expect(find.text('CPF ou CNPJ para faturamento'), findsOneWidget);
+    expect(find.text('Documento fiscal'), findsOneWidget);
+    expect(find.text('Consultar ou atualizar CPF/CNPJ'), findsOneWidget);
     expect(find.byKey(const Key('venue-document-input')), findsNothing);
 
-    await tester.tap(find.text('Dados fiscais'));
+    await tester.tap(find.text('Documento fiscal'));
     await tester.pumpAndSettle();
 
     expect(find.byType(VenueFiscalDocumentScreen), findsOneWidget);

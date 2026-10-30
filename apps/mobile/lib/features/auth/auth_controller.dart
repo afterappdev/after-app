@@ -6,6 +6,8 @@ import '../../core/auth/auth_storage.dart';
 import '../../core/network/api_client.dart';
 import 'google_session.dart';
 import 'models/deletion_status.dart';
+import '../venue/models/owned_venue_create_result.dart';
+import 'models/owned_venue_summary.dart';
 import 'models/user_session.dart';
 import 'models/social_onboarding.dart';
 
@@ -25,6 +27,13 @@ class AuthController extends ChangeNotifier {
   final GoogleSessionCleaner googleSession;
 
   UserSession? user;
+  /// Incrementado a cada troca de estabelecimento ativo (invalida loads async).
+  int venueDataGeneration = 0;
+  bool ownedVenuesLoading = false;
+  String? ownedVenuesError;
+  bool switchingActiveVenue = false;
+  bool creatingOwnedVenue = false;
+  Future<void>? _ownedVenuesRefresh;
   SocialOnboarding? pendingSocialOnboarding;
   PendingAccountRecovery? pendingAccountRecovery;
   String? postRecoveryLoginMessage;
@@ -60,9 +69,178 @@ class AuthController extends ChangeNotifier {
         user = UserSession.fromJson(
           jsonDecode(userJson) as Map<String, dynamic>,
         );
+        api.setActiveVenueIdHeader(user!.implicitVenueHeaderId);
+        if (user!.isVenue) {
+          await refreshOwnedVenues();
+          await reconcileActiveVenueIfNeeded();
+        }
       }
     } finally {
       bootstrapping = false;
+      notifyListeners();
+    }
+  }
+
+  bool get showVenueSwitcher =>
+      user?.isVenue == true && (user!.venues.length >= 2);
+
+  String? get managingVenueId => user?.implicitVenueHeaderId;
+
+  bool isVenueScopeCurrent(int generation) =>
+      generation == venueDataGeneration;
+
+  Future<void> refreshOwnedVenues() async {
+    if (user == null || !user!.isVenue) return;
+    final inFlight = _ownedVenuesRefresh;
+    if (inFlight != null) return inFlight;
+    final task = _refreshOwnedVenuesBody();
+    _ownedVenuesRefresh = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_ownedVenuesRefresh, task)) {
+        _ownedVenuesRefresh = null;
+      }
+    }
+  }
+
+  Future<void> _refreshOwnedVenuesBody() async {
+    ownedVenuesLoading = true;
+    ownedVenuesError = null;
+    notifyListeners();
+    try {
+      final data =
+          await api.get('/users/me/venues') as Map<String, dynamic>;
+      final raw = data['venues'];
+      final venues = raw is List
+          ? [
+              for (final item in raw)
+                if (item is Map<String, dynamic>)
+                  OwnedVenueSummary.fromJson(item),
+            ]
+          : const <OwnedVenueSummary>[];
+      final updated = user!.copyWith(venues: venues);
+      await _updateStoredUser(updated);
+      api.setActiveVenueIdHeader(updated.implicitVenueHeaderId);
+    } on ApiException catch (e) {
+      ownedVenuesError = e.message;
+      notifyListeners();
+    } finally {
+      ownedVenuesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> reconcileActiveVenueIfNeeded() async {
+    final current = user;
+    if (current == null || !current.isVenue) return;
+    if (current.venues.isEmpty) return;
+    final active = current.implicitVenueHeaderId;
+    if (active != null &&
+        current.venues.any((venue) => venue.id == active)) {
+      return;
+    }
+    await switchActiveVenue(current.venues.first.id);
+  }
+
+  /// Retorna mensagem de erro ou null em sucesso.
+  Future<String?> switchActiveVenue(String venueId) async {
+    if (user == null || !user!.isVenue) {
+      return 'Conta não é de estabelecimento.';
+    }
+    if (switchingActiveVenue) {
+      return 'Aguarde a troca em andamento.';
+    }
+    final trimmed = venueId.trim();
+    if (trimmed.isEmpty) return 'Estabelecimento inválido.';
+    if (user!.implicitVenueHeaderId == trimmed) return null;
+
+    switchingActiveVenue = true;
+    ownedVenuesError = null;
+    notifyListeners();
+    try {
+      final fields = await api.put(
+        '/users/me/active-venue',
+        body: {'venueId': trimmed},
+      ) as Map<String, dynamic>;
+      final updated = user!.mergeVenueAuthFields(fields);
+      await _updateStoredUser(updated);
+      api.setActiveVenueIdHeader(updated.implicitVenueHeaderId);
+      venueDataGeneration++;
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } finally {
+      switchingActiveVenue = false;
+      notifyListeners();
+    }
+  }
+
+  /// Cadastro autenticado de estabelecimento adicional (POST /venues).
+  Future<OwnedVenueCreateResult> createAdditionalOwnedVenue({
+    required String name,
+    required String city,
+    required String state,
+    String? category,
+    required String documentType,
+    required String documentNumber,
+    bool switchToNewVenue = true,
+  }) async {
+    if (user == null || !user!.isVenue) {
+      return OwnedVenueCreateResult.failure(
+        'Conta não é de estabelecimento.',
+      );
+    }
+    if (creatingOwnedVenue) {
+      return OwnedVenueCreateResult.failure(
+        'Aguarde o cadastro em andamento.',
+      );
+    }
+
+    creatingOwnedVenue = true;
+    notifyListeners();
+    try {
+      final body = <String, dynamic>{
+        'name': name.trim(),
+        'city': city.trim(),
+        'state': state.trim(),
+        'documentType': documentType,
+        'documentNumber': documentNumber,
+      };
+      final trimmedCategory = category?.trim();
+      if (trimmedCategory != null && trimmedCategory.isNotEmpty) {
+        body['category'] = trimmedCategory;
+      }
+
+      final data =
+          await api.post('/venues', body: body) as Map<String, dynamic>;
+      final venueId = data['id']?.toString();
+      if (venueId == null || venueId.isEmpty) {
+        return OwnedVenueCreateResult.failure(
+          'Resposta inválida ao criar estabelecimento.',
+        );
+      }
+
+      await refreshOwnedVenues();
+
+      if (!switchToNewVenue) {
+        return OwnedVenueCreateResult.success(venueId: venueId);
+      }
+
+      final switchErr = await switchActiveVenue(venueId);
+      if (switchErr != null) {
+        return OwnedVenueCreateResult.success(
+          venueId: venueId,
+          switchWarning:
+              'Estabelecimento criado, mas não foi possível selecioná-lo automaticamente: $switchErr',
+        );
+      }
+      return OwnedVenueCreateResult.success(venueId: venueId);
+    } on ApiException catch (e) {
+      return OwnedVenueCreateResult.failure(e.message);
+    } finally {
+      creatingOwnedVenue = false;
       notifyListeners();
     }
   }
@@ -151,24 +329,13 @@ class AuthController extends ChangeNotifier {
     api.setToken(accessToken);
     try {
       final data = await api.get('/users/me') as Map<String, dynamic>;
-      final venue = data['venue'];
       await _persist({
         'accessToken': accessToken,
-        'user': {
-          'id': data['id'],
-          'name': data['name'],
-          'email': data['email'],
-          'role': data['role'],
-          'state': data['state'],
-          'city': data['city'],
-          'avatarUrl': data['avatarUrl'],
-          'venueId': venue is Map<String, dynamic>
-              ? venue['id']
-              : data['venueId'],
-        },
+        'user': data,
       });
     } on ApiException catch (e) {
       api.setToken(null);
+      api.setActiveVenueIdHeader(null);
       error = e.message;
       notifyListeners();
       rethrow;
@@ -292,9 +459,15 @@ class AuthController extends ChangeNotifier {
     try {
       await _endPreviousSession();
       api.setToken(null);
+      api.setActiveVenueIdHeader(null);
       await googleSession.signOut();
       await storage.clear();
       user = null;
+      venueDataGeneration = 0;
+      ownedVenuesError = null;
+      ownedVenuesLoading = false;
+      switchingActiveVenue = false;
+      creatingOwnedVenue = false;
       pendingSocialOnboarding = null;
       pendingAccountRecovery = null;
       notifyListeners();
@@ -361,15 +534,11 @@ class AuthController extends ChangeNotifier {
       'ageBand': ?ageBand,
     }) as Map<String, dynamic>;
     await _updateStoredUser(
-      UserSession(
-        id: data['id'] as String? ?? user!.id,
+      user!.copyWith(
         name: data['name'] as String,
-        email: data['email'] as String? ?? user!.email,
-        role: data['role'] as String? ?? user!.role,
         state: data['state'] as String,
         city: data['city'] as String,
         avatarUrl: data['avatarUrl'] as String?,
-        venueId: user?.venueId,
       ),
     );
   }
@@ -384,15 +553,10 @@ class AuthController extends ChangeNotifier {
       'city': city.trim(),
     }) as Map<String, dynamic>;
     await _updateStoredUser(
-      UserSession(
-        id: data['id'] as String? ?? user!.id,
-        name: data['name'] as String? ?? user!.name,
-        email: data['email'] as String? ?? user!.email,
-        role: data['role'] as String? ?? user!.role,
+      user!.copyWith(
         state: data['state'] as String,
         city: data['city'] as String,
         avatarUrl: data['avatarUrl'] as String? ?? user!.avatarUrl,
-        venueId: user?.venueId,
       ),
     );
   }
@@ -459,6 +623,7 @@ class AuthController extends ChangeNotifier {
   Future<void> _updateStoredUser(UserSession session) async {
     final token = await storage.readToken();
     user = session;
+    api.setActiveVenueIdHeader(session.implicitVenueHeaderId);
     if (token != null) {
       await storage.saveSession(
         token: token,
@@ -475,11 +640,16 @@ class AuthController extends ChangeNotifier {
       await _endPreviousSession();
     }
     api.setToken(token);
+    api.setActiveVenueIdHeader(session.implicitVenueHeaderId);
     await storage.saveSession(
       token: token,
       userJson: jsonEncode(session.toJson()),
     );
     user = session;
     notifyListeners();
+    if (session.isVenue) {
+      await refreshOwnedVenues();
+      await reconcileActiveVenueIfNeeded();
+    }
   }
 }
