@@ -42,7 +42,7 @@ class VenueActiveSelector extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: auth.switchingActiveVenue
               ? null
-              : () => _openSheet(context, auth, activeId),
+              : () => _openSheet(context, auth),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
@@ -122,10 +122,11 @@ class VenueActiveSelector extends StatelessWidget {
   Future<void> _openSheet(
     BuildContext context,
     AuthController auth,
-    String? activeId,
   ) async {
     final venues = auth.user!.venues;
     if (venues.length < 2) return;
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -134,83 +135,109 @@ class VenueActiveSelector extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE0E0E6),
-                      borderRadius: BorderRadius.circular(2),
+      builder: (sheetContext) {
+        return ListenableBuilder(
+          listenable: auth,
+          builder: (sheetContext, _) {
+            final activeId = auth.managingVenueId;
+            final switching = auth.switchingActiveVenue;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE0E0E6),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Seus estabelecimentos',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                    color: AppTheme.ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Créditos, banners e cupons usam o local selecionado.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: AppTheme.fontFamily,
-                    fontSize: 13,
-                    color: AppTheme.muted.withValues(alpha: 0.95),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: venues.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final venue = venues[index];
-                      final selected = venue.id == activeId;
-                      return _VenueTile(
-                        venue: venue,
-                        selected: selected,
-                        onTap: () async {
-                          if (selected) {
-                            Navigator.of(ctx).pop();
-                            return;
-                          }
-                          final err =
-                              await auth.switchActiveVenue(venue.id);
-                          if (!context.mounted) return;
-                          if (err != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(err)),
-                            );
-                            return;
-                          }
-                          Navigator.of(ctx).pop();
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Seus estabelecimentos',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                        color: AppTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Créditos, banners e cupons usam o local selecionado.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 13,
+                        color: AppTheme.muted.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: venues.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, index) {
+                          final venue = venues[index];
+                          final selected = venue.id == activeId;
+                          return _VenueTile(
+                            venue: venue,
+                            selected: selected,
+                            enabled: !switching,
+                            onTap: switching
+                                ? null
+                                : () => _onVenueSelected(
+                                      sheetContext: sheetContext,
+                                      messenger: messenger,
+                                      auth: auth,
+                                      venue: venue,
+                                    ),
+                          );
                         },
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
+  }
+
+  Future<void> _onVenueSelected({
+    required BuildContext sheetContext,
+    required ScaffoldMessengerState? messenger,
+    required AuthController auth,
+    required OwnedVenueSummary venue,
+  }) async {
+    final currentActive = auth.managingVenueId;
+    if (venue.id == currentActive) {
+      _closeSelectorSheet(sheetContext);
+      return;
+    }
+
+    final err = await auth.switchActiveVenue(venue.id);
+    if (!sheetContext.mounted) return;
+    if (err != null) {
+      messenger?.showSnackBar(SnackBar(content: Text(err)));
+      return;
+    }
+    _closeSelectorSheet(sheetContext);
+  }
+
+  void _closeSelectorSheet(BuildContext sheetContext) {
+    if (!sheetContext.mounted) return;
+    Navigator.of(sheetContext).pop();
   }
 }
 
@@ -219,11 +246,13 @@ class _VenueTile extends StatelessWidget {
     required this.venue,
     required this.selected,
     required this.onTap,
+    this.enabled = true,
   });
 
   final OwnedVenueSummary venue;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool enabled;
 
   static const _orange = Color(0xFFF58634);
   static const _purple = AppTheme.accentPurple;
@@ -236,7 +265,7 @@ class _VenueTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
+        onTap: enabled ? onTap : null,
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
