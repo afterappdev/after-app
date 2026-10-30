@@ -84,6 +84,76 @@ Future<void> _pumpSelector(WidgetTester tester, AuthController auth) async {
   await tester.pumpAndSettle();
 }
 
+/// Simula [VenueAccountScreen]: reconstrói o seletor quando o escopo muda.
+Future<void> _pumpWithParentRebuild(
+  WidgetTester tester,
+  AuthController auth,
+) async {
+  await tester.pumpWidget(
+    ChangeNotifierProvider<AuthController>.value(
+      value: auth,
+      child: MaterialApp(
+        home: _VenueScopeHost(auth: auth),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+class _VenueScopeHost extends StatefulWidget {
+  const _VenueScopeHost({required this.auth});
+
+  final AuthController auth;
+
+  @override
+  State<_VenueScopeHost> createState() => _VenueScopeHostState();
+}
+
+class _VenueScopeHostState extends State<_VenueScopeHost> {
+  @override
+  void initState() {
+    super.initState();
+    widget.auth.addListener(_onAuthChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.auth.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = widget.auth;
+    return Scaffold(
+      body: Column(
+        children: [
+          Text('gen-${auth.venueDataGeneration}'),
+          VenueActiveSelector(
+            key: ValueKey(
+              'selector-${auth.venueDataGeneration}-${auth.managingVenueId}',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Finder _barBInSheet() {
+  return find.descendant(
+    of: find.ancestor(
+      of: find.text('Seus estabelecimentos'),
+      matching: find.byType(SafeArea),
+    ),
+    matching: find.text('Bar B'),
+  );
+}
+
 Future<void> _openSheet(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.unfold_more_rounded));
   await tester.pumpAndSettle();
@@ -120,7 +190,7 @@ void main() {
     await _pumpSelector(tester, auth);
     await _openSheet(tester);
 
-    await tester.tap(find.text('Bar B'));
+    await tester.tap(_barBInSheet());
     await tester.pumpAndSettle();
 
     expect(find.text('Seus estabelecimentos'), findsNothing);
@@ -128,6 +198,61 @@ void main() {
     expect(auth.user!.activeVenueId, 'v2');
     expect(find.text('Bar B'), findsWidgets);
   });
+
+  testWidgets(
+    'fecha modal após troca mesmo com rebuild do seletor na tela pai',
+    (tester) async {
+      var putCount = 0;
+      final auth = await _authWithClient(
+        MockClient((request) async {
+          if (request.method == 'PUT' &&
+              request.url.path.endsWith('/users/me/active-venue')) {
+            putCount++;
+            await Future<void>.delayed(const Duration(milliseconds: 30));
+            return _json({
+              'venueId': 'v1',
+              'activeVenueId': 'v2',
+              'venues': [
+                {
+                  'id': 'v1',
+                  'name': 'Bar A',
+                  'city': 'São Paulo',
+                  'state': 'SP',
+                },
+                {
+                  'id': 'v2',
+                  'name': 'Bar B',
+                  'city': 'Campinas',
+                  'state': 'SP',
+                },
+              ],
+            });
+          }
+          return _json({});
+        }),
+      );
+
+      await _pumpWithParentRebuild(tester, auth);
+      await _openSheet(tester);
+
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+
+      await tester.tap(_barBInSheet());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Seus estabelecimentos'), findsNothing);
+      expect(putCount, 1);
+      expect(auth.user!.activeVenueId, 'v2');
+      expect(auth.user!.implicitVenueHeaderId, 'v2');
+
+      await tester.tap(find.byIcon(Icons.unfold_more_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+      expect(find.text('Bar B'), findsWidgets);
+    },
+  );
 
   testWidgets('selecionar estabelecimento já ativo fecha sem chamar API', (
     tester,
@@ -166,7 +291,7 @@ void main() {
     await _pumpSelector(tester, auth);
     await _openSheet(tester);
 
-    await tester.tap(find.text('Bar B'));
+    await tester.tap(_barBInSheet());
     await tester.pumpAndSettle();
 
     expect(find.text('Seus estabelecimentos'), findsOneWidget);
@@ -200,9 +325,9 @@ void main() {
     await _pumpSelector(tester, auth);
     await _openSheet(tester);
 
-    await tester.tap(find.text('Bar B'));
+    await tester.tap(_barBInSheet());
     await tester.pump();
-    await tester.tap(find.text('Bar B'));
+    await tester.tap(_barBInSheet());
     await tester.pumpAndSettle();
 
     expect(putCount, 1);
