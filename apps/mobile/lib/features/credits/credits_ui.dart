@@ -125,8 +125,13 @@ bool vipPackageCheckoutAvailable({
   if (usePixCheckout) {
     return vipCheckoutReady && vipWebCheckoutPack(vipOffer) != null;
   }
-  // Native IAP: VIP checkout is not enabled; common packages use the store.
-  return false;
+  if (!vipCheckoutReady) return false;
+  final product = vipOffer['storeProductId']?.toString() ??
+      vipOffer['productId']?.toString() ??
+      '';
+  return product == 'after.credits.vip.1' &&
+      vipOffer['key']?.toString() == 'vip_unit_1' &&
+      asInt(vipOffer['credits']) == 1;
 }
 
 /// Default package on buy screen: VIP when purchasable, else 1 common credit.

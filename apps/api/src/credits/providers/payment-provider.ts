@@ -95,6 +95,8 @@ export type VerifiedPayment = {
   provider: CanonicalPaymentProvider;
   productId: string;
   externalId: string;
+  /** Google Play consumable: consume only after credits are persisted. */
+  googlePlayPendingConsume?: boolean;
 };
 
 export interface PaymentProvider {
@@ -104,4 +106,9 @@ export interface PaymentProvider {
 
 export interface StorePaymentProvider extends PaymentProvider {
   verify(input: StoreVerifyInput): Promise<VerifiedPayment>;
+  /** Called after a store purchase is credited (e.g. Google Play :consume). */
+  finalizeVerifiedPurchase?(
+    input: StoreVerifyInput,
+    verified: VerifiedPayment,
+  ): Promise<void>;
 }

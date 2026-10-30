@@ -105,7 +105,7 @@ void main() {
     );
   });
 
-  test('seleção inicial no app nativo usa comum se VIP não tem checkout', () {
+  test('seleção inicial no app nativo prefere VIP quando checkout Play está pronto', () {
     final vip = Map<String, dynamic>.from(_vipPackage);
     expect(
       preferredInitialBuyCreditsKey(
@@ -114,12 +114,33 @@ void main() {
         vipCheckoutReady: true,
         usePixCheckout: false,
       ),
-      'unit_1',
+      'vip_unit_1',
     );
     expect(
       vipPackageCheckoutAvailable(
         vipOffer: vip,
         vipCheckoutReady: true,
+        usePixCheckout: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('seleção inicial no app nativo usa comum se VIP não tem checkout', () {
+    final vip = Map<String, dynamic>.from(_vipPackage);
+    expect(
+      preferredInitialBuyCreditsKey(
+        vipOffer: vip,
+        commonPackages: _commonPackages.map(Map<String, dynamic>.from).toList(),
+        vipCheckoutReady: false,
+        usePixCheckout: false,
+      ),
+      'unit_1',
+    );
+    expect(
+      vipPackageCheckoutAvailable(
+        vipOffer: vip,
+        vipCheckoutReady: false,
         usePixCheckout: false,
       ),
       isFalse,
@@ -163,16 +184,17 @@ void main() {
     );
   });
 
-  testWidgets('Android/iOS inicia no pacote comum mesmo com VIP no catálogo',
+  testWidgets('Android/iOS inicia no VIP quando checkout Play está pronto',
       (tester) async {
     await _pumpBuy(
       tester,
       size: const Size(390, 1600),
       usePixCheckout: false,
     );
+    await tester.pumpAndSettle();
 
-    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
-    expect(_border(tester, 'unit_1'), buyCreditsOrange);
+    expect(find.text('Total: R\$ 99,90'), findsOneWidget);
+    expect(_border(tester, 'vip_unit_1'), buyCreditsPurple);
   });
 
   testWidgets('mantém pacote comum após escolha manual no refresh',
@@ -531,7 +553,7 @@ void main() {
     expect(posts, isEmpty);
   });
 
-  testWidgets('continuar com VIP não abre checkout nem cobra', (tester) async {
+  testWidgets('Android abre checkout da loja para VIP', (tester) async {
     final posts = <String>[];
     await _pumpBuy(
       tester,
@@ -541,29 +563,21 @@ void main() {
         if (request.method == 'POST') posts.add(request.url.path);
       },
     );
+    await tester.pumpAndSettle();
 
-    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
-    expect(_border(tester, 'unit_1'), buyCreditsOrange);
-
-    await tester.tap(find.text('1 crédito VIP'));
-    await tester.pump();
     expect(find.text('Total: R\$ 99,90'), findsOneWidget);
+    expect(_border(tester, 'vip_unit_1'), buyCreditsPurple);
 
     await tester.tap(find.text('Continuar para pagamento'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump();
 
-    expect(
-      find.textContaining('ainda não está disponível'),
-      findsOneWidget,
-    );
+    expect(find.byType(CheckoutScreen), findsOneWidget);
     expect(find.byType(WebCheckoutScreen), findsNothing);
-    expect(find.byType(CheckoutScreen), findsNothing);
+    final screen = tester.widget<CheckoutScreen>(find.byType(CheckoutScreen));
+    expect(screen.pack['key'], 'vip_unit_1');
+    expect(screen.pack['storeProductId'], 'after.credits.vip.1');
     expect(posts, isEmpty);
-
-    await tester.tap(find.text('Entendi'));
-    await tester.pumpAndSettle();
-    expect(find.text('Total: R\$ 99,90'), findsOneWidget);
-    expect(find.byType(CheckoutScreen), findsNothing);
   });
 
   testWidgets('atalho Últimas compras rola até o histórico', (tester) async {

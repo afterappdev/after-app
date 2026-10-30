@@ -8,19 +8,38 @@ import {
   VerifiedPayment,
 } from './payment-provider';
 
+type GooglePurchasePayload = {
+  error?: { message?: string };
+  purchaseState?: number;
+  consumptionState?: number;
+  orderId?: string;
+};
+
 @Injectable()
 export class GooglePlayPaymentProvider implements StorePaymentProvider {
   readonly id = 'google_play' as const;
   private readonly logger = new Logger(GooglePlayPaymentProvider.name);
+  private accessTokenResolver: () => Promise<string | null> =
+    this.googleAccessToken.bind(this);
 
   get isConfigured(): boolean {
     return Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?.trim());
   }
 
+  /** Test hook: skip OAuth and inject a bearer token for mocked fetch. */
+  static forTests(options: { accessToken: string | null }): GooglePlayPaymentProvider {
+    const provider = new GooglePlayPaymentProvider();
+    provider.accessTokenResolver = async () => options.accessToken;
+    return provider;
+  }
+
   async verify(input: StoreVerifyInput): Promise<VerifiedPayment> {
-    const packageName =
-      process.env.GOOGLE_PLAY_PACKAGE_NAME ?? 'com.r2p.after.after_app';
-    const accessToken = await this.googleAccessToken();
+    const token = (input.verificationData ?? '').trim();
+    if (!token) {
+      throw new BadRequestException('Token de compra do Google Play inválido.');
+    }
+
+    const accessToken = await this.accessTokenResolver();
     if (!accessToken) {
       if (!isProduction()) {
         this.logger.warn(
@@ -29,7 +48,8 @@ export class GooglePlayPaymentProvider implements StorePaymentProvider {
         return {
           provider: this.id,
           productId: input.productId,
-          externalId: input.verificationData || input.purchaseId,
+          externalId: input.purchaseId?.trim() || token,
+          googlePlayPendingConsume: false,
         };
       }
       throw new BadRequestException(
@@ -37,41 +57,96 @@ export class GooglePlayPaymentProvider implements StorePaymentProvider {
       );
     }
 
-    const url =
+    const payload = await this.fetchPurchase(input.productId, token, accessToken);
+    this.assertPurchasePaid(payload);
+
+    return {
+      provider: this.id,
+      productId: input.productId,
+      externalId: payload.orderId?.trim() || token,
+      googlePlayPendingConsume: payload.consumptionState !== 1,
+    };
+  }
+
+  async finalizeVerifiedPurchase(
+    input: StoreVerifyInput,
+    verified: VerifiedPayment,
+  ): Promise<void> {
+    if (!verified.googlePlayPendingConsume) return;
+
+    const token = (input.verificationData ?? '').trim();
+    if (!token) {
+      throw new BadRequestException('Token de compra do Google Play inválido.');
+    }
+
+    const accessToken = await this.accessTokenResolver();
+    if (!accessToken) {
+      if (!isProduction()) {
+        this.logger.warn(
+          'Google Play consume ignorado em desenvolvimento (sem credenciais).',
+        );
+        return;
+      }
+      throw new BadRequestException(
+        'Verificação do Google Play não configurada no servidor.',
+      );
+    }
+
+    const url = this.purchaseUrl(input.productId, token);
+    const res = await fetch(`${url}:consume`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (res.ok) return;
+
+    let message = 'Não foi possível consumir a compra no Google Play.';
+    try {
+      const body = (await res.json()) as { error?: { message?: string } };
+      if (body.error?.message) message = body.error.message;
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new BadRequestException(message);
+  }
+
+  private purchaseUrl(productId: string, purchaseToken: string): string {
+    const packageName =
+      process.env.GOOGLE_PLAY_PACKAGE_NAME ?? 'com.r2p.after.after_app';
+    return (
       `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/` +
-      `${encodeURIComponent(packageName)}/purchases/products/${encodeURIComponent(input.productId)}` +
-      `/tokens/${encodeURIComponent(input.verificationData)}`;
+      `${encodeURIComponent(packageName)}/purchases/products/${encodeURIComponent(productId)}` +
+      `/tokens/${encodeURIComponent(purchaseToken)}`
+    );
+  }
+
+  private async fetchPurchase(
+    productId: string,
+    purchaseToken: string,
+    accessToken: string,
+  ): Promise<GooglePurchasePayload> {
+    const url = this.purchaseUrl(productId, purchaseToken);
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const payload = (await res.json()) as {
-      error?: { message?: string };
-      purchaseState?: number;
-      consumptionState?: number;
-      orderId?: string;
-    };
+    const payload = (await res.json()) as GooglePurchasePayload;
     if (!res.ok) {
       throw new BadRequestException(
         payload.error?.message ??
           'Não foi possível validar a compra no Google Play.',
       );
     }
-    if (payload.purchaseState !== 0) {
-      throw new BadRequestException('Compra do Google Play não está paga.');
-    }
+    return payload;
+  }
 
-    if (payload.consumptionState !== 1) {
-      await fetch(`${url}:consume`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+  private assertPurchasePaid(payload: GooglePurchasePayload): void {
+    if (payload.purchaseState === 0) return;
+    if (payload.purchaseState === 1) {
+      throw new BadRequestException('Compra do Google Play ainda está pendente.');
     }
-
-    return {
-      provider: this.id,
-      productId: input.productId,
-      externalId: payload.orderId || input.verificationData || input.purchaseId,
-    };
+    if (payload.purchaseState === 2) {
+      throw new BadRequestException('Compra do Google Play foi cancelada.');
+    }
+    throw new BadRequestException('Compra do Google Play não está paga.');
   }
 
   private async googleAccessToken(): Promise<string | null> {

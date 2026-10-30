@@ -44,6 +44,8 @@ String storeProductIdFor(String packageKey) {
       return 'after.credits.5';
     case 'combo_10':
       return 'after.credits.10';
+    case 'vip_unit_1':
+      return 'after.credits.vip.1';
     default:
       return packageKey;
   }

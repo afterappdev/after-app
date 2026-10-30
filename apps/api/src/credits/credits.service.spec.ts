@@ -99,6 +99,7 @@ describe('CreditsService billing', () => {
   const originalAppAppleId = process.env.APPLE_APP_APPLE_ID;
   let prisma: ReturnType<typeof createPrisma>;
   let googleVerify: jest.Mock<Promise<VerifiedPayment>, [unknown]>;
+  let googleFinalize: jest.Mock<Promise<void>, [unknown, unknown]>;
   let payments: {
     storeProvider: jest.Mock;
     pixProvider: jest.Mock;
@@ -116,10 +117,12 @@ describe('CreditsService billing', () => {
     delete process.env.MERCADO_PAGO_PUBLIC_KEY;
     prisma = createPrisma();
     googleVerify = jest.fn();
+    googleFinalize = jest.fn().mockResolvedValue(undefined);
     payments = {
       storeProvider: jest.fn().mockReturnValue({
         id: 'google_play',
         verify: googleVerify,
+        finalizeVerifiedPurchase: googleFinalize,
       }),
       pixProvider: jest.fn().mockReturnValue(new PixPaymentProvider()),
       cardProvider: jest.fn().mockReturnValue({
@@ -276,6 +279,35 @@ describe('CreditsService billing', () => {
       update: { balance: { increment: UNIT.credits } },
     });
     expect(adminPush.notifyPurchasePaid).toHaveBeenCalledTimes(1);
+  });
+
+  it('store-confirm chama finalize Google após creditar (consume pendente)', async () => {
+    googleVerify.mockResolvedValue({
+      provider: 'google_play',
+      productId: UNIT.storeProductId,
+      externalId: 'order-consume',
+      googlePlayPendingConsume: true,
+    });
+    const paid = {
+      id: 'p-consume',
+      venueId: VENUE.id,
+      status: 'PAID',
+      providerTxId: 'google_play:order-consume',
+      credits: UNIT.credits,
+    };
+    prisma.creditPurchase.findUnique.mockResolvedValueOnce(null);
+    prisma.creditPurchase.create.mockResolvedValue(paid);
+    prisma.creditWallet.upsert.mockResolvedValue({
+      venueId: VENUE.id,
+      balance: UNIT.credits,
+    });
+
+    await service.confirmStorePurchase(USER_ID, storeDto);
+
+    expect(googleFinalize).toHaveBeenCalledTimes(1);
+    expect(googleFinalize.mock.calls[0][0]).toMatchObject({
+      verificationData: storeDto.verificationData,
+    });
   });
 
   it('retry de store-confirm não gera segundo evento de push', async () => {

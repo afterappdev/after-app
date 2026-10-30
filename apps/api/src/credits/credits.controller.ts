@@ -27,6 +27,7 @@ import {
 } from '../common/decorators/current-user.decorator';
 import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { VIP_CREDIT_PACKAGES } from './vip-catalog';
+import { STORE_CONFIRM_PACKAGE_KEYS } from './store-catalog';
 import { WEB_CREDIT_PACKAGE_KEYS } from './vip-web-checkout';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ActiveVenueId } from '../common/decorators/active-venue.decorator';
@@ -35,6 +36,7 @@ import { STORE_PROVIDER_INPUTS } from './providers/payment-provider';
 import { FiscalPurchaseInput } from './fiscal-document';
 
 const PACKAGE_KEYS = CREDIT_PACKAGES.map((p) => p.key);
+const STORE_PACKAGE_KEYS = STORE_CONFIRM_PACKAGE_KEYS;
 
 class FiscalFieldsDto implements FiscalPurchaseInput {
   @IsOptional()
@@ -71,8 +73,8 @@ class CheckoutDto {
 
 class StoreConfirmDto extends FiscalFieldsDto {
   @IsString()
-  @IsIn(PACKAGE_KEYS)
-  packageKey!: (typeof PACKAGE_KEYS)[number];
+  @IsIn(STORE_PACKAGE_KEYS)
+  packageKey!: (typeof STORE_PACKAGE_KEYS)[number];
 
   @IsString()
   productId!: string;

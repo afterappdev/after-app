@@ -147,7 +147,11 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
         return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
       }
       final payable = vipWebCheckoutPack(offer);
-      return _VipOfferLoad(offer: offer, checkoutReady: payable != null);
+      final checkoutReady = _usePixCheckout
+          ? payable != null
+          : isDisplayableVipOffer(offer) &&
+              offer['storeProductId']?.toString() == 'after.credits.vip.1';
+      return _VipOfferLoad(offer: offer, checkoutReady: checkoutReady);
     } on ApiException catch (error) {
       if (error.statusCode == 404) {
         return _VipOfferLoad(offer: copyOfficialVipReferenceOffer());
@@ -277,15 +281,32 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     final pack = _selected;
     if (pack == null) return;
     if (isVipCreditRecord(pack)) {
-      final payable = _vipCheckoutReady && _usePixCheckout
-          ? vipWebCheckoutPack(pack)
-          : null;
-      if (payable == null) {
+      if (!_vipCheckoutReady) {
         await _blockVipCheckout();
         return;
       }
+      if (_usePixCheckout) {
+        final payable = vipWebCheckoutPack(pack);
+        if (payable == null) {
+          await _blockVipCheckout();
+          return;
+        }
+        final paid = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(builder: (_) => WebCheckoutScreen(pack: payable)),
+        );
+        if (!mounted) return;
+        if (paid == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Crédito VIP adicionado à sua carteira.'),
+            ),
+          );
+        }
+        await _load();
+        return;
+      }
       final paid = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => WebCheckoutScreen(pack: payable)),
+        MaterialPageRoute(builder: (_) => CheckoutScreen(pack: pack)),
       );
       if (!mounted) return;
       if (paid == true) {

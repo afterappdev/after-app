@@ -55,7 +55,10 @@ import {
 } from './providers/card.provider';
 import {
   CanonicalPaymentProvider,
+  StorePaymentProvider,
   StoreProviderInput,
+  StoreVerifyInput,
+  VerifiedPayment,
   buildProviderTxId,
   cardOrderIdFromProviderTxId,
   normalizeProviderId,
@@ -90,6 +93,11 @@ import {
   FiscalSnapshot,
   resolveFiscalSnapshot,
 } from './fiscal-document';
+import {
+  isVipStorePackage,
+  resolveStorePackageByProductId,
+  type VipStorePackage,
+} from './store-catalog';
 import {
   assertMercadoPagoCardChargeAllowed,
   assertMercadoPagoPixChargeAllowed,
@@ -274,7 +282,7 @@ export class CreditsService {
   async confirmStorePurchase(
     userId: string,
     dto: {
-      packageKey: CreditPackageKey;
+      packageKey: string;
       productId: string;
       provider: StoreProviderInput | string;
       purchaseId: string;
@@ -286,15 +294,14 @@ export class CreditsService {
     const provider = this.requireStoreProvider(dto.provider);
     const store = this.payments.storeProvider(provider);
 
-    const verified = await store.verify({
+    const storeVerifyInput = {
       productId: dto.productId,
       purchaseId: dto.purchaseId,
       verificationData: dto.verificationData,
-    });
+    };
+    const verified = await store.verify(storeVerifyInput);
 
-    const pack = CREDIT_PACKAGES.find(
-      (item) => item.storeProductId === dto.productId,
-    );
+    const pack = resolveStorePackageByProductId(dto.productId);
     if (!pack) {
       throw new BadRequestException('Produto da loja inválido');
     }
@@ -311,16 +318,33 @@ export class CreditsService {
     );
     const venue = await this.requireVenueOwned(userId, activeVenueId);
 
-    const purchase = await this.creditVerifiedPurchase({
-      venueId: venue.id,
-      pack,
-      provider,
-      providerTxId,
-      productId: pack.storeProductId,
-      fiscal,
-    });
-    this.enqueuePurchasePaid(purchase);
-    return toPublicPurchase(purchase.record);
+    let credited: { record: CreditPurchase; created: boolean };
+    if (isVipStorePackage(pack)) {
+      credited = await this.vipVerifiedStorePurchase({
+        venueId: venue.id,
+        pack,
+        provider,
+        providerTxId,
+        productId: pack.storeProductId,
+        fiscal,
+      });
+    } else {
+      credited = await this.creditVerifiedPurchase({
+        venueId: venue.id,
+        pack,
+        provider,
+        providerTxId,
+        productId: pack.storeProductId,
+        fiscal,
+      });
+    }
+    this.enqueuePurchasePaid(credited);
+    await this.finalizeStorePurchaseAfterCredit(
+      store,
+      storeVerifyInput,
+      verified,
+    );
+    return toPublicPurchase(credited.record);
   }
 
   async createPixCharge(
@@ -1704,6 +1728,92 @@ export class CreditsService {
     });
   }
 
+  private async vipVerifiedStorePurchase(input: {
+    venueId: string;
+    pack: VipStorePackage;
+    provider: CanonicalPaymentProvider;
+    providerTxId: string;
+    productId: string;
+    fiscal?: FiscalSnapshot;
+  }): Promise<{ record: CreditPurchase; created: boolean }> {
+    if (!this.vipCredits) {
+      throw new ServiceUnavailableException('Checkout VIP indisponível.');
+    }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const existing = await tx.creditPurchase.findUnique({
+          where: { providerTxId: input.providerTxId },
+        });
+        if (existing) {
+          if (existing.venueId !== input.venueId) {
+            throw new BadRequestException('Esta compra já foi utilizada.');
+          }
+          return { record: existing, created: false };
+        }
+
+        const purchase = await tx.creditPurchase.create({
+          data: {
+            venueId: input.venueId,
+            packageKey: input.pack.key,
+            productId: input.productId,
+            amountPaid: input.pack.referencePriceBrl,
+            currency: 'BRL',
+            credits: input.pack.credits,
+            status: 'PAID',
+            provider: input.provider,
+            providerTxId: input.providerTxId,
+            confirmedAt: new Date(),
+            ...(input.fiscal ?? resolveFiscalSnapshot(null)),
+          },
+        });
+
+        const granted = await this.vipCredits!.grant(
+          {
+            venueId: input.venueId,
+            operationKey: vipGrantOperationKey(purchase.id),
+            credits: input.pack.credits,
+          },
+          tx,
+        );
+        if (!granted.applied) {
+          const prior = await tx.vipCreditEntry.findUnique({
+            where: { operationKey: vipGrantOperationKey(purchase.id) },
+          });
+          if (
+            !prior ||
+            prior.venueId !== input.venueId ||
+            prior.kind !== 'grant' ||
+            prior.balanceDelta < 1
+          ) {
+            throw new ServiceUnavailableException('Crédito VIP não registrado.');
+          }
+        }
+
+        return { record: purchase, created: true };
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      if (error instanceof ServiceUnavailableException) {
+        throw error;
+      }
+      const code = (error as { code?: string }).code;
+      if (code === 'P2002') {
+        const again = await this.prisma.creditPurchase.findUnique({
+          where: { providerTxId: input.providerTxId },
+        });
+        if (again && again.venueId === input.venueId) {
+          return { record: again, created: false };
+        }
+        if (again) {
+          throw new BadRequestException('Esta compra já foi utilizada.');
+        }
+      }
+      throw error;
+    }
+  }
+
   private async creditVerifiedPurchase(input: {
     venueId: string;
     pack: (typeof CREDIT_PACKAGES)[number];
@@ -1765,6 +1875,24 @@ export class CreditsService {
         }
       }
       throw error;
+    }
+  }
+
+  private async finalizeStorePurchaseAfterCredit(
+    store: StorePaymentProvider,
+    input: StoreVerifyInput,
+    verified: VerifiedPayment,
+  ): Promise<void> {
+    if (!verified.googlePlayPendingConsume) return;
+    if (!store.finalizeVerifiedPurchase) return;
+    try {
+      await store.finalizeVerifiedPurchase(input, verified);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'erro desconhecido';
+      this.logger.warn(
+        `Google Play consume após crédito falhou (${verified.externalId}): ${message}`,
+      );
     }
   }
 

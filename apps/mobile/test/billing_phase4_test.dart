@@ -145,6 +145,7 @@ void main() {
     expect(storeProductIdFor('unit_1'), 'after.credits.1');
     expect(storeProductIdFor('combo_5'), 'after.credits.5');
     expect(storeProductIdFor('combo_10'), 'after.credits.10');
+    expect(storeProductIdFor('vip_unit_1'), 'after.credits.vip.1');
     expect(_officialPackages.map((p) => p['key']), [
       'unit_1',
       'combo_5',
