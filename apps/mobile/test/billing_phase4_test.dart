@@ -35,6 +35,18 @@ const _pack = {
   'storeProductId': 'after.credits.1',
 };
 
+Widget _withBuyCreditsAuth({required ApiClient api, required Widget child}) {
+  final auth = AuthController(api: api, storage: AuthStorage())
+    ..bootstrapping = false;
+  return MultiProvider(
+    providers: [
+      Provider<ApiClient>.value(value: api),
+      ChangeNotifierProvider<AuthController>.value(value: auth),
+    ],
+    child: child,
+  );
+}
+
 const _officialPackages = [
   {
     'key': 'unit_1',
@@ -602,9 +614,10 @@ void main() {
       return http.Response('{}', 404);
     });
 
+    final api = ApiClient(client: client);
     await tester.pumpWidget(
-      Provider.value(
-        value: ApiClient(client: client),
+      _withBuyCreditsAuth(
+        api: api,
         child: const MaterialApp(
           home: BuyCreditsScreen(
             reconcilePendingPix: false,
@@ -679,9 +692,10 @@ void main() {
       return http.Response('{}', 404);
     });
 
+    final api = ApiClient(client: client);
     await tester.pumpWidget(
-      Provider.value(
-        value: ApiClient(client: client),
+      _withBuyCreditsAuth(
+        api: api,
         child: const MaterialApp(
           home: BuyCreditsScreen(
             reconcilePendingPix: false,
@@ -776,9 +790,10 @@ void main() {
       return http.Response('{}', 404);
     });
 
+    final api = ApiClient(client: client);
     await tester.pumpWidget(
-      Provider.value(
-        value: ApiClient(client: client),
+      _withBuyCreditsAuth(
+        api: api,
         child: const MaterialApp(
           home: BuyCreditsScreen(
             reconcilePendingPix: true,
@@ -851,9 +866,10 @@ void main() {
       return http.Response('{}', 404);
     });
 
+    final api = ApiClient(client: client);
     await tester.pumpWidget(
-      Provider.value(
-        value: ApiClient(client: client),
+      _withBuyCreditsAuth(
+        api: api,
         child: const MaterialApp(
           home: BuyCreditsScreen(
             reconcilePendingPix: true,

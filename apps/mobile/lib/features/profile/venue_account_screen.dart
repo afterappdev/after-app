@@ -8,7 +8,9 @@ import '../../core/router/app_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
+import '../venue/add_venue_screen.dart';
 import 'delete_account_button.dart';
+import 'venue_active_selector.dart';
 import 'venue_fiscal_document_screen.dart';
 
 class VenueAccountScreen extends StatefulWidget {
@@ -26,22 +28,44 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
   Map<String, dynamic>? _venue;
   bool _loading = true;
 
+  AuthController? _auth;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _auth = context.read<AuthController>();
+      _auth!.addListener(_onVenueScopeChanged);
+      context.read<AuthController>().refreshOwnedVenues();
+      _loadVenue();
+    });
+  }
+
+  @override
+  void dispose() {
+    _auth?.removeListener(_onVenueScopeChanged);
+    super.dispose();
+  }
+
+  void _onVenueScopeChanged() {
+    if (!mounted) return;
     _loadVenue();
   }
 
   Future<void> _loadVenue() async {
-    final venueId = context.read<AuthController>().user?.venueId;
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
+    final venueId = auth.managingVenueId;
     if (venueId == null) {
       setState(() => _loading = false);
       return;
     }
+    setState(() => _loading = true);
     try {
       final data =
           await context.read<ApiClient>().get('/venues/$venueId') as Map<String, dynamic>;
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _venue = data;
         _loading = false;
@@ -66,7 +90,7 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
   }
 
   Future<void> _openPublicPage() async {
-    final id = context.read<AuthController>().user?.venueId;
+    final id = context.read<AuthController>().managingVenueId;
     if (id == null) return;
     final result = await Navigator.of(context).pushNamed(
       AppRoutes.venuePublic,
@@ -86,6 +110,15 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
   Future<void> _openEdit() async {
     await Navigator.of(context).pushNamed(AppRoutes.venueEdit);
     if (mounted) await _loadVenue();
+  }
+
+  Future<void> _openAddVenue() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const AddVenueScreen()),
+    );
+    if (!mounted || created != true) return;
+    await context.read<AuthController>().refreshOwnedVenues();
+    await _loadVenue();
   }
 
   Future<void> _logout() async {
@@ -135,12 +168,9 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
           : Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 430),
-                child: Column(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   children: [
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                        children: [
                           Row(
                             children: [
                               CircleAvatar(
@@ -205,6 +235,80 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                             ],
                           ),
                           const SizedBox(height: 20),
+                          if (user?.isVenue == true)
+                            Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            child: InkWell(
+                              key: const Key('venue-add-establishment'),
+                              onTap: _openAddVenue,
+                              borderRadius: BorderRadius.circular(16),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: AppTheme.accentPurple
+                                        .withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 14,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF58634)
+                                            .withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add_business_outlined,
+                                        color: Color(0xFFF58634),
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Adicionar estabelecimento',
+                                            style: TextStyle(
+                                              fontFamily: AppTheme.fontFamily,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14,
+                                              color: Color(0xFF282829),
+                                            ),
+                                          ),
+                                          SizedBox(height: 2),
+                                          Text(
+                                            'Outro local na mesma conta',
+                                            style: TextStyle(
+                                              fontFamily: AppTheme.fontFamily,
+                                              fontSize: 12,
+                                              color: Color(0xFF8B8B96),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: AppTheme.accentPurple
+                                          .withValues(alpha: 0.7),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            ),
+                          const SizedBox(height: 16),
+                          const VenueActiveSelector(),
                           const _SectionLabel('GERENCIAR'),
                           const SizedBox(height: 8),
                           _InfoCard(
@@ -233,18 +337,21 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                                 onTap: () => Navigator.of(context)
                                     .pushNamed(AppRoutes.credits),
                               ),
-                              if (user?.venueId != null) ...[
+                              if (context.read<AuthController>().managingVenueId !=
+                                  null) ...[
                                 const _RowDivider(),
                                 _AccountRow(
                                   icon: Icons.receipt_long_outlined,
-                                  label: 'Dados fiscais',
-                                  value: 'CPF ou CNPJ para faturamento',
+                                  label: 'Documento fiscal',
+                                  value: 'Consultar ou atualizar CPF/CNPJ',
                                   valueIsHint: true,
                                   onTap: () {
+                                    final venueId =
+                                        context.read<AuthController>().managingVenueId!;
                                     Navigator.of(context).push(
                                       MaterialPageRoute<void>(
                                         builder: (_) => VenueFiscalDocumentScreen(
-                                          venueId: user!.venueId!,
+                                          venueId: venueId,
                                         ),
                                       ),
                                     );
@@ -253,9 +360,6 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                               ],
                             ],
                           ),
-                        ],
-                      ),
-                    ),
                     TextButton.icon(
                       onPressed: _logout,
                       icon: const Icon(Icons.logout_rounded, color: _muted),
@@ -275,6 +379,7 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                       index: 3,
                       onTap: _onNavTap,
                     ),
+                    SizedBox(height: MediaQuery.paddingOf(context).bottom),
                   ],
                 ),
               ),

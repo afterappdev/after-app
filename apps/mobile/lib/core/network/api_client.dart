@@ -51,11 +51,15 @@ String _normalizeApiPath(String path) {
 
 bool _reservedVenueSegment(String id) => id == 'geocode' || id == 'search';
 
+/// Must match API `ACTIVE_VENUE_HEADER` (`venue-auth-payload.ts`).
+const kActiveVenueIdHeader = 'x-after-active-venue-id';
+
 class ApiClient {
   ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
   String? _token;
+  String? _activeVenueIdHeader;
 
   /// Invoked at most as a session-invalidation hook when a request that
   /// actually sent `Authorization` receives 401. Must be idempotent.
@@ -63,9 +67,33 @@ class ApiClient {
 
   void setToken(String? token) => _token = token;
 
+  void setActiveVenueIdHeader(String? venueId) {
+    final trimmed = venueId?.trim();
+    _activeVenueIdHeader =
+        trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  String? get activeVenueIdHeader => _activeVenueIdHeader;
+
+  /// Fixa o header do estabelecimento durante checkout (troca de ativo no meio do pagamento).
+  Future<T> runWithActiveVenueHeader<T>(
+    String? venueId,
+    Future<T> Function() action,
+  ) async {
+    final previous = _activeVenueIdHeader;
+    setActiveVenueIdHeader(venueId);
+    try {
+      return await action();
+    } finally {
+      setActiveVenueIdHeader(previous);
+    }
+  }
+
   Map<String, String> _jsonHeaders({required bool omitAuth}) => {
         'Content-Type': 'application/json',
         if (!omitAuth && _token != null) 'Authorization': 'Bearer $_token',
+        if (_activeVenueIdHeader != null)
+          kActiveVenueIdHeader: _activeVenueIdHeader!,
       };
 
   Future<http.Response> _send(Future<http.Response> Function() request) async {
@@ -170,6 +198,9 @@ class ApiClient {
       final request = http.MultipartRequest('POST', uri);
       if (!omitAuth && _token != null) {
         request.headers['Authorization'] = 'Bearer $_token';
+      }
+      if (_activeVenueIdHeader != null) {
+        request.headers[kActiveVenueIdHeader] = _activeVenueIdHeader!;
       }
       request.files.add(
         http.MultipartFile.fromBytes(

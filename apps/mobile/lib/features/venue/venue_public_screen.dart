@@ -203,8 +203,13 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     if (session == null || !session.isVenue) return false;
     if (_venue?['isOwner'] == true) return true;
     final loadedId = _venue?['id']?.toString();
-    if (session.venueId != null &&
-        (session.venueId == widget.venueId || session.venueId == loadedId)) {
+    final ids = <String>{
+      if (session.venueId != null) session.venueId!,
+      if (session.activeVenueId != null) session.activeVenueId!,
+      for (final v in session.venues) v.id,
+    };
+    if (ids.contains(widget.venueId) ||
+        (loadedId != null && ids.contains(loadedId))) {
       return true;
     }
     final ownerId = _venue?['ownerUserId']?.toString();

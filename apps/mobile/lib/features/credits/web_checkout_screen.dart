@@ -14,6 +14,7 @@ import 'credits_ui.dart';
 import 'fiscal_invoice_controller.dart';
 import 'venue_fiscal_document.dart';
 import 'fiscal_invoice_section.dart';
+import 'checkout_venue_pin.dart';
 import 'pix_checkout.dart';
 import 'pix_poller.dart';
 
@@ -37,7 +38,8 @@ class WebCheckoutScreen extends StatefulWidget {
   State<WebCheckoutScreen> createState() => _WebCheckoutScreenState();
 }
 
-class _WebCheckoutScreenState extends State<WebCheckoutScreen> {
+class _WebCheckoutScreenState extends State<WebCheckoutScreen>
+    with CheckoutVenuePin<WebCheckoutScreen> {
   late final CardBrickHost _host;
   late final String _viewType;
   late final FiscalInvoiceController _fiscal;
@@ -86,6 +88,7 @@ class _WebCheckoutScreenState extends State<WebCheckoutScreen> {
         api: context.read<ApiClient>(),
         auth: auth,
         fiscal: _fiscal,
+        venueIdOverride: pinnedCheckoutVenueId,
         onLoaded: () {
           if (mounted) setState(() {});
         },
@@ -226,14 +229,17 @@ class _WebCheckoutScreenState extends State<WebCheckoutScreen> {
     });
     try {
       final api = context.read<ApiClient>();
-      final raw = await api.post(
-        '/credits/card/pay',
-        body: cardPayBody(
-          packageKey: _packageKey,
-          idempotencyKey: next.idempotencyKey,
-          token: form.token,
-          paymentMethodId: form.paymentMethodId,
-          fiscal: _fiscal.toApiPayload(),
+      final raw = await runForCheckoutVenue(
+        api,
+        () => api.post(
+          '/credits/card/pay',
+          body: cardPayBody(
+            packageKey: _packageKey,
+            idempotencyKey: next.idempotencyKey,
+            token: form.token,
+            paymentMethodId: form.paymentMethodId,
+            fiscal: _fiscal.toApiPayload(),
+          ),
         ),
       );
       final step = applyCardPayResult(next, CardPayResult.parse(raw));
@@ -306,7 +312,10 @@ class _WebCheckoutScreenState extends State<WebCheckoutScreen> {
     setState(() => _refreshingWallet = true);
     try {
       final api = context.read<ApiClient>();
-      final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
+      final wallet = await runForCheckoutVenue(api, () async {
+        final body = await api.get('/credits/wallet');
+        return Map<String, dynamic>.from(body as Map);
+      });
       if (!mounted) return;
       setState(() {
         _walletBalance = walletBalanceFromResponse(wallet);
