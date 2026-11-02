@@ -26,6 +26,7 @@ describe('PrismaPromoPushStore', () => {
         contentKind: null,
         venueName: 'Bar',
         bannerTitle: null,
+        bannerDescription: null,
         venueLogoUrl: null,
         bannerStatus: 'ACTIVE',
         venueHidden: false,

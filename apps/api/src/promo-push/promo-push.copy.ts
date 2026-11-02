@@ -1,17 +1,26 @@
 export type PromoContentKind = 'PROMOTION' | 'EVENT' | null;
 
+export const PROMO_PUSH_BODY_FALLBACK =
+  'Confira o que está rolando na sua cidade. Toque para ver!';
+
 /**
- * Temporary classification.
- * Banner.contentKind is optional. The current app does not send it, so new
- * rows stay null. PROMOTION and EVENT are used only when that value was stored
- * explicitly. Without it, the title says "novidade" and never "promoção" or
- * "evento". The home-screen discount regex is intentionally ignored: it would
- * assert a promotion from an uncertain title.
+ * FCM accepts long notification bodies; Android and iOS may truncate what they
+ * show in the shade. We send the banner description verbatim (UTF-8, newlines).
+ * Each data value must stay under 4KB; the body lives in `notification`, not data.
  */
-export function promoPushCopy(
+export const PROMO_PUSH_FCM_BODY_MAX = 4096;
+
+export function promoPushBody(description: string | null | undefined): string {
+  const trimmed = description?.trim() ?? '';
+  if (!trimmed) return PROMO_PUSH_BODY_FALLBACK;
+  if (trimmed.length <= PROMO_PUSH_FCM_BODY_MAX) return trimmed;
+  return `${trimmed.slice(0, PROMO_PUSH_FCM_BODY_MAX - 1)}…`;
+}
+
+function promoPushTitleFallback(
   venueName: string,
   contentKind: PromoContentKind,
-): { title: string; body: string } {
+): string {
   const name = venueName.trim() || 'Um estabelecimento';
   const kind =
     contentKind === 'PROMOTION'
@@ -19,9 +28,32 @@ export function promoPushCopy(
       : contentKind === 'EVENT'
         ? 'um evento'
         : 'uma novidade';
+  return `${name} publicou ${kind} para hoje!`;
+}
+
+/** `{venue} publicou {banner.title}`; generic kind-based title when banner title is missing. */
+export function promoPushTitle(
+  venueName: string,
+  contentKind: PromoContentKind,
+  bannerTitle?: string | null,
+): string {
+  const trimmed = bannerTitle?.trim() ?? '';
+  if (trimmed) {
+    const name = venueName.trim() || 'Um estabelecimento';
+    return `${name} publicou ${trimmed}`;
+  }
+  return promoPushTitleFallback(venueName, contentKind);
+}
+
+export function promoPushCopy(
+  venueName: string,
+  contentKind: PromoContentKind,
+  bannerTitle?: string | null,
+  description?: string | null,
+): { title: string; body: string } {
   return {
-    title: `${name} publicou ${kind} para hoje!`,
-    body: 'Confira o que está rolando na sua cidade. Toque para ver!',
+    title: promoPushTitle(venueName, contentKind, bannerTitle),
+    body: promoPushBody(description),
   };
 }
 
@@ -29,20 +61,4 @@ export function promoPushCopy(
 export function fcmCollapseKey(eventId: string): string {
   const cleaned = eventId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
   return cleaned || 'promo';
-}
-
-/** VIP push title shown on devices: venue name + publication title in quotes. */
-export function vipPushCopy(
-  venueName: string,
-  bannerTitle: string | null | undefined,
-): { title: string; body: string } {
-  const name = venueName.trim() || 'Um estabelecimento';
-  const publication = bannerTitle?.trim();
-  const title = publication
-    ? `${name} publicou "${publication}"`
-    : `${name} publicou uma novidade VIP`;
-  return {
-    title,
-    body: 'Confira o que está rolando na sua cidade. Toque para ver!',
-  };
 }

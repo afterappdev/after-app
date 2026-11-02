@@ -1,5 +1,6 @@
 import { FirebaseMessagingPort } from '../admin/push/firebase-messaging.port';
 import { AudienceCandidate, canClaimPromoPushEvent } from './promo-push.audience';
+import { PROMO_PUSH_BODY_FALLBACK } from './promo-push.copy';
 import { PromoPushWorker } from './promo-push.worker';
 import {
   DeliveryClaim,
@@ -150,6 +151,7 @@ class FakeMessaging implements FirebaseMessagingPort {
   calls: {
     tokens: string[];
     title: string;
+    body: string;
     imageUrl?: string;
     data: Record<string, string>;
   }[] = [];
@@ -168,6 +170,7 @@ class FakeMessaging implements FirebaseMessagingPort {
     this.calls.push({
       tokens: [...tokens],
       title: message.title,
+      body: message.body,
       imageUrl: message.imageUrl,
       data: { ...message.data },
     });
@@ -193,6 +196,7 @@ function event(overrides: Partial<MemEvent> = {}): MemEvent {
     contentKind: null,
     venueName: 'Bar Central',
     bannerTitle: 'Promo do dia',
+    bannerDescription: null,
     venueLogoUrl: 'https://media.app-after.com.br/uploads/logo.jpg',
     bannerStatus: 'ACTIVE',
     venueHidden: false,
@@ -247,9 +251,8 @@ describe('PromoPushWorker', () => {
     await worker.dispatchDue(now, { kind: 'public' });
     expect(messaging.calls).toHaveLength(1);
     expect(messaging.calls[0].tokens).toEqual([SECRET]);
-    expect(messaging.calls[0].title).toBe(
-      'Bar Central publicou "Promo do dia"',
-    );
+    expect(messaging.calls[0].title).toBe('Bar Central publicou Promo do dia');
+    expect(messaging.calls[0].body).toBe(PROMO_PUSH_BODY_FALLBACK);
     expect(messaging.calls[0].imageUrl).toBe(
       'https://media.app-after.com.br/uploads/logo.jpg',
     );
@@ -261,6 +264,42 @@ describe('PromoPushWorker', () => {
     expect(store.events.get('evt-1')?.status).toBe('SENT');
     expect(logs.join('\n')).not.toContain(SECRET);
     expect(store.walletUpdates).toBe(0);
+  });
+
+  it('envia título e descrição reais do banner', async () => {
+    const { store, messaging, worker } = setup();
+    store.events.set(
+      'evt-1',
+      event({
+        contentKind: 'PROMOTION',
+        bannerTitle: 'Sextou com Promoção!',
+        bannerDescription: 'Caipirinha R$ 12 até meia-noite',
+      }),
+    );
+    await worker.dispatchDue(now, { kind: 'public' });
+    expect(messaging.calls[0].title).toBe(
+      'Bar Central publicou Sextou com Promoção!',
+    );
+    expect(messaging.calls[0].body).toBe('Caipirinha R$ 12 até meia-noite');
+    expect(messaging.calls[0].imageUrl).toBe(
+      'https://media.app-after.com.br/uploads/logo.jpg',
+    );
+  });
+
+  it('VIP usa a mesma regra de título e corpo', async () => {
+    const { store, messaging, worker } = setup();
+    store.events.set(
+      'evt-1',
+      event({
+        scheduleTier: 'VIP',
+        vipCreditEntryId: 'vip-proof',
+        bannerTitle: 'Open bar VIP',
+        bannerDescription: 'Open bar no rooftop',
+      }),
+    );
+    await worker.dispatchDue(now, { kind: 'public' });
+    expect(messaging.calls[0].title).toBe('Bar Central publicou Open bar VIP');
+    expect(messaging.calls[0].body).toBe('Open bar no rooftop');
   });
 
   it('não dispara com a flag desligada', async () => {

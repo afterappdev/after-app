@@ -81,23 +81,6 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
-  },
   "engines": {
     "node": ">=20"
   },
@@ -105,6 +88,8 @@
     "bcrypt@6.0.0": true,
     "@prisma/client@5.22.0": true,
     "@prisma/engines@5.22.0": true,
-    "prisma@5.22.0": true
+    "prisma@5.22.0": true,
+    "unrs-resolver@1.12.2": true,
+    "unrs-resolver@1.13.0": true
   }
 }

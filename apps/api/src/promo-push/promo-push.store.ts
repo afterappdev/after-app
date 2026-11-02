@@ -17,6 +17,7 @@ export type PromoPushEventView = {
   contentKind: PromoContentKind;
   venueName: string;
   bannerTitle: string | null;
+  bannerDescription: string | null;
   venueLogoUrl: string | null;
   bannerStatus: string;
   venueHidden: boolean;
@@ -180,6 +181,7 @@ export class PrismaPromoPushStore implements PromoPushStore {
               select: {
                 status: true,
                 title: true,
+                description: true,
                 venue: {
                   select: {
                     name: true,
@@ -204,6 +206,7 @@ export class PrismaPromoPushStore implements PromoPushStore {
       contentKind: row.contentKind,
       venueName: row.bannerSchedule.banner.venue.name,
       bannerTitle: row.bannerSchedule.banner.title,
+      bannerDescription: row.bannerSchedule.banner.description,
       venueLogoUrl: row.bannerSchedule.banner.venue.logoUrl,
       bannerStatus: row.bannerSchedule.banner.status,
       venueHidden:

@@ -11,7 +11,7 @@ import {
   PromoPushMode,
   resolvePromoPushMode,
 } from './promo-push.config';
-import { fcmCollapseKey, vipPushCopy } from './promo-push.copy';
+import { fcmCollapseKey, promoPushCopy } from './promo-push.copy';
 import { resolveVipPushLogoUrl } from './promo-push-image';
 import {
   chunkList,
@@ -191,7 +191,12 @@ export class PromoPushWorker {
       return;
     }
 
-    const copy = vipPushCopy(event.venueName, event.bannerTitle);
+    const copy = promoPushCopy(
+      event.venueName,
+      event.contentKind,
+      event.bannerTitle,
+      event.bannerDescription,
+    );
     const logoUrl = resolveVipPushLogoUrl(event.venueLogoUrl);
     const message = {
       title: copy.title,
