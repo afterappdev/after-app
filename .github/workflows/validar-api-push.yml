@@ -1,0 +1,37 @@
+name: Validar API push
+
+on:
+  workflow_dispatch:
+
+jobs:
+  api:
+    name: Jest 30 no Ubuntu
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Instalar dependências do lockfile
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Build
+        run: npm run build
+
+      - name: Testes promo-push
+        run: npm test -- --testPathPatterns=promo-push --runInBand
+
+      - name: Suíte completa da API
+        run: npm test -- --runInBand
