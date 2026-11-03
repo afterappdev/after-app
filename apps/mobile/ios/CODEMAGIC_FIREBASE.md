@@ -1,6 +1,6 @@
 # Firebase iOS — Codemagic (Workflow Editor)
 
-O repositório **não** versiona `GoogleService-Info.plist`. O app usa `firebase_core` / `firebase_messaging` e precisa do plist no bundle **Runner**.
+O repositório **não** versiona `GoogleService-Info.plist`. O app usa `firebase_core` / `firebase_messaging` e precisa do plist **dentro do bundle Runner**.
 
 Variável no Codemagic (já cadastrada):
 
@@ -8,12 +8,22 @@ Variável no Codemagic (já cadastrada):
 
 Bundle ID exigido: **`com.r2p.after.afterApp`**.
 
-## O que o repositório faz
+## Por que pre-build é obrigatório
 
-1. Script `ios/scripts/inject-firebase-plist.sh` decodifica a variável para `ios/Runner/GoogleService-Info.plist`.
-2. Valida plist (`plutil`) e `BUNDLE_ID` (não imprime o arquivo).
-3. Build phase Xcode **Inject Firebase Plist** executa o script antes do build Flutter.
-4. `GoogleService-Info.plist` está em **Copy Bundle Resources** do target Runner (`project.pbxproj`).
+O plist **não** está em **Copy Bundle Resources** (evita erro do Xcode *Build input file cannot be found* quando o arquivo não existe no checkout). Em vez disso:
+
+1. **Pre-build** (Codemagic) ou fase **Inject Firebase Plist** gera `Runner/GoogleService-Info.plist` no disco.
+2. Fase **Copy Firebase Plist to Bundle** copia o arquivo para `Runner.app` durante o build Xcode.
+
+Sem pre-build, a fase Inject ainda roda no Xcode, mas o pre-build falha cedo se a variável estiver ausente e garante o arquivo antes de `flutter build ipa`.
+
+## Scripts
+
+| Script | Função |
+|--------|--------|
+| `ios/scripts/inject-firebase-plist.sh` | Decodifica Base64, valida plist (`plutil`) e `BUNDLE_ID` (sem logar conteúdo). |
+| `ios/scripts/codemagic-prebuild-firebase.sh` | Wrapper para pre-build no CI. |
+| `ios/scripts/copy-firebase-plist-to-bundle.sh` | Copia plist para o bundle (fase Xcode). |
 
 ## Workflow Editor — configurar
 
@@ -23,18 +33,23 @@ Bundle ID exigido: **`com.r2p.after.afterApp`**.
 |------|--------|--------|
 | `FIREBASE_IOS_PLIST_BASE64` | (Base64 do plist) | Sim |
 
-**Build → Pre-build script** (opcional, recomendado — falha cedo antes do `flutter build`):
+**Build → Pre-build script** (**obrigatório**)
 
 Working directory: `apps/mobile/ios`
 
 ```bash
-chmod +x scripts/inject-firebase-plist.sh
-./scripts/inject-firebase-plist.sh
+chmod +x scripts/codemagic-prebuild-firebase.sh scripts/inject-firebase-plist.sh scripts/copy-firebase-plist-to-bundle.sh
+./scripts/codemagic-prebuild-firebase.sh
 ```
 
-Se omitir o pre-build, a fase **Inject Firebase Plist** no Xcode ainda roda durante `flutter build ipa` (desde que `CM_BUILD_ID` exista e a variável esteja definida).
+Alternativa com working directory na raiz do repositório:
 
-**Build → Build** (inalterado em relação ao fluxo Flutter usual), por exemplo:
+```bash
+chmod +x apps/mobile/ios/scripts/codemagic-prebuild-firebase.sh apps/mobile/ios/scripts/inject-firebase-plist.sh
+cd apps/mobile/ios && ./scripts/codemagic-prebuild-firebase.sh
+```
+
+**Build → Build** (fluxo Flutter usual), por exemplo:
 
 ```bash
 cd apps/mobile
@@ -43,6 +58,12 @@ flutter build ipa --release
 ```
 
 Ajuste flags/signing conforme o workflow já existente.
+
+## Fases Xcode (target Runner)
+
+Ordem: **Inject Firebase Plist** → Run Script (Flutter) → … → Resources → **Copy Firebase Plist to Bundle** → Embed Frameworks → Thin Binary.
+
+Referência do plist permanece no grupo Runner (IDE); inclusão no `.app` é feita pela fase de cópia.
 
 ## Build local (macOS)
 
