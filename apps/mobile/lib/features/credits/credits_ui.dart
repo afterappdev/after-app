@@ -112,6 +112,18 @@ Map<String, dynamic>? firstDisplayableVipOffer(dynamic body) {
   return null;
 }
 
+/// Pacote VIP oficial consumível na loja (`vip_unit_1` / `after.credits.vip.1`).
+bool nativeVipStoreCheckoutReady(Map<String, dynamic> offer) {
+  if (!isDisplayableVipOffer(offer) || asInt(offer['credits']) != 1) {
+    return false;
+  }
+  if (offer['key']?.toString() != 'vip_unit_1') return false;
+  final product = offer['storeProductId']?.toString() ??
+      offer['productId']?.toString() ??
+      '';
+  return product == 'after.credits.vip.1';
+}
+
 /// VIP can be bought only when checkout for the current channel is ready (not
 /// merely listed in the catalog).
 bool vipPackageCheckoutAvailable({
@@ -125,8 +137,8 @@ bool vipPackageCheckoutAvailable({
   if (usePixCheckout) {
     return vipCheckoutReady && vipWebCheckoutPack(vipOffer) != null;
   }
-  // Native IAP: VIP checkout is not enabled; common packages use the store.
-  return false;
+  if (!vipCheckoutReady) return false;
+  return nativeVipStoreCheckoutReady(vipOffer);
 }
 
 /// Default package on buy screen: VIP when purchasable, else 1 common credit.
