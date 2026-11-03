@@ -301,6 +301,8 @@ model Venue {
   notifications       Notification[]
   blockedByUsers      UserVenueBlock[]
   moderationHiddenAt  DateTime?
+  /// Set when the owner archives this venue; row and financial history remain.
+  ownerArchivedAt     DateTime?
   couponRedemptions   CreditCouponRedemption[]
   creditObligations   CreditObligation[]
   creditLedgerEntries CreditLedgerEntry[]
@@ -310,6 +312,7 @@ model Venue {
   @@index([ownerUserId])
   @@index([documentType, documentDigits])
   @@index([moderationHiddenAt])
+  @@index([ownerArchivedAt])
   @@index([ibgeCityId])
 }
 

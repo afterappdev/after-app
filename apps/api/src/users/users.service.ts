@@ -60,6 +60,7 @@ export class UsersService {
         ageBand: true,
         activeVenueId: true,
         ownedVenues: {
+          where: { ownerArchivedAt: null },
           orderBy: { createdAt: 'asc' },
           select: {
             id: true,
@@ -99,7 +100,7 @@ export class UsersService {
       throw new ForbiddenException('Conta não é de estabelecimento');
     }
     const venues = await this.prisma.venue.findMany({
-      where: { ownerUserId: userId },
+      where: { ownerUserId: userId, ownerArchivedAt: null },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -123,6 +124,7 @@ export class UsersService {
         id: true,
         activeVenueId: true,
         ownedVenues: {
+          where: { ownerArchivedAt: null },
           orderBy: { createdAt: 'asc' },
           select: {
             id: true,
@@ -135,6 +137,82 @@ export class UsersService {
       },
     });
     return buildVenueAuthFields(updated);
+  }
+
+  async archiveOwnedVenue(userId: string, venueId: string) {
+    const trimmed = venueId.trim();
+    const venue = await this.prisma.venue.findFirst({
+      where: {
+        id: trimmed,
+        ownerUserId: userId,
+        ownerArchivedAt: null,
+      },
+      select: { id: true, name: true, moderationHiddenAt: true },
+    });
+    if (!venue) {
+      throw new ForbiddenException(
+        'Estabelecimento não encontrado, já excluído ou sem permissão.',
+      );
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.venue.update({
+        where: { id: venue.id },
+        data: {
+          ownerArchivedAt: now,
+          moderationHiddenAt: venue.moderationHiddenAt ?? now,
+        },
+      });
+
+      const owner = await tx.user.findUnique({
+        where: { id: userId },
+        select: { activeVenueId: true },
+      });
+      if (owner?.activeVenueId === venue.id) {
+        const replacement = await tx.venue.findFirst({
+          where: {
+            ownerUserId: userId,
+            ownerArchivedAt: null,
+            id: { not: venue.id },
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        await tx.user.update({
+          where: { id: userId },
+          data: { activeVenueId: replacement?.id ?? null },
+        });
+      }
+    });
+
+    const refreshed = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        activeVenueId: true,
+        ownedVenues: {
+          where: { ownerArchivedAt: null },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            city: true,
+            state: true,
+            logoUrl: true,
+          },
+        },
+      },
+    });
+    if (!refreshed) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+    return {
+      ok: true,
+      archivedVenueId: venue.id,
+      archivedVenueName: venue.name,
+      ...buildVenueAuthFields(refreshed),
+    };
   }
 
   async updateMe(

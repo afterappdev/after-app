@@ -33,6 +33,7 @@ class AuthController extends ChangeNotifier {
   String? ownedVenuesError;
   bool switchingActiveVenue = false;
   bool creatingOwnedVenue = false;
+  bool archivingOwnedVenue = false;
   Future<void>? _ownedVenuesRefresh;
   SocialOnboarding? pendingSocialOnboarding;
   PendingAccountRecovery? pendingAccountRecovery;
@@ -173,6 +174,38 @@ class AuthController extends ChangeNotifier {
       return e.message;
     } finally {
       switchingActiveVenue = false;
+      notifyListeners();
+    }
+  }
+
+  /// Exclusão lógica do estabelecimento (POST /users/me/venues/:id/archive).
+  Future<String?> archiveOwnedVenue(String venueId) async {
+    if (user == null || !user!.isVenue) {
+      return 'Conta não é de estabelecimento.';
+    }
+    if (archivingOwnedVenue) {
+      return 'Aguarde a exclusão em andamento.';
+    }
+    final trimmed = venueId.trim();
+    if (trimmed.isEmpty) return 'Estabelecimento inválido.';
+
+    archivingOwnedVenue = true;
+    ownedVenuesError = null;
+    notifyListeners();
+    try {
+      final fields = await api.post(
+        '/users/me/venues/$trimmed/archive',
+      ) as Map<String, dynamic>;
+      final updated = user!.mergeVenueAuthFields(fields);
+      await _updateStoredUser(updated);
+      api.setActiveVenueIdHeader(updated.implicitVenueHeaderId);
+      venueDataGeneration++;
+      notifyListeners();
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } finally {
+      archivingOwnedVenue = false;
       notifyListeners();
     }
   }

@@ -22,6 +22,7 @@ export function publicVenueWhere(
 ): Prisma.VenueWhereInput {
   const where: Prisma.VenueWhereInput = {
     moderationHiddenAt: null,
+    ownerArchivedAt: null,
     owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
   };
   if (blockedIds.length > 0) {
@@ -32,10 +33,12 @@ export function publicVenueWhere(
 
 export function isVenuePubliclyVisible(venue: {
   moderationHiddenAt: Date | null;
+  ownerArchivedAt?: Date | null;
   owner: { accountStatus: AccountLifecycleStatus };
 }): boolean {
   return (
     venue.moderationHiddenAt == null &&
+    venue.ownerArchivedAt == null &&
     venue.owner.accountStatus === AccountLifecycleStatus.ACTIVE
   );
 }

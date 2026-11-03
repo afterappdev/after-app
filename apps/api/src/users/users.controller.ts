@@ -86,6 +86,15 @@ export class UsersController {
     return this.usersService.setActiveVenue(user.userId, dto.venueId);
   }
 
+  @Post('me/venues/:venueId/archive')
+  @UseGuards(SessionJwtAuthGuard)
+  archiveOwnedVenue(
+    @CurrentUser() user: AuthUser,
+    @Param('venueId') venueId: string,
+  ) {
+    return this.usersService.archiveOwnedVenue(user.userId, venueId);
+  }
+
   @Patch('me')
   @UseGuards(SessionJwtAuthGuard)
   update(@CurrentUser() user: AuthUser, @Body() dto: UpdateUserDto) {
