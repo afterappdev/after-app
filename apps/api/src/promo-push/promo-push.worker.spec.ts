@@ -613,4 +613,49 @@ describe('PromoPushWorker', () => {
     expect(messaging.calls).toEqual([]);
     expect(store.events.get('evt-1')?.error).toBe('BANNER_CANCELLED');
   });
+
+  it('persiste inbox VIP para audiência elegível ao concluir SENT', async () => {
+    const inbox = { persistVipPromoInbox: jest.fn(async () => undefined) };
+    const store = new MemoryStore();
+    const messaging = new FakeMessaging();
+    store.events.set('evt-1', event());
+    store.candidates = [user()];
+    const worker = new PromoPushWorker(store, messaging, inbox)
+      .useEnv({
+        PROMO_PUSH_ENABLED: 'true',
+        PROMO_PUSH_MAX_PER_USER_PER_DAY: '5',
+        PROMO_PUSH_LOCATION_MAX_AGE_HOURS: '6',
+      })
+      .useWorkerId('worker-inbox');
+    await worker.dispatchDue(now, { kind: 'public' });
+    expect(inbox.persistVipPromoInbox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promoPushEventId: 'evt-1',
+        bannerId: 'banner-1',
+        userIds: ['user-1'],
+      }),
+    );
+    expect(store.events.get('evt-1')?.status).toBe('SENT');
+  });
+
+  it('falha ao persistir inbox impede marcar SENT', async () => {
+    const inbox = {
+      persistVipPromoInbox: jest.fn(async () => {
+        throw new Error('db down');
+      }),
+    };
+    const store = new MemoryStore();
+    const messaging = new FakeMessaging();
+    store.events.set('evt-1', event());
+    store.candidates = [user()];
+    const worker = new PromoPushWorker(store, messaging, inbox)
+      .useEnv({
+        PROMO_PUSH_ENABLED: 'true',
+        PROMO_PUSH_MAX_PER_USER_PER_DAY: '5',
+        PROMO_PUSH_LOCATION_MAX_AGE_HOURS: '6',
+      })
+      .useWorkerId('worker-inbox-fail');
+    await expect(worker.dispatchDue(now, { kind: 'public' })).rejects.toThrow('db down');
+    expect(store.events.get('evt-1')?.status).not.toBe('SENT');
+  });
 });

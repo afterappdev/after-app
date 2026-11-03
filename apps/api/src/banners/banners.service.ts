@@ -309,15 +309,18 @@ export class BannersService {
         }
       }
 
-      try {
-        await this.notifications.notifyFavoriteFollowers({
-          venueId: venue.id,
-          venueName: venue.name,
-          bannerId: banner.id,
-          promoTitle: title,
-        });
-      } catch {
-        // Publishing still succeeds if inbox fan-out fails.
+      const hasCommonSchedule = schedules.some((schedule) => schedule.tier === 'COMMON');
+      if (hasCommonSchedule) {
+        try {
+          await this.notifications.notifyFavoriteFollowers({
+            venueId: venue.id,
+            venueName: venue.name,
+            bannerId: banner.id,
+            promoTitle: title,
+          });
+        } catch {
+          // Publishing still succeeds if inbox fan-out fails.
+        }
       }
     }
 

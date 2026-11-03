@@ -1,21 +1,32 @@
 import { Injectable } from '@nestjs/common';
 import { AccountLifecycleStatus, Prisma } from '@prisma/client';
-import { isVenuePubliclyVisible } from '../common/moderation/audience';
+import {
+  isVenuePubliclyVisible,
+  publicVenueRelationWhere,
+} from '../common/moderation/audience';
 import { PrismaService } from '../prisma/prisma.service';
+import { promoPushCopy } from '../promo-push/promo-push.copy';
+import type { PromoPushInboxPort } from '../promo-push/promo-push.inbox-port';
+
+export const VISIBLE_INBOX_LIMIT = 10;
+
+const inboxOrderBy: Prisma.NotificationOrderByWithRelationInput[] = [
+  { createdAt: 'desc' },
+  { id: 'desc' },
+];
 
 function inboxWhere(userId: string): Prisma.NotificationWhereInput {
   return {
     userId,
     venue: {
-      moderationHiddenAt: null,
-      owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
+      ...publicVenueRelationWhere(),
       blockedByUsers: { none: { userId } },
     },
   };
 }
 
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements PromoPushInboxPort {
   constructor(private readonly prisma: PrismaService) {}
 
   list(userId: string) {
@@ -31,15 +42,19 @@ export class NotificationsService {
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
+      orderBy: inboxOrderBy,
+      take: VISIBLE_INBOX_LIMIT,
     });
   }
 
-  unreadCount(userId: string) {
-    return this.prisma.notification.count({
-      where: { ...inboxWhere(userId), readAt: null },
+  async unreadCount(userId: string) {
+    const visible = await this.prisma.notification.findMany({
+      where: inboxWhere(userId),
+      select: { readAt: true },
+      orderBy: inboxOrderBy,
+      take: VISIBLE_INBOX_LIMIT,
     });
+    return visible.filter((row) => row.readAt == null).length;
   }
 
   async markRead(userId: string, id: string) {
@@ -68,6 +83,7 @@ export class NotificationsService {
       where: { id: params.venueId },
       select: {
         moderationHiddenAt: true,
+        ownerArchivedAt: true,
         owner: { select: { accountStatus: true } },
       },
     });
@@ -98,6 +114,51 @@ export class NotificationsService {
         title,
         body,
       })),
+    });
+  }
+
+  async persistVipPromoInbox(params: {
+    promoPushEventId: string;
+    venueId: string;
+    bannerId: string;
+    venueName: string;
+    contentKind: Parameters<typeof promoPushCopy>[1];
+    bannerTitle: string | null;
+    bannerDescription: string | null;
+    userIds: string[];
+  }) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: params.venueId },
+      select: {
+        moderationHiddenAt: true,
+        ownerArchivedAt: true,
+        owner: { select: { accountStatus: true } },
+      },
+    });
+    if (!venue || !isVenuePubliclyVisible(venue)) {
+      return;
+    }
+
+    const uniqueUserIds = [...new Set(params.userIds)];
+    if (!uniqueUserIds.length) return;
+
+    const copy = promoPushCopy(
+      params.venueName,
+      params.contentKind,
+      params.bannerTitle,
+      params.bannerDescription,
+    );
+
+    await this.prisma.notification.createMany({
+      data: uniqueUserIds.map((userId) => ({
+        userId,
+        venueId: params.venueId,
+        bannerId: params.bannerId,
+        promoPushEventId: params.promoPushEventId,
+        title: copy.title,
+        body: copy.body,
+      })),
+      skipDuplicates: true,
     });
   }
 }

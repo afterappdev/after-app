@@ -654,18 +654,22 @@ model BannerSchedule {
 }
 
 model Notification {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  venueId   String
-  venue     Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  bannerId  String?
-  banner    Banner?   @relation(fields: [bannerId], references: [id], onDelete: SetNull)
-  title     String
-  body      String?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venueId          String
+  venue            Venue           @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  bannerId         String?
+  banner           Banner?         @relation(fields: [bannerId], references: [id], onDelete: SetNull)
+  /// Set for VIP promo-push inbox rows; idempotent per user and push event.
+  promoPushEventId String?
+  promoPushEvent   PromoPushEvent? @relation(fields: [promoPushEventId], references: [id], onDelete: SetNull)
+  title            String
+  body             String?
+  readAt           DateTime?
+  createdAt        DateTime        @default(now())
 
+  @@unique([userId, promoPushEventId])
   @@index([userId, createdAt])
 }
 
@@ -773,6 +777,7 @@ model PromoPushEvent {
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
   deliveries       PromoPushDelivery[]
+  inboxNotifications Notification[]
 
   @@unique([bannerScheduleId, slot])
   @@index([status, availableAt])

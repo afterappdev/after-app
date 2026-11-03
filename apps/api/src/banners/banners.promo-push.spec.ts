@@ -54,6 +54,18 @@ describe('BannersService promotional outbox', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      vipCreditEntry: {
+        create: jest.fn(async ({ data }: { data: { operationKey: string } }) => ({
+          id: `entry-${data.operationKey}`,
+          ...data,
+        })),
+      },
+      bannerSchedule: {
+        update: jest.fn(async ({ where, data }: { where: { id: string }; data: { vipCreditEntryId: string } }) => ({
+          id: where.id,
+          vipCreditEntryId: data.vipCreditEntryId,
+        })),
+      },
     };
     mockOwnedVenuePrisma(prisma, { id: 'venue-1', ownerUserId: 'owner-1' });
     prisma.$transaction.mockImplementation(
@@ -165,6 +177,38 @@ describe('BannersService promotional outbox', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(publisher.recordSchedules).not.toHaveBeenCalled();
+  });
+
+  it('publicação só VIP não chama notifyFavoriteFollowers', async () => {
+    const { prisma, publisher, notifications, service } = setup();
+    prisma.creditWallet.findUnique.mockResolvedValue({ balance: 0, vipBalance: 3 });
+    prisma.banner.create.mockImplementation(
+      async ({ data }: { data: { schedules: { create: { tier: string; displayDate: Date }[] } } }) => ({
+        id: 'banner-vip',
+        schedules: data.schedules.create.map((row, index) => ({
+          id: `sch-vip-${index}`,
+          displayDate: row.displayDate,
+          ibgeCityId: 3550308,
+          tier: row.tier,
+          vipCreditEntryId: `entry-${index}`,
+          vipPushTiming: 'SLOT_11',
+        })),
+      }),
+    );
+    await service.create(
+      'owner-1',
+      'https://cdn.example/a.jpg',
+      [],
+      'VIP',
+      'Texto',
+      null,
+      ['2099-06-10'],
+      undefined,
+      undefined,
+      [{ date: '2099-06-10', pushTiming: 'SLOT_11' }],
+    );
+    expect(publisher.recordSchedules).toHaveBeenCalled();
+    expect(notifications.notifyFavoriteFollowers).not.toHaveBeenCalled();
   });
 
   it('cancelar não devolve crédito e marca o evento', async () => {

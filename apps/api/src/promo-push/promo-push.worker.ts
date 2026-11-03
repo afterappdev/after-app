@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   FIREBASE_MESSAGING_PORT,
   type FirebaseMessagingPort,
@@ -21,6 +21,10 @@ import {
   PROMO_PUSH_LOCK_MS,
   PROMO_PUSH_MAX_ATTEMPTS,
 } from './promo-push.retry';
+import {
+  PROMO_PUSH_INBOX,
+  type PromoPushInboxPort,
+} from './promo-push.inbox-port';
 import {
   PROMO_PUSH_STORE,
   type PromoPushEventView,
@@ -50,6 +54,9 @@ export class PromoPushWorker {
     @Inject(PROMO_PUSH_STORE) private readonly store: PromoPushStore,
     @Inject(FIREBASE_MESSAGING_PORT)
     private readonly messaging: FirebaseMessagingPort,
+    @Optional()
+    @Inject(PROMO_PUSH_INBOX)
+    private readonly inbox?: PromoPushInboxPort,
   ) {}
 
   useLogger(log: (line: string) => void): this {
@@ -166,16 +173,15 @@ export class PromoPushWorker {
       tokens = tokens.filter((item) => allowed.has(item.userId));
     }
     if (!tokens.length) {
-      await this.store.finish(id, this.workerId, {
-        status: 'SENT',
-        error: null,
-        sentAt: now,
-        targetedUsers: 0,
-        targetedTokens: 0,
-        sentCount: 0,
-        failedCount: 0,
-        skippedCount: audience.skippedByCap.length,
-      });
+      await this.finishSent(
+        event,
+        now,
+        audience.selected.map((candidate) => candidate.id),
+        0,
+        0,
+        0,
+        audience.skippedByCap.length,
+      );
       this.log(
         formatPromoPushLog(id, 'empty', {
           skipped: audience.skippedByCap.length,
@@ -187,7 +193,15 @@ export class PromoPushWorker {
     const claimedDeliveries = await this.store.claimDeliveries(event.id, tokens);
     const pending = claimedDeliveries.filter((item) => !item.alreadySent);
     if (!pending.length) {
-      await this.finishSent(event, now, tokens.length, 0, 0, audience.skippedByCap.length);
+      await this.finishSent(
+        event,
+        now,
+        audience.selected.map((candidate) => candidate.id),
+        tokens.length,
+        0,
+        0,
+        audience.skippedByCap.length,
+      );
       return;
     }
 
@@ -333,6 +347,7 @@ export class PromoPushWorker {
     await this.finishSent(
       event,
       now,
+      audience.selected.map((candidate) => candidate.id),
       tokens.length,
       sent,
       invalid,
@@ -375,11 +390,24 @@ export class PromoPushWorker {
   private async finishSent(
     event: PromoPushEventView,
     now: Date,
+    audienceUserIds: string[],
     targetedTokens: number,
     sent: number,
     invalid: number,
     skipped: number,
   ) {
+    if (this.inbox) {
+      await this.inbox.persistVipPromoInbox({
+        promoPushEventId: event.id,
+        venueId: event.venueId,
+        bannerId: event.bannerId,
+        venueName: event.venueName,
+        contentKind: event.contentKind,
+        bannerTitle: event.bannerTitle,
+        bannerDescription: event.bannerDescription,
+        userIds: audienceUserIds,
+      });
+    }
     await this.store.finish(event.id, this.workerId, {
       status: 'SENT',
       error: null,
