@@ -235,7 +235,7 @@ async function upsertVenue(seed: SeedVenue, passwordHash: string, day: Date) {
       role: Role.VENUE,
       state: 'SP',
       city: 'São Paulo',
-      venue: {
+      ownedVenues: {
         create: {
           name: seed.name,
           description: seed.description,
@@ -256,10 +256,12 @@ async function upsertVenue(seed: SeedVenue, passwordHash: string, day: Date) {
         },
       },
     },
-    include: { venue: true },
+    include: {
+      ownedVenues: { orderBy: { createdAt: 'asc' }, take: 1 },
+    },
   });
 
-  let venue = user.venue;
+  let venue = user.ownedVenues[0];
   if (!venue) {
     venue = await prisma.venue.create({
       data: {
@@ -392,7 +394,7 @@ async function main() {
       role: Role.VENUE,
       state: 'SP',
       city: 'São Paulo',
-      venue: {
+      ownedVenues: {
         create: {
           name: 'Bar After Demo',
           description: 'Conta legado — use boteco.central@after.local',

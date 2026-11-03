@@ -110,6 +110,8 @@ describe('venue fiscal document access', () => {
       creditPurchase: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
       $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
     };
     const venues = new VenuesService(prisma as never, {

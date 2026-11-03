@@ -83,13 +83,20 @@ import {
   ACCOUNT_RECOVERY_TTL_SECONDS,
   ACCOUNT_RECOVERY_TYP,
 } from '../users/account-recovery';
+import {
+  authUserVenueInclude,
+  buildVenueAuthFields,
+  firstOwnedVenueId,
+  type AuthUserVenueRow,
+} from '../venues/venue-auth-payload';
+import { assertVenueDocumentAvailableForOwner } from '../venues/venue-document-policy';
 
 type OAuthStatePayload = {
   redirect: string;
   provider: 'google' | 'apple';
 };
 
-type AuthUserRecord = {
+type AuthUserRecord = AuthUserVenueRow & {
   id: string;
   name: string;
   email: string;
@@ -97,7 +104,6 @@ type AuthUserRecord = {
   state: string;
   city: string;
   avatarUrl: string | null;
-  venue: { id: string } | null;
   sessionVersion: number;
   accountStatus?: AccountLifecycleStatus;
   deletionRequestedAt?: Date | null;
@@ -147,6 +153,14 @@ type SocialAuthResult =
         city: string;
         avatarUrl: string | null;
         venueId: string | null;
+        activeVenueId: string | null;
+        venues: Array<{
+          id: string;
+          name: string;
+          city: string;
+          state: string;
+          logoUrl: string | null;
+        }>;
       };
     }
   | AccountRecoveryLoginResult;
@@ -203,7 +217,9 @@ export class AuthService {
       allowedWebOrigins,
     );
     const welcomeSecret =
-      profile.mode === 'enriched' && profile.venueDocument
+      VENUE_SIGNUP_BONUS_CREDITS > 0 &&
+      profile.mode === 'enriched' &&
+      profile.venueDocument
         ? readWelcomeCreditSecret(this.config)
         : null;
     try {
@@ -227,7 +243,7 @@ export class AuthService {
           );
         }
         if (profile.mode === 'legacy_mobile') {
-          return tx.user.create({ data: base, include: { venue: true } });
+          return tx.user.create({ data: base, include: authUserVenueInclude });
         }
         return this.insertRegisteredUser(
           tx,
@@ -254,7 +270,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
@@ -279,7 +295,7 @@ export class AuthService {
   async loginAdmin(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email.toLowerCase() },
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
     if (!user) {
       throw new UnauthorizedException('Credenciais inválidas');
@@ -347,7 +363,9 @@ export class AuthService {
       allowedWebOrigins,
     );
     const welcomeSecret =
-      profile.mode === 'enriched' && profile.venueDocument
+      VENUE_SIGNUP_BONUS_CREDITS > 0 &&
+      profile.mode === 'enriched' &&
+      profile.venueDocument
         ? readWelcomeCreditSecret(this.config)
         : null;
     const passwordHash = dto.password
@@ -422,7 +440,7 @@ export class AuthService {
           });
         }
         if (profile.mode === 'legacy_mobile') {
-          return tx.user.create({ data: base, include: { venue: true } });
+          return tx.user.create({ data: base, include: authUserVenueInclude });
         }
         return this.insertRegisteredUser(
           tx,
@@ -927,7 +945,7 @@ export class AuthService {
   ): Promise<SocialAuthResult | null> {
     const existing = await this.prisma.user.findUnique({
       where: { email },
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
     if (!existing) return null;
 
@@ -952,7 +970,7 @@ export class AuthService {
       if (updated.count !== 1) {
         const again = await this.prisma.user.findUnique({
           where: { id: existing.id },
-          include: { venue: true },
+          include: authUserVenueInclude,
         });
         if (
           again &&
@@ -981,7 +999,7 @@ export class AuthService {
 
     const linked = await this.prisma.user.findUnique({
       where: { id: existing.id },
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
     if (
       !linked ||
@@ -1036,11 +1054,11 @@ export class AuthService {
     return provider === 'google'
       ? this.prisma.user.findUnique({
           where: { googleId: providerId },
-          include: { venue: true },
+          include: authUserVenueInclude,
         })
       : this.prisma.user.findUnique({
           where: { appleId: providerId },
-          include: { venue: true },
+          include: authUserVenueInclude,
         });
   }
 
@@ -1122,11 +1140,17 @@ export class AuthService {
     id: string;
     name: string;
     role: Role;
-    venue?: { id: string; name: string } | null;
+    ownedVenues?: { id: string; name: string }[];
   }) {
-    void this.adminPush?.notifyConsumerAccountCreated(user).catch(() => {
-      this.logger.warn(`Admin FCM skipped after account ${user.id}`);
-    });
+    const primary = user.ownedVenues?.[0];
+    void this.adminPush
+      ?.notifyConsumerAccountCreated({
+        ...user,
+        venue: primary ? { id: primary.id, name: primary.name } : null,
+      })
+      .catch(() => {
+        this.logger.warn(`Admin FCM skipped after account ${user.id}`);
+      });
   }
 
   private rethrowRegistrationConflict(
@@ -1160,11 +1184,20 @@ export class AuthService {
     } | null,
     welcomeSecret: string | null,
   ) {
-    if (venue && !welcomeSecret) {
+    if (venue && VENUE_SIGNUP_BONUS_CREDITS > 0 && !welcomeSecret) {
       throw new ServiceUnavailableException('Não foi possível concluir o cadastro agora.');
     }
-    const reserved = venue
-      ? await reserveWelcomeCredit(
+    const ownerUserId = randomBytes(16).toString('hex');
+    const userData: Prisma.UserCreateInput = { ...data, id: ownerUserId };
+    if (venue) {
+      await assertVenueDocumentAvailableForOwner(tx, ownerUserId, {
+        documentType: venue.documentType,
+        documentDigits: venue.documentDigits,
+      });
+    }
+    const reserved =
+      venue && VENUE_SIGNUP_BONUS_CREDITS > 0
+        ? await reserveWelcomeCredit(
           tx,
           { documentType: venue.documentType, documentDigits: venue.documentDigits },
           welcomeSecret as string,
@@ -1172,7 +1205,7 @@ export class AuthService {
       : null;
     const user = await tx.user.create({
       data: {
-        ...data,
+        ...userData,
         ...(venue
           ? this.venueCreateNested(
               venue.name,
@@ -1183,11 +1216,12 @@ export class AuthService {
             )
           : {}),
       },
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
     if (reserved) {
-      if (!user.venue?.id) throw new Error('welcome claim confirmation failed');
-      await confirmWelcomeCredit(tx, reserved.id, user.venue.id);
+      const venueId = firstOwnedVenueId(user);
+      if (!venueId) throw new Error('welcome claim confirmation failed');
+      await confirmWelcomeCredit(tx, reserved.id, venueId);
     }
     return user;
   }
@@ -1198,32 +1232,39 @@ export class AuthService {
   ) {
     const user = await tx.user.create({
       data,
-      include: { venue: true },
+      include: authUserVenueInclude,
     });
-    if (!user.venue?.id) {
+    const venueId = firstOwnedVenueId(user);
+    if (!venueId) {
       throw new Error('legacy venue create failed');
     }
-    await recordWelcomeVenueProvision(tx, user.venue.id);
+    if (VENUE_SIGNUP_BONUS_CREDITS > 0) {
+      await recordWelcomeVenueProvision(tx, venueId);
+    }
     return user;
   }
 
   private legacyVenueCreateNested(name: string, city: string, state: string) {
     return {
-      venue: {
+      ownedVenues: {
         create: {
           name,
           city,
           state,
           wallet: { create: { balance: VENUE_SIGNUP_BONUS_CREDITS } },
-          purchases: {
-            create: {
-              packageKey: 'welcome',
-              amountPaid: 0,
-              credits: VENUE_SIGNUP_BONUS_CREDITS,
-              status: PurchaseStatus.PAID,
-              confirmedAt: new Date(),
-            },
-          },
+          ...(VENUE_SIGNUP_BONUS_CREDITS > 0
+            ? {
+                purchases: {
+                  create: {
+                    packageKey: 'welcome',
+                    amountPaid: 0,
+                    credits: VENUE_SIGNUP_BONUS_CREDITS,
+                    status: PurchaseStatus.PAID,
+                    confirmedAt: new Date(),
+                  },
+                },
+              }
+            : {}),
         },
       },
     };
@@ -1237,7 +1278,7 @@ export class AuthService {
     credits: number,
   ) {
     return {
-      venue: {
+      ownedVenues: {
         create: {
           name,
           city,
@@ -1425,7 +1466,7 @@ export class AuthService {
         state: user.state,
         city: user.city,
         avatarUrl: user.avatarUrl,
-        venueId: user.venue?.id ?? null,
+        ...buildVenueAuthFields(user),
       },
     };
   }

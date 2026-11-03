@@ -27,7 +27,6 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { assertUserAccountActive } from '../common/account/account-eligibility';
 import { CREDIT_PACKAGES, CreditPackageKey } from '../common/constants/credits';
 import { isMercadoPagoSandbox, isProduction } from '../common/env';
 import {
@@ -35,6 +34,8 @@ import {
   extractMercadoPagoDataId,
 } from './providers/mercado-pago-orders';
 import { PrismaService } from '../prisma/prisma.service';
+import { loadOwnedVenueContext } from '../venues/venue-context';
+import { assertVenueOwned } from '../venues/venue-ownership';
 import {
   CARD_INVALID_PAYER_EMAIL_MESSAGE,
   CARD_MAX_INSTALLMENTS,
@@ -152,8 +153,8 @@ export class CreditsService {
     return CREDIT_PACKAGES;
   }
 
-  async wallet(userId: string) {
-    const venue = await this.requireVenueOwned(userId);
+  async wallet(userId: string, activeVenueId?: string) {
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     const wallet = await this.prisma.creditWallet.findUnique({
       where: { venueId: venue.id },
     });
@@ -164,8 +165,8 @@ export class CreditsService {
     };
   }
 
-  async purchases(userId: string) {
-    const venue = await this.requireVenueOwned(userId);
+  async purchases(userId: string, activeVenueId?: string) {
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     const rows = await this.prisma.creditPurchase.findMany({
       where: { venueId: venue.id },
       orderBy: { createdAt: 'desc' },
@@ -174,13 +175,13 @@ export class CreditsService {
   }
 
   async purchaseById(userId: string, purchaseId: string) {
-    const venue = await this.requireVenueOwned(userId);
     const purchase = await this.prisma.creditPurchase.findUnique({
       where: { id: purchaseId },
     });
-    if (!purchase || purchase.venueId !== venue.id) {
+    if (!purchase) {
       throw new NotFoundException('Compra não encontrada');
     }
+    await assertVenueOwned(this.prisma, userId, purchase.venueId);
     const reconciled = await this.reconcilePendingMercadoPagoPurchase(purchase);
     return toPublicPurchase(reconciled);
   }
@@ -189,7 +190,11 @@ export class CreditsService {
    * Checkout stub — creates a PENDING purchase in development only.
    * Does not credit the wallet. Production must use store-confirm or PIX.
    */
-  async checkout(userId: string, packageKey: CreditPackageKey) {
+  async checkout(
+    userId: string,
+    packageKey: CreditPackageKey,
+    activeVenueId?: string,
+  ) {
     if (isProduction()) {
       throw new ForbiddenException(
         'Checkout de desenvolvimento indisponível em produção.',
@@ -201,7 +206,7 @@ export class CreditsService {
       throw new BadRequestException('Pacote inválido');
     }
 
-    const venue = await this.requireVenueOwned(userId);
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
 
     const purchase = await this.prisma.creditPurchase.create({
       data: {
@@ -233,15 +238,15 @@ export class CreditsService {
       );
     }
 
-    const venue = await this.requireVenueOwned(userId);
-
     return this.prisma.$transaction(async (tx) => {
       const purchase = await tx.creditPurchase.findUnique({
         where: { id: purchaseId },
       });
-      if (!purchase || purchase.venueId !== venue.id) {
+      if (!purchase) {
         throw new NotFoundException('Compra não encontrada');
       }
+      await assertVenueOwned(tx, userId, purchase.venueId);
+      const venueId = purchase.venueId;
       if (purchase.status === 'PAID') {
         return toPublicPurchase(purchase);
       }
@@ -250,8 +255,8 @@ export class CreditsService {
       }
 
       await tx.creditWallet.upsert({
-        where: { venueId: venue.id },
-        create: { venueId: venue.id, balance: purchase.credits },
+        where: { venueId },
+        create: { venueId, balance: purchase.credits },
         update: { balance: { increment: purchase.credits } },
       });
 
@@ -275,6 +280,7 @@ export class CreditsService {
       purchaseId: string;
       verificationData: string;
     } & FiscalPurchaseInput,
+    activeVenueId?: string,
   ) {
     const fiscal = resolveFiscalSnapshot(dto);
     const provider = this.requireStoreProvider(dto.provider);
@@ -303,7 +309,7 @@ export class CreditsService {
       provider,
       verified.externalId || dto.purchaseId || dto.verificationData,
     );
-    const venue = await this.requireVenueOwned(userId);
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
 
     const purchase = await this.creditVerifiedPurchase({
       venueId: venue.id,
@@ -322,6 +328,7 @@ export class CreditsService {
     packageKey: string,
     authenticatedEmail?: string,
     fiscalInput?: FiscalPurchaseInput,
+    activeVenueId?: string,
   ) {
     const fiscal = resolveFiscalSnapshot(fiscalInput);
     const pack = webSaleByKey(packageKey);
@@ -337,7 +344,7 @@ export class CreditsService {
     }
     assertMercadoPagoPixChargeAllowed();
 
-    const venue = await this.requireVenueOwned(userId);
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     const sandbox = isMercadoPagoSandbox();
     const email =
       normalizePixPayerEmail(venue.owner?.email) ??
@@ -661,6 +668,7 @@ export class CreditsService {
     userId: string,
     input: CardPayInput,
     authenticatedEmail?: string,
+    activeVenueId?: string,
   ): Promise<CardPayResponse> {
     const fiscal = resolveFiscalSnapshot(input);
     const pack = this.requireCardPack(input);
@@ -680,7 +688,7 @@ export class CreditsService {
     }
     assertMercadoPagoCardChargeAllowed();
 
-    const venue = await this.requireVenueOwned(userId);
+    const venue = await this.requireVenueOwned(userId, activeVenueId);
     const sandbox = isMercadoPagoSandbox();
     const email =
       normalizePixPayerEmail(venue.owner?.email) ??
@@ -1778,16 +1786,8 @@ export class CreditsService {
     }
   }
 
-  private async requireVenueOwned(userId: string) {
-    await assertUserAccountActive(this.prisma, userId);
-    const venue = await this.prisma.venue.findUnique({
-      where: { ownerUserId: userId },
-      include: { owner: { select: { email: true, name: true } } },
-    });
-    if (!venue) {
-      throw new ForbiddenException('Conta não é de estabelecimento');
-    }
-    return venue;
+  private async requireVenueOwned(userId: string, requestedVenueId?: string) {
+    return loadOwnedVenueContext(this.prisma, userId, requestedVenueId);
   }
 }
 

@@ -13,6 +13,7 @@ import 'fiscal_invoice_section.dart';
 import 'venue_fiscal_document.dart';
 import 'store_billing.dart';
 import 'store_price.dart';
+import 'checkout_venue_pin.dart';
 import 'web_checkout_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -24,7 +25,8 @@ class CheckoutScreen extends StatefulWidget {
   State<CheckoutScreen> createState() => _CheckoutScreenState();
 }
 
-class _CheckoutScreenState extends State<CheckoutScreen> {
+class _CheckoutScreenState extends State<CheckoutScreen>
+    with CheckoutVenuePin<CheckoutScreen> {
   bool _paying = false;
   StoreBilling? _store;
   String? _storePriceLabel;
@@ -102,6 +104,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         api: context.read<ApiClient>(),
         auth: auth,
         fiscal: _fiscal,
+        venueIdOverride: pinnedCheckoutVenueId,
         onLoaded: () {
           if (mounted) setState(() {});
         },
@@ -157,15 +160,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _confirmStorePurchase(StorePurchase purchase) async {
     final api = context.read<ApiClient>();
-    await api.post(
-      '/credits/store-confirm',
-      body: storeConfirmBody(
-        packageKey: widget.pack['key']?.toString() ?? '',
-        productId: purchase.productId,
-        provider: purchase.provider,
-        purchaseId: purchase.purchaseId,
-        verificationData: purchase.verificationData,
-        fiscal: _fiscal.toApiPayload(),
+    await runForCheckoutVenue(
+      api,
+      () => api.post(
+        '/credits/store-confirm',
+        body: storeConfirmBody(
+          packageKey: widget.pack['key']?.toString() ?? '',
+          productId: purchase.productId,
+          provider: purchase.provider,
+          purchaseId: purchase.purchaseId,
+          verificationData: purchase.verificationData,
+          fiscal: _fiscal.toApiPayload(),
+        ),
       ),
     );
     await _store!.complete(purchase);

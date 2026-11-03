@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { CouponCreditKind, Prisma } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
-import { mockActiveUserPrisma } from '../common/account/mock-active-user-prisma';
 import { CouponsService } from './coupons.service';
 
 const venueUser: AuthUser = {
@@ -58,6 +57,8 @@ function setup(push?: { notifyCouponRedeemed: jest.Mock }) {
     },
     venue: {
       findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([{ id: 'venue-1' }]),
+      findFirst: jest.fn().mockResolvedValue({ id: 'venue-1', ownerUserId: 'owner-1' }),
     },
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'coupon-1' }]),
     $transaction: jest.fn(),
@@ -73,7 +74,6 @@ function setup(push?: { notifyCouponRedeemed: jest.Mock }) {
     name: 'Bar Central',
     city: 'São Paulo',
   });
-  mockActiveUserPrisma(prisma);
   const service = new CouponsService(prisma as never, push as never);
   return { prisma, service, push };
 }
@@ -284,7 +284,7 @@ describe('CouponsService', () => {
     await expect(
       service.redeem(adminUser, 'AFTER2'),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(prisma.venue.findUnique).not.toHaveBeenCalled();
+    expect(prisma.venue.findMany).not.toHaveBeenCalled();
     expect(prisma.creditWallet.upsert).not.toHaveBeenCalled();
   });
 
@@ -347,8 +347,12 @@ describe('CouponsService', () => {
     prisma.creditCoupon.findUnique.mockResolvedValue(
       coupon({ maxRedemptions: 1, maxRedemptionsPerVenue: 1 }),
     );
+    prisma.venue.findMany.mockImplementation(async ({ where }) => {
+      if (where.ownerUserId === 'owner-2') return [{ id: 'venue-2' }];
+      return [{ id: 'venue-1' }];
+    });
     prisma.venue.findUnique.mockImplementation(async ({ where }) => {
-      if (where.ownerUserId === 'owner-2') {
+      if (where.id === 'venue-2') {
         return { id: 'venue-2', name: 'Outro Bar', city: 'Campinas' };
       }
       return { id: 'venue-1', name: 'Bar Central', city: 'São Paulo' };

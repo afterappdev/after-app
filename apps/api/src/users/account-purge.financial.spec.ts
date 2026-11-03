@@ -17,7 +17,7 @@ function prismaMock(handlers: {
 }) {
   return {
     venue: {
-      findUnique: jest.fn().mockResolvedValue({ id: 'v1' }),
+      findMany: jest.fn().mockResolvedValue([{ id: 'v1' }]),
     },
     creditObligation: {
       count: jest.fn().mockResolvedValue(handlers.openObligations ?? 0),
@@ -108,7 +108,7 @@ describe('account-purge.financial', () => {
 
   it('sem venue não bloqueia', async () => {
     const prisma = {
-      venue: { findUnique: jest.fn().mockResolvedValue(null) },
+      venue: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const reasons = await listFinancialPurgeBlockers(prisma as never, 'u1');
     expect(reasons).toEqual([]);

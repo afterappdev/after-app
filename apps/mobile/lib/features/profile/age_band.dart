@@ -14,6 +14,8 @@ const kAgeBandOptions = <AgeBandOption>[
 
 const kAgeBandRequiredMessage = 'Selecione a sua faixa etária.';
 
+const kAgeBandDropdownHint = 'Selecione sua faixa etária';
+
 String ageBandLabel(String? value) {
   for (final option in kAgeBandOptions) {
     if (option.value == value) return option.label;

@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'crypto';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, PurchaseStatus } from '@prisma/client';
-import { VENUE_SIGNUP_BONUS_CREDITS } from '../common/constants/credits';
+import { WELCOME_SIGNUP_CLAIM_CREDITS } from '../common/constants/credits';
 import { VenueDocument } from '../venues/venue-document';
 
 export const WELCOME_CREDIT_HMAC_SECRET_KEY = 'WELCOME_CREDIT_HMAC_SECRET';
@@ -52,7 +52,7 @@ export async function reserveWelcomeCredit(
       ${id},
       ${documentKey},
       CAST(${document.documentType} AS "VenueDocumentType"),
-      ${VENUE_SIGNUP_BONUS_CREDITS},
+      ${WELCOME_SIGNUP_CLAIM_CREDITS},
       NOW()
     )
     ON CONFLICT ("documentKey") DO NOTHING
@@ -150,7 +150,7 @@ export async function recordWelcomeVenueProvision(
 ): Promise<void> {
   await tx.$executeRaw`
     INSERT INTO "WelcomeCreditVenueProvision" ("venueId", "creditsGranted", "grantedAt")
-    VALUES (${venueId}, ${VENUE_SIGNUP_BONUS_CREDITS}, NOW())
+    VALUES (${venueId}, ${WELCOME_SIGNUP_CLAIM_CREDITS}, NOW())
     ON CONFLICT ("venueId") DO NOTHING
   `;
 }
@@ -300,7 +300,7 @@ export async function confirmWelcomeCredit(
       venueId,
       packageKey: 'welcome',
       amountPaid: 0,
-      credits: VENUE_SIGNUP_BONUS_CREDITS,
+      credits: WELCOME_SIGNUP_CLAIM_CREDITS,
       status: PurchaseStatus.PAID,
       confirmedAt: new Date(),
     },

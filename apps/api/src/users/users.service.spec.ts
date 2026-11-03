@@ -24,6 +24,7 @@ function createPrisma() {
     },
     venue: {
       findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     creditObligation: { count: jest.fn().mockResolvedValue(0) },
     creditPurchase: {
@@ -158,12 +159,14 @@ describe('UsersService media cleanup', () => {
         appleRefreshTokenEnc: null,
         appleClientId: null,
         avatarUrl: R2_AVATAR,
-        venue: {
-          logoUrl: LOCAL_LOGO,
-          coverUrl: LOCAL_COVER,
-          photos: [{ url: PHOTO }],
-          banners: [{ imageUrl: BANNER }],
-        },
+        ownedVenues: [
+          {
+            logoUrl: LOCAL_LOGO,
+            coverUrl: LOCAL_COVER,
+            photos: [{ url: PHOTO }],
+            banners: [{ imageUrl: BANNER }],
+          },
+        ],
       };
     }
 
@@ -177,7 +180,7 @@ describe('UsersService media cleanup', () => {
         appleRefreshTokenEnc: null,
         appleClientId: null,
         avatarUrl: R2_AVATAR,
-        venue: null,
+        ownedVenues: [],
       };
       prisma.user.findUnique.mockResolvedValue(user);
       prisma.user.delete.mockResolvedValue({ id: USER_ID });
@@ -208,7 +211,7 @@ describe('UsersService media cleanup', () => {
 
     it('exclui VENUE e mídias; onboarding e user somem antes do cleanup', async () => {
       const order: string[] = [];
-      prisma.venue.findUnique.mockResolvedValue({ id: 'v1' });
+      prisma.venue.findMany.mockResolvedValue([{ id: 'v1' }]);
       prisma.user.findUnique.mockResolvedValue(venueUser());
       prisma.socialOnboardingToken.deleteMany.mockImplementation(async () => {
         order.push('onboarding');
@@ -252,7 +255,7 @@ describe('UsersService media cleanup', () => {
         appleRefreshTokenEnc: 'v1.iv.tag.cipher',
         appleClientId: 'com.r2p.after.afterApp',
         avatarUrl: null,
-        venue: null,
+        ownedVenues: [],
       });
       prisma.user.delete.mockImplementation(async () => {
         order.push('db');
@@ -288,7 +291,7 @@ describe('UsersService media cleanup', () => {
         appleRefreshTokenEnc: null,
         appleClientId: null,
         avatarUrl: null,
-        venue: null,
+        ownedVenues: [],
       });
       prisma.user.delete.mockResolvedValue({ id: USER_ID });
 
@@ -304,13 +307,29 @@ describe('UsersService media cleanup', () => {
           'Não foi possível concluir a exclusão agora. Tente novamente em instantes.',
         ),
       );
-      prisma.user.findUnique.mockResolvedValue({
-        id: USER_ID,
-        role: 'USER',
-        appleId: 'apple-sub-1',
-        appleRefreshTokenEnc: 'v1.iv.tag.cipher',
-        appleClientId: 'com.r2p.after.afterApp',
-      });
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          role: 'USER',
+          appleId: 'apple-sub-1',
+          appleRefreshTokenEnc: 'v1.iv.tag.cipher',
+          appleClientId: 'com.r2p.after.afterApp',
+        })
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          email: 'apple@after.local',
+          role: 'USER',
+          appleId: 'apple-sub-1',
+          googleId: null,
+          avatarUrl: null,
+          ownedVenues: [],
+        })
+        .mockResolvedValueOnce({
+          id: USER_ID,
+          appleId: 'apple-sub-1',
+          appleRefreshTokenEnc: 'v1.iv.tag.cipher',
+          appleClientId: 'com.r2p.after.afterApp',
+        });
 
       await expect(service.purgeAccountPermanently(USER_ID)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
@@ -325,7 +344,7 @@ describe('UsersService media cleanup', () => {
         id: USER_ID,
         role: 'ADMIN',
         avatarUrl: null,
-        venue: null,
+        ownedVenues: [],
       });
 
       await expect(service.purgeAccountPermanently(USER_ID)).rejects.toThrow(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
+import '../auth/auth_controller.dart';
 import '../../core/theme/app_theme.dart';
 import 'billing_channel.dart';
 import 'buy_credits_layout.dart';
@@ -43,6 +44,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   List<dynamic> _purchases = [];
   String? _selectedKey;
   bool _userPickedPackage = false;
+  AuthController? _auth;
 
   bool get _reconcilePendingPix =>
       widget.reconcilePendingPix ?? billingUsesPix();
@@ -52,16 +54,31 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _auth = context.read<AuthController>();
+      _auth!.addListener(_onVenueScopeChanged);
+      _load();
+    });
+  }
+
+  void _onVenueScopeChanged() {
+    if (!mounted) return;
+    _userPickedPackage = false;
+    _selectedKey = null;
     _load();
   }
 
   @override
   void dispose() {
+    _auth?.removeListener(_onVenueScopeChanged);
     _scroll.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -98,6 +115,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
           usePixCheckout: _usePixCheckout,
         );
       }
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _balance = asInt(wallet['balance']);
         _vipBalance = asInt(wallet['vipBalance']);
@@ -113,7 +131,7 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
         await _reconcilePendingPixPurchases();
       }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _error = e.statusCode == 401 ? friendlyPixError(e) : e.message;
         _loading = false;
@@ -141,6 +159,8 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   }
 
   Future<void> _reconcilePendingPixPurchases() async {
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
     final api = context.read<ApiClient>();
     final snapshot = List<dynamic>.from(_purchases);
     final result = await reconcilePendingPixPurchases(
@@ -150,11 +170,11 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
         return Map<String, dynamic>.from(body as Map);
       },
     );
-    if (!mounted) return;
+    if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
     setState(() => _purchases = result.purchases);
     if (!result.anyBecamePaid) return;
     final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
-    if (!mounted) return;
+    if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
     setState(() {
       _balance = asInt(wallet['balance']);
       _vipBalance = asInt(wallet['vipBalance']);
@@ -178,9 +198,12 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
   }
 
   Future<int> _redeemCoupon(String code) async {
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
     final api = context.read<ApiClient>();
     try {
       final body = await api.post('/credits/coupons/redeem', body: {'code': code});
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return 0;
       final map = Map<String, dynamic>.from(body as Map);
       final balance = map['balance'];
       if (balance is num && mounted) {

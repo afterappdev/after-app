@@ -29,6 +29,7 @@ import { CREDIT_PACKAGES } from '../common/constants/credits';
 import { VIP_CREDIT_PACKAGES } from './vip-catalog';
 import { WEB_CREDIT_PACKAGE_KEYS } from './vip-web-checkout';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ActiveVenueId } from '../common/decorators/active-venue.decorator';
 import { CreditsService } from './credits.service';
 import { STORE_PROVIDER_INPUTS } from './providers/payment-provider';
 import { FiscalPurchaseInput } from './fiscal-document';
@@ -137,13 +138,19 @@ export class CreditsController {
   }
 
   @Get('wallet')
-  wallet(@CurrentUser() user: AuthUser) {
-    return this.creditsService.wallet(user.userId);
+  wallet(
+    @CurrentUser() user: AuthUser,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.creditsService.wallet(user.userId, activeVenueId);
   }
 
   @Get('purchases')
-  purchases(@CurrentUser() user: AuthUser) {
-    return this.creditsService.purchases(user.userId);
+  purchases(
+    @CurrentUser() user: AuthUser,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.creditsService.purchases(user.userId, activeVenueId);
   }
 
   @Get('purchases/:id')
@@ -155,22 +162,43 @@ export class CreditsController {
   }
 
   @Post('checkout')
-  checkout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
-    return this.creditsService.checkout(user.userId, dto.packageKey);
+  checkout(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CheckoutDto,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.creditsService.checkout(
+      user.userId,
+      dto.packageKey,
+      activeVenueId,
+    );
   }
 
   @Post('store-confirm')
-  storeConfirm(@CurrentUser() user: AuthUser, @Body() dto: StoreConfirmDto) {
-    return this.creditsService.confirmStorePurchase(user.userId, dto);
+  storeConfirm(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: StoreConfirmDto,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.creditsService.confirmStorePurchase(
+      user.userId,
+      dto,
+      activeVenueId,
+    );
   }
 
   @Post('pix/create')
-  createPix(@CurrentUser() user: AuthUser, @Body() dto: PixCreateDto) {
+  createPix(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: PixCreateDto,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
     return this.creditsService.createPixCharge(
       user.userId,
       dto.packageKey,
       user.email,
       dto,
+      activeVenueId,
     );
   }
 
@@ -181,8 +209,17 @@ export class CreditsController {
 
   @Post('card/pay')
   @HttpCode(200)
-  payCard(@CurrentUser() user: AuthUser, @Body() dto: CardPayDto) {
-    return this.creditsService.payCard(user.userId, dto, user.email);
+  payCard(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: CardPayDto,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.creditsService.payCard(
+      user.userId,
+      dto,
+      user.email,
+      activeVenueId,
+    );
   }
 
   @Post('dev-confirm/:purchaseId')

@@ -29,6 +29,7 @@ import {
   CurrentUser,
 } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ActiveVenueId } from '../common/decorators/active-venue.decorator';
 import { BannersService } from './banners.service';
 
 class VipPublicationDto {
@@ -86,8 +87,11 @@ export class BannersController {
   constructor(private readonly bannersService: BannersService) {}
 
   @Get('history')
-  history(@CurrentUser() user: AuthUser) {
-    return this.bannersService.history(user.userId);
+  history(
+    @CurrentUser() user: AuthUser,
+    @ActiveVenueId() activeVenueId?: string,
+  ) {
+    return this.bannersService.history(user.userId, activeVenueId);
   }
 
   @Get('pricing')
@@ -126,6 +130,7 @@ export class BannersController {
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateBannerDto,
     @Headers('idempotency-key') idempotencyHeader?: string,
+    @ActiveVenueId() activeVenueId?: string,
   ) {
     const idempotencyKey = idempotencyHeader?.trim() || dto.idempotencyKey;
     return this.bannersService.create(
@@ -136,6 +141,7 @@ export class BannersController {
       dto.description,
       dto.contentKind ?? null,
       dto.vipDates ?? [],
+      activeVenueId,
       idempotencyKey,
       dto.vipPublications,
     );

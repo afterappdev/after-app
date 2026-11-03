@@ -82,6 +82,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   bool _geocoding = false;
 
   final _picker = ImagePicker();
+  AuthController? _auth;
 
   List<dynamic> get _gallery => _photos
       .where((p) => (p as Map)['kind']?.toString() != 'MENU')
@@ -99,9 +100,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       _close[key] = TextEditingController(text: '22:00');
       _closed[key] = false;
     }
-    final user = context.read<AuthController>().user;
-    _venueId = user?.venueId;
-    _applyAccountFields(user);
+    final auth = context.read<AuthController>();
+    _auth = auth;
+    _venueId = auth.managingVenueId;
+    auth.addListener(_onActiveVenueChanged);
+    _applyAccountFields(auth.user);
     _address.addListener(_onAddressFieldsChanged);
     _city.addListener(_onAddressFieldsChanged);
     _state.addListener(_onAddressFieldsChanged);
@@ -110,6 +113,12 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
 
   void _onAddressFieldsChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onActiveVenueChanged() {
+    if (!mounted) return;
+    _venueId = _auth?.managingVenueId;
+    _load();
   }
 
   bool get _showRelocateHint {
@@ -133,15 +142,16 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   }
 
   Future<void> _load() async {
-    final user = context.read<AuthController>().user;
-    _venueId = user?.venueId ?? _venueId;
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
+    _venueId = auth.managingVenueId ?? _venueId;
     final venueId = _venueId;
     if (venueId == null) return;
     try {
       final data = await context.read<ApiClient>().get('/venues/$venueId')
           as Map<String, dynamic>;
-      if (!mounted) return;
-      _applyAccountFields(user, venue: data);
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
+      _applyAccountFields(auth.user, venue: data);
       _description.text = data['description']?.toString() ?? '';
       final loadedCategory = data['category']?.toString();
       _requiresCategoryChoice =
@@ -534,6 +544,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
 
   @override
   void dispose() {
+    _auth?.removeListener(_onActiveVenueChanged);
     _name.dispose();
     _description.dispose();
     _address.dispose();

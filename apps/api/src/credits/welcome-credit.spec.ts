@@ -41,6 +41,7 @@ function createHarness() {
   const committed = {
     claims: new Map<string, Claim>(),
     documents: new Set<string>(),
+    documentOwners: new Map<string, string>(),
     wallets: [
       { venueId: 'old-venue', balance: 7, vipBalance: 4, kind: 'purchased' as const },
     ] as Wallet[],
@@ -76,6 +77,7 @@ function createHarness() {
       const draft = {
         claims: cloneClaims(),
         documents: new Set(committed.documents),
+        documentOwners: new Map(committed.documentOwners),
         wallets: committed.wallets.map((item) => ({ ...item })),
         purchases: committed.purchases.map((item) => ({ ...item })),
       };
@@ -90,8 +92,17 @@ function createHarness() {
         socialOnboardingToken: social,
         $executeRaw: async () => 1,
         $queryRaw: async (strings: TemplateStringsArray, ...bound: unknown[]) => {
-          sql.push(strings.join(' '));
+          const sqlText = strings.join(' ');
+          sql.push(sqlText);
           values.push(bound);
+          if (sqlText.includes('FROM "Venue"')) {
+            const docType = String(bound[0]);
+            const docDigits = String(bound[1]);
+            const docKey = `${docType}:${docDigits}`;
+            const ownerUserId = draft.documentOwners.get(docKey);
+            if (!ownerUserId) return [];
+            return [{ id: `v-${docKey}`, ownerUserId }];
+          }
           if (gate) {
             waiting += 1;
             if (waiting === 2) releaseGate?.();
@@ -108,8 +119,10 @@ function createHarness() {
           create: async (args: { data: Record<string, any> }) => {
             if (fail === 'user') throw new Error('wallet down');
             created.push(args);
-            const venue = args.data.venue?.create;
+            const venue =
+              args.data.ownedVenues?.create ?? args.data.venue?.create;
             const docKey = venue ? `${venue.documentType}:${venue.documentDigits}` : '';
+            const ownerUserId = String(args.data.id ?? `u-${txId}`);
             if (docKey && (committed.documents.has(docKey) || documentLock.has(docKey))) {
               throw Object.assign(new Error('unique'), {
                 code: 'P2002',
@@ -120,6 +133,7 @@ function createHarness() {
               documentLock.add(docKey);
               mine.documents.add(docKey);
               draft.documents.add(docKey);
+              draft.documentOwners.set(docKey, ownerUserId);
             }
             const venueId = venue
               ? docKey
@@ -135,14 +149,26 @@ function createHarness() {
               });
             }
             return {
-              id: `u-${txId}`,
+              id: ownerUserId,
               name: args.data.name,
               email: args.data.email,
               role: args.data.role,
               state: args.data.state,
               city: args.data.city,
               avatarUrl: args.data.avatarUrl ?? null,
-              venue: venueId ? { id: venueId, name: venue.name } : null,
+              activeVenueId: null,
+              ownedVenues: venueId
+                ? [
+                    {
+                      id: venueId,
+                      name: venue.name,
+                      city: venue.city,
+                      state: venue.state,
+                      logoUrl: null,
+                      createdAt: new Date(),
+                    },
+                  ]
+                : [],
             };
           },
         },
@@ -172,6 +198,7 @@ function createHarness() {
         const result = await fn(tx);
         committed.claims = draft.claims;
         committed.documents = draft.documents;
+        committed.documentOwners = draft.documentOwners;
         committed.wallets = draft.wallets;
         committed.purchases = draft.purchases;
         release();
@@ -208,6 +235,7 @@ function createHarness() {
     },
     deleteAccounts() {
       committed.documents.clear();
+      committed.documentOwners.clear();
       committed.wallets = committed.wallets.filter((item) => item.kind === 'purchased');
       committed.purchases = committed.purchases.filter((item) => item.packageKey !== 'welcome');
     },
@@ -260,34 +288,21 @@ describe('identificador do benefício de boas-vindas', () => {
 });
 
 describe('concessão única por CPF ou CNPJ', () => {
-  it('o primeiro CPF recebe 1 crédito comum e o primeiro CNPJ também', async () => {
+  it('novo cadastro enriched inicia com zero comum, zero VIP e sem bônus welcome', async () => {
     const harness = createHarness();
     const cpf = await harness.service.register(venueInput('cpf@after.local'));
     const cnpj = await harness.service.register(
       venueInput('cnpj@after.local', CNPJ, '11.444.777/0001-61'),
     );
 
-    expect(VENUE_SIGNUP_BONUS_CREDITS).toBe(1);
-    expect(signupWallets(harness).map((item) => item.balance)).toEqual([1, 1]);
+    expect(VENUE_SIGNUP_BONUS_CREDITS).toBe(0);
+    expect(signupWallets(harness).map((item) => item.balance)).toEqual([0, 0]);
     expect(signupWallets(harness).every((item) => item.vipBalance === undefined)).toBe(true);
-    expect(welcomePurchases(harness)).toEqual([
-      expect.objectContaining({
-        packageKey: 'welcome',
-        credits: 1,
-        amountPaid: 0,
-        status: PurchaseStatus.PAID,
-      }),
-      expect.objectContaining({ credits: 1, amountPaid: 0 }),
-    ]);
-    expect(welcomePurchases(harness).every((item) => !('provider' in item))).toBe(true);
-    expect(harness.committed.claims.size).toBe(2);
-    expect([...harness.committed.claims.values()].every((item) => item.originVenueId)).toBe(true);
+    expect(welcomePurchases(harness)).toHaveLength(0);
+    expect(harness.committed.claims.size).toBe(0);
+    expect(harness.sql.some((s) => s.includes('WelcomeCreditClaim'))).toBe(false);
     expect(JSON.stringify(cpf)).not.toContain(CPF.documentDigits);
     expect(JSON.stringify(cnpj)).not.toContain(CNPJ.documentDigits);
-    expect(JSON.stringify(cpf)).not.toContain([...harness.committed.claims.keys()][0]);
-    expect(harness.sql[0]).toContain('ON CONFLICT ("documentKey") DO NOTHING');
-    expect(harness.values[0]).not.toContain(CPF.documentDigits);
-    expect(harness.values[0]).toContain(welcomeCreditDocumentKey(SECRET, CPF));
     expect(harness.committed.wallets.find((item) => item.venueId === 'old-venue')).toEqual({
       venueId: 'old-venue',
       balance: 7,
@@ -302,14 +317,15 @@ describe('concessão única por CPF ou CNPJ', () => {
     });
   });
 
-  it('documento já beneficiado, outro e-mail e retry não concedem outro bônus', async () => {
+  it('documento duplicado continua bloqueado; retry após exclusão não concede bônus', async () => {
     const harness = createHarness();
     await harness.service.register(venueInput('a@after.local'));
     await expect(harness.service.register(venueInput('b@after.local'))).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(harness.committed.claims.size).toBe(1);
+    expect(harness.committed.claims.size).toBe(0);
     expect(signupWallets(harness)).toHaveLength(1);
+    expect(signupWallets(harness)[0].balance).toBe(0);
 
     harness.deleteAccounts();
     const again = await harness.service.register(venueInput('c@after.local'));
@@ -318,7 +334,7 @@ describe('concessão única por CPF ou CNPJ', () => {
       expect.objectContaining({ balance: 0, vipBalance: undefined }),
     ]);
     expect(welcomePurchases(harness)).toHaveLength(0);
-    expect(harness.committed.claims.size).toBe(1);
+    expect(harness.committed.claims.size).toBe(0);
     expect(JSON.stringify(again)).not.toContain(CPF.documentDigits);
   });
 
@@ -367,13 +383,12 @@ describe('concessão única por CPF ou CNPJ', () => {
     expect(apple.user.email).toBe('apple@after.local');
     expect(harness.created.at(-1)?.data.appleId).toBe('apple-id');
     expect(signupWallets(harness).at(-1)?.balance).toBe(0);
-    expect(harness.committed.claims.size).toBe(1);
+    expect(harness.committed.claims.size).toBe(0);
     expect(welcomePurchases(harness)).toHaveLength(0);
   });
 
-  it('duas tentativas simultâneas deixam um crédito e um registro', async () => {
+  it('duas tentativas simultâneas com o mesmo documento deixam um cadastro e saldo zero', async () => {
     const harness = createHarness();
-    harness.armGate();
     const settled = await Promise.allSettled([
       harness.service.register(venueInput('a@after.local')),
       harness.service.register(venueInput('b@after.local')),
@@ -383,11 +398,11 @@ describe('concessão única por CPF ou CNPJ', () => {
     expect(rejected.reason).toBeInstanceOf(ConflictException);
     expect(rejected.reason.message).toBe(VENUE_DOCUMENT_TAKEN);
     expect(rejected.reason.message).not.toContain(CPF.documentDigits);
-    expect(harness.committed.claims.size).toBe(1);
+    expect(harness.committed.claims.size).toBe(0);
     expect(signupWallets(harness)).toEqual([
-      expect.objectContaining({ balance: 1, vipBalance: undefined }),
+      expect.objectContaining({ balance: 0, vipBalance: undefined }),
     ]);
-    expect(welcomePurchases(harness)).toHaveLength(1);
+    expect(welcomePurchases(harness)).toHaveLength(0);
   });
 
   it('falha entre o registro e o crédito desfaz os dois', async () => {
@@ -399,20 +414,25 @@ describe('concessão única por CPF ou CNPJ', () => {
     expect(welcomePurchases(harness)).toHaveLength(0);
   });
 
-  it('falha entre o crédito e a confirmação desfaz o bônus', async () => {
+  it('sem bônus ativo, falha na compra welcome não se aplica ao cadastro', async () => {
     const harness = createHarness();
     harness.failAt('purchase');
-    await expect(harness.service.register(venueInput('a@after.local'))).rejects.toThrow('purchase down');
+    await harness.service.register(venueInput('a@after.local'));
     expect(harness.committed.claims.size).toBe(0);
-    expect(signupWallets(harness)).toHaveLength(0);
+    expect(signupWallets(harness)).toEqual([
+      expect.objectContaining({ balance: 0, vipBalance: undefined }),
+    ]);
+    expect(welcomePurchases(harness)).toHaveLength(0);
   });
 
-  it('falha ao gravar a origem desfaz crédito e registro', async () => {
+  it('sem bônus ativo, falha ao gravar origem welcome não se aplica ao cadastro', async () => {
     const harness = createHarness();
     harness.failAt('origin');
-    await expect(harness.service.register(venueInput('a@after.local'))).rejects.toThrow('origin down');
+    await harness.service.register(venueInput('a@after.local'));
     expect(harness.committed.claims.size).toBe(0);
-    expect(signupWallets(harness)).toHaveLength(0);
+    expect(signupWallets(harness)).toEqual([
+      expect.objectContaining({ balance: 0, vipBalance: undefined }),
+    ]);
     expect(welcomePurchases(harness)).toHaveLength(0);
   });
 
@@ -430,26 +450,27 @@ describe('concessão única por CPF ou CNPJ', () => {
       documentNumber: undefined,
     });
     expect(legacy.user.venueId).toBeTruthy();
-    expect(harness.sql).toHaveLength(0);
+    expect(harness.sql.some((s) => s.includes('WelcomeCreditClaim'))).toBe(false);
     expect(harness.committed.claims.size).toBe(0);
     expect(signupWallets(harness)).toEqual([
       expect.objectContaining({ balance: VENUE_SIGNUP_BONUS_CREDITS, vipBalance: undefined }),
     ]);
   });
 
-  it('sem segredo o estabelecimento não é criado e o usuário comum não usa a regra', async () => {
+  it('sem bônus ativo, cadastro de estabelecimento não exige segredo welcome', async () => {
     const harness = createHarness();
-    const blocked = new AuthService(
+    const withoutSecret = new AuthService(
       harness.prisma as never,
       new JwtService({ secret: 'test-secret' }),
       config(null),
     );
-    await expect(blocked.register(venueInput('a@after.local'))).rejects.toThrow(
-      ServiceUnavailableException,
-    );
+    await withoutSecret.register(venueInput('a@after.local'));
     expect(harness.committed.claims.size).toBe(0);
+    expect(signupWallets(harness)).toEqual([
+      expect.objectContaining({ balance: 0, vipBalance: undefined }),
+    ]);
 
-    await harness.service.register({
+    await withoutSecret.register({
       name: 'Ana',
       email: 'ana@after.local',
       password: 'senha123',
@@ -458,8 +479,8 @@ describe('concessão única por CPF ou CNPJ', () => {
       role: Role.USER,
       ageBand: 'AGE_19_35',
     });
-    expect(harness.sql).toHaveLength(0);
-    expect(signupWallets(harness)).toHaveLength(0);
+    expect(harness.sql.some((s) => s.includes('WelcomeCreditClaim'))).toBe(false);
+    expect(signupWallets(harness)).toHaveLength(1);
   });
 });
 

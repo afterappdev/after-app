@@ -8,9 +8,10 @@ Future<void> loadVenueFiscalDocument({
   required AuthController auth,
   required FiscalInvoiceController fiscal,
   void Function()? onLoaded,
+  String? venueIdOverride,
 }) async {
   final user = auth.user;
-  final venueId = user?.venueId;
+  final venueId = venueIdOverride ?? auth.managingVenueId;
   if (user == null || !user.isVenue || venueId == null || venueId.isEmpty) {
     return;
   }

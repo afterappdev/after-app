@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 
+import 'package:after_app/core/auth/auth_storage.dart';
 import 'package:after_app/core/network/api_client.dart';
+import 'package:after_app/features/auth/auth_controller.dart';
 import 'package:after_app/features/credits/buy_credits_layout.dart';
 import 'package:after_app/features/credits/buy_credits_screen.dart';
 import 'package:after_app/features/credits/checkout_screen.dart';
@@ -715,9 +717,16 @@ Future<void> _pumpBuy(
     return http.Response('{}', 404);
   });
 
+  final api = ApiClient(client: client);
+  final auth = AuthController(api: api, storage: AuthStorage())
+    ..bootstrapping = false;
+
   await tester.pumpWidget(
-    Provider.value(
-      value: ApiClient(client: client),
+    MultiProvider(
+      providers: [
+        Provider<ApiClient>.value(value: api),
+        ChangeNotifierProvider<AuthController>.value(value: auth),
+      ],
       child: MaterialApp(
         builder: (context, child) {
           final data = MediaQuery.of(context);

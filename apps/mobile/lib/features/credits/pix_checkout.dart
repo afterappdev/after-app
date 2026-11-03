@@ -14,6 +14,7 @@ import 'venue_fiscal_document.dart';
 import 'fiscal_invoice_section.dart';
 import 'pix_charge.dart';
 import 'pix_poller.dart';
+import 'checkout_venue_pin.dart';
 import 'purchase_labels.dart';
 
 class PixCheckoutScreen extends StatefulWidget {
@@ -25,7 +26,8 @@ class PixCheckoutScreen extends StatefulWidget {
   State<PixCheckoutScreen> createState() => _PixCheckoutScreenState();
 }
 
-class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
+class _PixCheckoutScreenState extends State<PixCheckoutScreen>
+    with CheckoutVenuePin<PixCheckoutScreen> {
   late final PixPurchasePoller _poller;
   late final FiscalInvoiceController _fiscal;
   bool _creating = false;
@@ -61,6 +63,7 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
         api: context.read<ApiClient>(),
         auth: auth,
         fiscal: _fiscal,
+        venueIdOverride: pinnedCheckoutVenueId,
         onLoaded: () {
           if (mounted) setState(() {});
         },
@@ -100,9 +103,12 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
     });
     try {
       final api = context.read<ApiClient>();
-      final result = await api.post(
-        '/credits/pix/create',
-        body: pixCreateBody(_packageKey, _fiscal.toApiPayload()),
+      final result = await runForCheckoutVenue(
+        api,
+        () => api.post(
+          '/credits/pix/create',
+          body: pixCreateBody(_packageKey, _fiscal.toApiPayload()),
+        ),
       );
       if (!mounted) return;
       final map = result is Map<String, dynamic>
@@ -146,7 +152,10 @@ class _PixCheckoutScreenState extends State<PixCheckoutScreen> {
     setState(() => _refreshingWallet = true);
     try {
       final api = context.read<ApiClient>();
-      final wallet = await api.get('/credits/wallet') as Map<String, dynamic>;
+      final wallet = await runForCheckoutVenue(api, () async {
+        final body = await api.get('/credits/wallet');
+        return Map<String, dynamic>.from(body as Map);
+      });
       if (!mounted) return;
       setState(() {
         _walletBalance = walletBalanceFromResponse(wallet);

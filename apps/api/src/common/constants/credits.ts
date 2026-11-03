@@ -12,8 +12,15 @@ export const CREDIT_PACKAGES = [
 export type CreditPackageKey = (typeof CREDIT_PACKAGES)[number]['key'];
 
 /**
- * Common credits for a new venue, and only when that CPF or CNPJ has never
- * received the welcome benefit. VIP balance is not part of this grant.
+ * Common credits granted automatically on new venue signup.
+ * Set to 0: new establishments start with no welcome bonus (purchases/coupons/admin unchanged).
+ * Historical welcome purchases and document linking still use stored amounts.
  */
-/** One common credit for every eligible new venue signup. Never VIP. */
-export const VENUE_SIGNUP_BONUS_CREDITS = 1;
+export const VENUE_SIGNUP_BONUS_CREDITS = 0;
+
+/**
+ * WelcomeCreditClaim / WelcomeCreditVenueProvision CHECK constraints require 1
+ * when recording an automatic signup grant. Signup no longer calls those paths
+ * when VENUE_SIGNUP_BONUS_CREDITS is 0; historical linking uses stored amounts.
+ */
+export const WELCOME_SIGNUP_CLAIM_CREDITS = 1;

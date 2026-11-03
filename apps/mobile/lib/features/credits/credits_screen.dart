@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/network/api_client.dart';
+import '../auth/auth_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/after_logo.dart';
@@ -46,19 +47,38 @@ class _CreditsScreenState extends State<CreditsScreen> {
   final _description = TextEditingController();
   final _scroll = ScrollController();
   Timer? _vipPushClock;
+  AuthController? _auth;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _auth = context.read<AuthController>();
+      _auth!.addListener(_onVenueScopeChanged);
+      _load();
+    });
     _vipPushClock = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted || _billingPlan != PublicationBillingPlan.vip) return;
       setState(_syncVipPushTimingByDate);
     });
   }
 
+  void _onVenueScopeChanged() {
+    if (!mounted) return;
+    setState(() {
+      _bannerUrl = null;
+      _selectedDates.clear();
+      _history = [];
+      _balance = 0;
+      _vipBalance = 0;
+    });
+    _load();
+  }
+
   @override
   void dispose() {
+    _auth?.removeListener(_onVenueScopeChanged);
     _vipPushClock?.cancel();
     _title.dispose();
     _description.dispose();
@@ -85,6 +105,8 @@ class _CreditsScreenState extends State<CreditsScreen> {
   }
 
   Future<void> _load() async {
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -105,7 +127,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
         perDay = 1;
         vipPerDay = 1;
       }
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _balance = asInt(wallet['balance']);
         _vipBalance = asInt(wallet['vipBalance']);
@@ -115,7 +137,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -148,15 +170,21 @@ class _CreditsScreenState extends State<CreditsScreen> {
       _snack('A imagem deve ter no máximo 10MB.');
       return;
     }
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
+    final pinnedVenueId = auth.managingVenueId;
     final api = context.read<ApiClient>();
     setState(() => _uploading = true);
     try {
-      final uploaded = await api.uploadImage(
-            bytes: bytes,
-            filename: file.name,
-            mimeType: file.mimeType,
-          );
-      if (!mounted) return;
+      final uploaded = await api.runWithActiveVenueHeader(
+        pinnedVenueId,
+        () => api.uploadImage(
+          bytes: bytes,
+          filename: file.name,
+          mimeType: file.mimeType,
+        ),
+      );
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() => _bannerUrl = uploaded['url'] as String?);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -284,11 +312,17 @@ class _CreditsScreenState extends State<CreditsScreen> {
     );
     if (!confirmed || !mounted || _publishing) return;
 
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
+    final pinnedVenueId = auth.managingVenueId;
     final idempotencyKey = _publishIdempotencyKey ??= _newPublicationIdempotencyKey();
     setState(() => _publishing = true);
     try {
       final dates = _selectedDates.map(_fmt).toList()..sort();
-      await context.read<ApiClient>().post(
+      final api = context.read<ApiClient>();
+      await api.runWithActiveVenueHeader(
+        pinnedVenueId,
+        () => api.post(
         '/banners',
         headers: {'Idempotency-Key': idempotencyKey},
         body: {
@@ -309,8 +343,9 @@ class _CreditsScreenState extends State<CreditsScreen> {
             'dates': dates,
           },
         },
+        ),
       );
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _bannerUrl = null;
         _selectedDates.clear();
@@ -323,7 +358,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
       _snack(isVip ? 'Publicação VIP agendada na HOME.' : 'Publicação agendada na HOME.');
       await _load();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       _snack(e.message);
     } finally {
       if (mounted) setState(() => _publishing = false);
@@ -334,10 +369,12 @@ class _CreditsScreenState extends State<CreditsScreen> {
     if (_cancellingId != null || id.isEmpty) return;
     final confirmed = await showDeletePromotionDialog(context);
     if (!confirmed || !mounted || _cancellingId != null) return;
+    final auth = context.read<AuthController>();
+    final scope = auth.venueDataGeneration;
     setState(() => _cancellingId = id);
     try {
       await context.read<ApiClient>().post('/banners/$id/cancel');
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       setState(() {
         _history = _history.map((item) {
           final map = Map<String, dynamic>.from(item as Map);
@@ -347,7 +384,7 @@ class _CreditsScreenState extends State<CreditsScreen> {
       });
       _snack('Promoção excluída.');
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !auth.isVenueScopeCurrent(scope)) return;
       _snack(e.message);
     } finally {
       if (mounted) setState(() => _cancellingId = null);
