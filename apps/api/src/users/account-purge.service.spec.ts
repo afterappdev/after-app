@@ -97,4 +97,111 @@ describe('AccountPurgeService', () => {
     expect(result.simulated).toBe(1);
     expect(execute).not.toHaveBeenCalled();
   });
+
+  function claimEligibleJob() {
+    store.listEligibleJobIds.mockResolvedValue(['job-1']);
+    store.tryClaimJob.mockResolvedValue({
+      id: 'job-1',
+      userId: 'u1',
+      status: AccountPurgeJobStatus.PENDING,
+      attempts: 1,
+      scheduledFor: new Date('2020-01-01'),
+      leaseEpoch: 1,
+    });
+  }
+
+  it('produção com arming completo sem ALLOW_PRODUCTION não executa purge', async () => {
+    claimEligibleJob();
+    service.useEnv({
+      NODE_ENV: 'production',
+      ACCOUNT_PURGE_ENABLED: 'true',
+      ACCOUNT_PURGE_DRY_RUN: 'false',
+      ACCOUNT_PURGE_ARM_DESTRUCTIVE: 'true',
+      ACCOUNT_PURGE_EXECUTE: 'true',
+    });
+
+    const result = await service.runTick(new Date(), 'worker-1');
+    expect(result.simulated).toBe(1);
+    expect(executor.executePermanentPurge).not.toHaveBeenCalled();
+  });
+
+  it('produção executa purge somente com todas as autorizações', async () => {
+    claimEligibleJob();
+    service.useEnv({
+      NODE_ENV: 'production',
+      ACCOUNT_PURGE_ENABLED: 'true',
+      ACCOUNT_PURGE_DRY_RUN: 'false',
+      ACCOUNT_PURGE_ARM_DESTRUCTIVE: 'true',
+      ACCOUNT_PURGE_EXECUTE: 'true',
+      ACCOUNT_PURGE_ALLOW_PRODUCTION: 'true',
+    });
+
+    const result = await service.runTick(new Date(), 'worker-1');
+    expect(executor.executePermanentPurge).toHaveBeenCalledWith(
+      'u1',
+      expect.objectContaining({
+        jobId: 'job-1',
+        workerId: 'worker-1',
+        leaseEpoch: 1,
+      }),
+    );
+    expect(result.simulated).toBe(0);
+    expect(result.failed).toBe(0);
+  });
+
+  it('produção com arming completo e DRY_RUN=true permanece em simulação', async () => {
+    claimEligibleJob();
+    service.useEnv({
+      NODE_ENV: 'production',
+      ACCOUNT_PURGE_ENABLED: 'true',
+      ACCOUNT_PURGE_DRY_RUN: 'true',
+      ACCOUNT_PURGE_ARM_DESTRUCTIVE: 'true',
+      ACCOUNT_PURGE_EXECUTE: 'true',
+      ACCOUNT_PURGE_ALLOW_PRODUCTION: 'true',
+    });
+
+    const result = await service.runTick(new Date(), 'worker-1');
+    expect(result.simulated).toBe(1);
+    expect(executor.executePermanentPurge).not.toHaveBeenCalled();
+  });
+
+  it('staging com arming completo executa purge sem ALLOW_PRODUCTION', async () => {
+    claimEligibleJob();
+    service.useEnv({
+      NODE_ENV: 'staging',
+      ACCOUNT_PURGE_ENABLED: 'true',
+      ACCOUNT_PURGE_DRY_RUN: 'false',
+      ACCOUNT_PURGE_ARM_DESTRUCTIVE: 'true',
+      ACCOUNT_PURGE_EXECUTE: 'true',
+    });
+
+    await service.runTick(new Date(), 'worker-1');
+    expect(executor.executePermanentPurge).toHaveBeenCalled();
+  });
+
+  it('job já concluído não é reprocessado no mesmo tick', async () => {
+    store.listEligibleJobIds.mockResolvedValue(['job-1', 'job-1']);
+    store.tryClaimJob
+      .mockResolvedValueOnce({
+        id: 'job-1',
+        userId: 'u1',
+        status: AccountPurgeJobStatus.PENDING,
+        attempts: 1,
+        scheduledFor: new Date('2020-01-01'),
+        leaseEpoch: 1,
+      })
+      .mockResolvedValueOnce(null);
+    service.useEnv({
+      NODE_ENV: 'development',
+      ACCOUNT_PURGE_ENABLED: 'true',
+      ACCOUNT_PURGE_DRY_RUN: 'false',
+      ACCOUNT_PURGE_ARM_DESTRUCTIVE: 'true',
+      ACCOUNT_PURGE_EXECUTE: 'true',
+    });
+
+    const result = await service.runTick(new Date(), 'worker-1');
+    expect(executor.executePermanentPurge).toHaveBeenCalledTimes(1);
+    expect(result.claimed).toBe(1);
+    expect(result.skipped).toBe(1);
+  });
 });

@@ -73,13 +73,17 @@ Mobile pode tolerar API nova com apps antigos se endpoints opcionais; recomendad
 | `ACCOUNT_PURGE_DRY_RUN` | `true` | Simulação |
 | `ACCOUNT_PURGE_ARM_DESTRUCTIVE` | unset/false | Arming |
 | `ACCOUNT_PURGE_EXECUTE` | unset/false | Execução real |
-| `NODE_ENV` | `production` | Bloqueia destructive mesmo com flags |
+| `ACCOUNT_PURGE_ALLOW_PRODUCTION` | unset/false | Autorização explícita de destructive quando `NODE_ENV=production` |
+| `ACCOUNT_PURGE_BATCH` | `5` (padrão código) | **Produção na 1ª ativação real:** definir `1` para processar uma conta por tick |
+| `NODE_ENV` | `production` | Bloqueia destructive sem `ACCOUNT_PURGE_ALLOW_PRODUCTION=true` |
 
 Demais: JWT secrets, `PUBLIC_API_URL`, R2 — inalterados.
 
+Valores ausentes, vazios ou inválidos para flags booleanas são tratados como **false** (purge bloqueado), exceto `ACCOUNT_PURGE_DRY_RUN`, cujo padrão é **true**.
+
 ## 10. Purge destrutivo desabilitado
 
-Manter **todas** as flags acima até checklist operacional completo + janela de observação em staging com purge simulado apenas.
+Manter **todas** as flags acima, inclusive `ACCOUNT_PURGE_ALLOW_PRODUCTION` ausente ou `false`, até checklist operacional completo + janela de observação em staging com purge simulado apenas. Nenhuma exclusão destrutiva ocorre sem `ENABLED=true`, `DRY_RUN=false`, `ARM_DESTRUCTIVE=true` e `EXECUTE=true`. Em produção, falta também `ALLOW_PRODUCTION=true`.
 
 Ativação futura do worker: seção 12.
 
@@ -103,4 +107,36 @@ Deploy **manual** no painel Railway; este runbook não dispara pipeline GitHub.
 1. `ENABLED=true`, `DRY_RUN=true` — observar logs `account-purge simulated` 48h.
 2. `DRY_RUN=false`, sem arming — continua simulado se destructive false.
 3. Staging: `ARM_DESTRUCTIVE=true`, `EXECUTE=true`, `NODE_ENV≠production` — purge real em contas de teste sintéticas.
-4. Produção: **somente** após critérios 12 + aprovação explícita; manter destructive false em prod até política legal/ops definida.
+4. Produção: **somente** após critérios 12 + aprovação explícita, com `ACCOUNT_PURGE_ALLOW_PRODUCTION=true` junto de `ENABLED=true`, `DRY_RUN=false`, `ARM_DESTRUCTIVE=true` e `EXECUTE=true`. Sem `ALLOW_PRODUCTION`, produção permanece bloqueada.
+
+## 14. Ativação gradual em produção (purge real)
+
+1. **Backup:** snapshot PostgreSQL Railway imediatamente antes de qualquer mudança de flag (ver seção 5).
+2. **Verificação read-only:** contar contas e jobs antes de ligar o worker (não executar exclusões manualmente):
+
+```sql
+SELECT
+  COUNT(*) FILTER (WHERE "accountStatus" = 'PENDING_DELETION')
+    AS contas_pending_deletion,
+  COUNT(*) FILTER (
+    WHERE "accountStatus" = 'PENDING_DELETION'
+      AND "permanentDeletionAt" IS NOT NULL
+      AND "permanentDeletionAt" <= NOW()
+  ) AS contas_com_prazo_vencido
+FROM "User";
+
+SELECT
+  COUNT(*) FILTER (WHERE status = 'PENDING') AS jobs_pending,
+  COUNT(*) FILTER (WHERE status = 'FAILED') AS jobs_failed,
+  COUNT(*) FILTER (
+    WHERE "lastError" LIKE 'financial_purge_blocked:%'
+  ) AS jobs_blocked_financeiro
+FROM "AccountPurgeJob";
+```
+
+3. **Dry-run em produção:** `ENABLED=true`, `DRY_RUN=true`, demais flags de arming **false**, `ALLOW_PRODUCTION` **false**. Observar logs `account-purge simulated` por no mínimo 48h.
+4. **Primeira execução real:** somente após dry-run estável — `ALLOW_PRODUCTION=true`, `DRY_RUN=false`, `ARM_DESTRUCTIVE=true`, `EXECUTE=true`, `ACCOUNT_PURGE_BATCH=1`. Um job por tick.
+5. **Monitoramento:** acompanhar logs `account-purge simulated`, `account-purge failed`, audit `job_blocked` / `job_completed`; métricas de erro Railway; fila `AccountPurgeJob` (PENDING/FAILED).
+6. **Desativação emergencial:** definir `ACCOUNT_PURGE_ENABLED=false` (e opcionalmente redeploy da imagem anterior). Não apagar dados; o worker para de reivindicar jobs. Para rollback de código, redeploy sem alterar migrations.
+
+Regras de elegibilidade (30 dias, recuperação de conta, bloqueio financeiro, idempotência de claim) **não** dependem de `ALLOW_PRODUCTION`; continuam no store/executor existentes.

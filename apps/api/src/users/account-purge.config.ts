@@ -27,6 +27,7 @@ export type AccountPurgeEnv = {
   ACCOUNT_PURGE_DRY_RUN?: string;
   ACCOUNT_PURGE_ARM_DESTRUCTIVE?: string;
   ACCOUNT_PURGE_EXECUTE?: string;
+  ACCOUNT_PURGE_ALLOW_PRODUCTION?: string;
   ACCOUNT_PURGE_POLL_MS?: string;
   ACCOUNT_PURGE_LEASE_MS?: string;
   ACCOUNT_PURGE_BATCH?: string;
@@ -53,14 +54,24 @@ export function accountPurgeBatchSize(env: AccountPurgeEnv = process.env): numbe
   return readInt(env.ACCOUNT_PURGE_BATCH, DEFAULT_BATCH, 1, 50);
 }
 
+export function accountPurgeAllowProduction(
+  env: AccountPurgeEnv = process.env,
+): boolean {
+  return readBool(env.ACCOUNT_PURGE_ALLOW_PRODUCTION, false);
+}
+
 /**
- * Automatic destructive purge requires explicit arming (Phase G).
- * Production is always blocked. A single mis-set flag cannot enable purge.
+ * Destructive purge requires every explicit arming flag (Phase G).
+ * Production stays blocked unless ACCOUNT_PURGE_ALLOW_PRODUCTION is true.
+ * A single missing flag cannot enable purge.
  */
 export function accountPurgeDestructiveAllowed(
   env: AccountPurgeEnv = process.env,
 ): boolean {
-  if ((env.NODE_ENV ?? process.env.NODE_ENV) === 'production') {
+  if (
+    (env.NODE_ENV ?? process.env.NODE_ENV) === 'production' &&
+    !accountPurgeAllowProduction(env)
+  ) {
     return false;
   }
   if (!accountPurgeEnabled(env)) {
