@@ -28,13 +28,13 @@ export function AfterHeader() {
         </button>
         <div className="collapse navbar-collapse" id="afterMainNav">
           <ul className="navbar-nav ms-auto align-items-lg-center gap-lg-2">
+            <li className="nav-item">
+              <NavLink className="nav-link" to="/" end>
+                Início
+              </NavLink>
+            </li>
             {user ? (
               <>
-                <li className="nav-item">
-                  <NavLink className="nav-link" to="/" end>
-                    Início
-                  </NavLink>
-                </li>
                 <li className="nav-item">
                   <span className="nav-link disabled py-lg-2">
                     <span className="badge rounded-pill text-bg-light border">

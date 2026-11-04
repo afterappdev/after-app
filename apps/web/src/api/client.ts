@@ -1,4 +1,9 @@
 import { getApiBaseUrl } from '../config/env'
+import {
+  buildQueryString,
+  isOptionalAuthGet,
+  normalizeApiPath,
+} from './optionalAuth'
 
 export class ApiError extends Error {
   readonly statusCode: number
@@ -38,12 +43,17 @@ export class ApiClient {
     path: string,
     body?: unknown,
     init?: RequestInit,
+    options?: { omitAuth?: boolean; authPath?: string; isRetry?: boolean },
   ): Promise<T> {
+    const omitAuth = options?.omitAuth ?? false
+    const authPath = options?.authPath ?? normalizeApiPath(path)
+    const isRetry = options?.isRetry ?? false
+
     const headers = new Headers(init?.headers)
     if (!headers.has('Content-Type') && body !== undefined) {
       headers.set('Content-Type', 'application/json')
     }
-    const token = this.getToken()
+    const token = omitAuth ? null : this.getToken()
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
@@ -74,8 +84,21 @@ export class ApiClient {
       }
     }
 
-    if (response.status === 401 && token) {
+    const sentAuthorization = !omitAuth && !isRetry && !!this.getToken()
+
+    if (response.status === 401 && sentAuthorization) {
       this.onUnauthorized?.()
+      if (
+        !isRetry &&
+        method === 'GET' &&
+        isOptionalAuthGet(authPath)
+      ) {
+        return this.request<T>(method, path, body, init, {
+          omitAuth: true,
+          authPath,
+          isRetry: true,
+        })
+      }
     }
 
     if (!response.ok) {
@@ -94,8 +117,15 @@ export class ApiClient {
     return parsed as T
   }
 
-  get<T>(path: string) {
-    return this.request<T>('GET', path)
+  get<T>(
+    path: string,
+    query?: Record<string, string | number | boolean | undefined | null>,
+  ) {
+    const authPath = normalizeApiPath(path)
+    const qs = buildQueryString(query)
+    return this.request<T>('GET', `${authPath}${qs}`, undefined, undefined, {
+      authPath,
+    })
   }
 
   post<T>(path: string, body?: unknown) {
