@@ -1,3 +1,15 @@
+export function isTerminalPurchaseStatus(status: string | null | undefined): boolean {
+  switch ((status ?? '').toUpperCase()) {
+    case 'PAID':
+    case 'FAILED':
+    case 'CANCELLED':
+    case 'REFUNDED':
+      return true
+    default:
+      return false
+  }
+}
+
 export function purchaseStatusLabel(status: string | null | undefined): string {
   switch ((status ?? '').toUpperCase()) {
     case 'PENDING':

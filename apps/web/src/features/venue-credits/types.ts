@@ -11,6 +11,7 @@ export type CreditPackage = {
   referencePriceBrl?: number
   modality?: string
   storeProductId?: string
+  productId?: string
   currency?: string
 }
 
@@ -68,4 +69,48 @@ export type CouponRedeemResult = {
   creditKind: string
   balance: number
   vipBalance: number
+}
+
+export type FiscalPurchasePayload = {
+  invoiceRequested: boolean
+  fiscalPersonType?: 'CPF' | 'CNPJ'
+  fiscalName?: string
+  fiscalDocument?: string
+  fiscalEmail?: string
+}
+
+export type PixChargeResult = {
+  purchaseId: string
+  paymentId?: string | null
+  status: string
+  amount?: number
+  currency?: string
+  qrCodeText?: string | null
+  qrCodeImage?: string | null
+  expiresAt?: string | null
+}
+
+export type CardCheckoutConfig = {
+  publicKey: string
+  maxInstallments: number
+}
+
+export type CardPayOutcome =
+  | 'approved'
+  | 'rejected'
+  | 'pending'
+  | 'unknown'
+  | 'cancelled'
+  | 'refunded'
+
+export type CardPayResponse = {
+  purchaseId: string
+  status: string
+  provider: 'card'
+  amount: number
+  currency: 'BRL'
+  credits: number
+  orderId: string | null
+  idempotencyKey: string
+  outcome: CardPayOutcome
 }
