@@ -31,6 +31,10 @@ import {
   venueFiltersActive,
   type VenueSearchFilters,
 } from './venueSearchFilters'
+import {
+  readHomeNavigationState,
+  saveHomeNavigationState,
+} from './homeNavigationState'
 
 type MainTab = 'explore' | 'search'
 
@@ -61,10 +65,25 @@ export function HomePage() {
   const [filterModalOpen, setFilterModalOpen] = useState(false)
 
   useEffect(() => {
-    const stored = readStoredCity()
-    if (stored.city) {
-      setCity(stored.city)
-      setState(stored.state)
+    const restored = readHomeNavigationState()
+    if (restored) {
+      setMainTab(restored.mainTab)
+      setCity(restored.city)
+      setState(restored.state)
+      setVenueQuery(restored.venueQuery)
+      setFilters(cloneVenueSearchFilters(restored.filters))
+      if (restored.selectedDayIso) {
+        const parsed = new Date(restored.selectedDayIso)
+        if (!Number.isNaN(parsed.getTime())) {
+          setSelectedDay(startOfDay(parsed))
+        }
+      }
+    } else {
+      const stored = readStoredCity()
+      if (stored.city) {
+        setCity(stored.city)
+        setState(stored.state)
+      }
     }
   }, [])
 
@@ -167,6 +186,14 @@ export function HomePage() {
   )
 
   const openVenue = (venueId: string) => {
+    saveHomeNavigationState({
+      mainTab,
+      city,
+      state,
+      venueQuery,
+      selectedDayIso: selectedDay.toISOString(),
+      filters: cloneVenueSearchFilters(filters),
+    })
     navigate(`/venue/${encodeURIComponent(venueId)}`)
   }
 

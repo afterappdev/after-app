@@ -35,6 +35,19 @@ describe('home api', () => {
     expect(url).toContain('city=S')
   })
 
+  it('fetchHomePromotions inclui date ao trocar dia', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify([]),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const api = new ApiClient()
+    await fetchHomePromotions(api, { city: 'Rio', date: '2026-11-05' })
+    const url = String(fetchMock.mock.calls[0][0])
+    expect(url).toContain('date=2026-11-05')
+  })
+
   it('searchVenues normaliza lista', async () => {
     vi.stubGlobal(
       'fetch',
