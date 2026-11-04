@@ -172,9 +172,14 @@ export function UserProfilePage() {
         </div>
       ) : null}
 
-      <div>
-        <h1 className="h4 after-brand-text mb-1">Meu perfil</h1>
-        <p className="text-muted small mb-0">Dados da sua conta After.</p>
+      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <h1 className="h4 after-brand-text mb-1">Meu perfil</h1>
+          <p className="text-muted small mb-0">Dados da sua conta After.</p>
+        </div>
+        <Link to="/perfil/conta" className="btn btn-sm btn-outline-secondary">
+          Conta e segurança
+        </Link>
       </div>
 
       <form className="card border-0 shadow-sm" onSubmit={onSave}>

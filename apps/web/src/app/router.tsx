@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react'
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../layouts/AppLayout'
+import { RequireSession } from '../features/auth/RequireSession'
 import { RequireUser } from '../features/auth/RequireUser'
+import { AccountSettingsPage } from '../features/auth/AccountSettingsPage'
+import { AppleWebCallbackPage } from '../features/auth/AppleWebCallbackPage'
+import { ConfirmAccountDeletionPage } from '../features/auth/ConfirmAccountDeletionPage'
+import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage'
 import { LoginPage } from '../features/auth/LoginPage'
+import { OAuthCallbackPage } from '../features/auth/OAuthCallbackPage'
+import { RegisterPage } from '../features/auth/RegisterPage'
+import { ResetPasswordPage } from '../features/auth/ResetPasswordPage'
 import { HomePage } from '../features/home/HomePage'
 import { BlockedVenuesPage } from '../features/profile/BlockedVenuesPage'
 import { FavoritesPage } from '../features/profile/FavoritesPage'
@@ -25,6 +33,12 @@ export function AppRouter() {
         <Route element={<AppLayout />}>
           <Route index element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/oauth" element={<OAuthCallbackPage />} />
+          <Route path="/auth/apple/callback" element={<AppleWebCallbackPage />} />
+          <Route path="/esqueci-minha-senha" element={<ForgotPasswordPage />} />
+          <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
+          <Route path="/confirmar-exclusao" element={<ConfirmAccountDeletionPage />} />
           <Route path="/venue/:venueId" element={<VenueDetailPage />} />
           <Route
             path="/estabelecimento"
@@ -80,6 +94,14 @@ export function AppRouter() {
               <UserOnly>
                 <NotificationsPage />
               </UserOnly>
+            }
+          />
+          <Route
+            path="/perfil/conta"
+            element={
+              <RequireSession>
+                <AccountSettingsPage />
+              </RequireSession>
             }
           />
           <Route path="*" element={<Navigate to="/" replace />} />

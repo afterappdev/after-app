@@ -11,6 +11,11 @@ import { ApiClient } from '../api/client'
 import * as authApi from '../api/auth'
 import type { AuthUser } from '../api/types/auth'
 import {
+  clearPendingSocialOnboarding,
+  pendingSocialFromAuthResponse,
+  savePendingSocialOnboarding,
+} from '../utils/socialOnboardingStorage'
+import {
   clearSession,
   persistSession,
   readStoredToken,
@@ -22,6 +27,8 @@ type AuthContextValue = {
   token: string | null
   bootstrapping: boolean
   login: (email: string, password: string) => Promise<void>
+  loginWithAccessToken: (accessToken: string) => Promise<void>
+  applyAuthPayload: (data: Record<string, unknown>) => Promise<'session' | 'onboarding' | 'recovery'>
   logout: () => void
   refreshUser: () => Promise<void>
   api: ApiClient
@@ -96,8 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(result.accessToken)
       setUser(result.user)
       persistSession(result.accessToken, result.user)
+      clearPendingSocialOnboarding()
       try {
-        const me = await authApi.fetchMe(api)
+        const me = await authApi.fetchMe(
+          new ApiClient({ getToken: () => result.accessToken }),
+        )
         setUser(me)
         persistSession(result.accessToken, me)
       } catch {
@@ -107,17 +117,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api],
   )
 
+  const loginWithAccessToken = useCallback(async (accessToken: string) => {
+    const client = new ApiClient({ getToken: () => accessToken })
+    const me = await authApi.fetchMe(client)
+    setToken(accessToken)
+    setUser(me)
+    persistSession(accessToken, me)
+    clearPendingSocialOnboarding()
+  }, [])
+
+  const applyAuthPayload = useCallback(
+    async (data: Record<string, unknown>): Promise<'session' | 'onboarding' | 'recovery'> => {
+      const pending = pendingSocialFromAuthResponse(data)
+      if (pending) {
+        savePendingSocialOnboarding(pending)
+        return 'onboarding'
+      }
+      if (data.accountPendingDeletion === true && typeof data.recoveryToken === 'string') {
+        setToken(data.recoveryToken)
+        return 'recovery'
+      }
+      const accessToken = String(data.accessToken ?? '')
+      if (!accessToken) {
+        throw new Error('Resposta de autenticação incompleta.')
+      }
+      await loginWithAccessToken(accessToken)
+      return 'session'
+    },
+    [loginWithAccessToken],
+  )
+
   const value = useMemo(
     () => ({
       user,
       token,
       bootstrapping,
       login,
+      loginWithAccessToken,
+      applyAuthPayload,
       logout,
       refreshUser,
       api,
     }),
-    [user, token, bootstrapping, login, logout, refreshUser, api],
+    [user, token, bootstrapping, login, loginWithAccessToken, applyAuthPayload, logout, refreshUser, api],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

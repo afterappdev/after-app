@@ -1,4 +1,5 @@
-import type { ApiClient } from './client'
+import { ApiClient } from './client'
+import type { ApiClient as ApiClientType } from './client'
 import type { AuthUser } from './types/auth'
 import type { AgeBand } from '../constants/ageBands'
 import { normalizeUser } from './auth'
@@ -15,7 +16,7 @@ export type UpdateUserPayload = {
   ageBand?: AgeBand | null
 }
 
-export async function fetchUserMe(api: ApiClient): Promise<UserMe> {
+export async function fetchUserMe(api: ApiClientType): Promise<UserMe> {
   const data = await api.get<Record<string, unknown>>('/users/me')
   const user = normalizeUser(data)
   const ageBand = data.ageBand as AgeBand | null | undefined
@@ -23,11 +24,35 @@ export async function fetchUserMe(api: ApiClient): Promise<UserMe> {
 }
 
 export async function updateUserMe(
-  api: ApiClient,
+  api: ApiClientType,
   payload: UpdateUserPayload,
 ): Promise<UserMe> {
   const data = await api.patch<Record<string, unknown>>('/users/me', payload)
   const user = normalizeUser(data)
   const ageBand = data.ageBand as AgeBand | null | undefined
   return { ...user, ageBand: ageBand ?? null }
+}
+
+export async function changeUserPassword(
+  api: ApiClientType,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await api.patch('/users/me/password', { currentPassword, newPassword })
+}
+
+export async function requestAccountDeletion(api: ApiClientType): Promise<Record<string, unknown>> {
+  return api.post<Record<string, unknown>>('/users/me/deletion-request')
+}
+
+export async function confirmAccountDeletionByToken(
+  token: string,
+): Promise<void> {
+  const api = new ApiClient()
+  await api.post('/users/delete-confirm', { token: token.trim() })
+}
+
+export async function requestAccountDeletionByEmail(email: string): Promise<void> {
+  const api = new ApiClient()
+  await api.post('/users/delete-request', { email: email.trim().toLowerCase() })
 }

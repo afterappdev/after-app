@@ -79,6 +79,11 @@ export function AfterHeader() {
                     Créditos
                   </NavLink>
                 </li>
+                <li className="nav-item">
+                  <NavLink className="nav-link" to="/perfil/conta">
+                    Conta
+                  </NavLink>
+                </li>
               </>
             ) : null}
             {user ? (
