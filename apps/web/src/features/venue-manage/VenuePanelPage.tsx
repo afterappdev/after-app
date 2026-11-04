@@ -318,6 +318,9 @@ export function VenuePanelPage() {
           <p className="text-muted small mb-0">{venue.name}</p>
         </div>
         <div className="d-flex flex-wrap gap-2">
+          <Link to="/estabelecimento/creditos" className="btn btn-sm btn-warning">
+            Créditos
+          </Link>
           <Link to={`/venue/${encodeURIComponent(venueId)}`} className="btn btn-sm btn-outline-secondary">
             Ver ficha pública
           </Link>

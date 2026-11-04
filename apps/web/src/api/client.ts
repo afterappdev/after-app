@@ -128,8 +128,8 @@ export class ApiClient {
     })
   }
 
-  post<T>(path: string, body?: unknown) {
-    return this.request<T>('POST', path, body)
+  post<T>(path: string, body?: unknown, init?: RequestInit) {
+    return this.request<T>('POST', path, body, init)
   }
 
   patch<T>(path: string, body?: unknown) {

@@ -68,11 +68,18 @@ export function AfterHeader() {
               </li>
             ) : null}
             {venue ? (
-              <li className="nav-item">
-                <NavLink className="nav-link" to="/estabelecimento">
-                  Painel
-                </NavLink>
-              </li>
+              <>
+                <li className="nav-item">
+                  <NavLink className="nav-link" to="/estabelecimento">
+                    Painel
+                  </NavLink>
+                </li>
+                <li className="nav-item">
+                  <NavLink className="nav-link" to="/estabelecimento/creditos">
+                    Créditos
+                  </NavLink>
+                </li>
+              </>
             ) : null}
             {user ? (
               <>

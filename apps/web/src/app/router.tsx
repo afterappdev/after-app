@@ -10,6 +10,8 @@ import { NotificationsPage } from '../features/profile/NotificationsPage'
 import { UserProfilePage } from '../features/profile/UserProfilePage'
 import { RequireVenue } from '../features/auth/RequireVenue'
 import { VenuePanelPage } from '../features/venue-manage/VenuePanelPage'
+import { BuyCreditsPage } from '../features/venue-credits/BuyCreditsPage'
+import { CreditsBannersPage } from '../features/venue-credits/CreditsBannersPage'
 import { VenueDetailPage } from '../features/venue/VenueDetailPage'
 
 function UserOnly({ children }: { children: ReactNode }) {
@@ -29,6 +31,22 @@ export function AppRouter() {
             element={
               <RequireVenue>
                 <VenuePanelPage />
+              </RequireVenue>
+            }
+          />
+          <Route
+            path="/estabelecimento/creditos"
+            element={
+              <RequireVenue>
+                <CreditsBannersPage />
+              </RequireVenue>
+            }
+          />
+          <Route
+            path="/estabelecimento/creditos/comprar"
+            element={
+              <RequireVenue>
+                <BuyCreditsPage />
               </RequireVenue>
             }
           />
