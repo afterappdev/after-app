@@ -3,14 +3,14 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { addFavorite, listFavoriteVenueIds, removeFavorite } from '../../api/favorites'
-import { submitReport } from '../../api/reports'
+import { submitReport, type ReportTargetType } from '../../api/reports'
 import {
   blockVenue,
   fetchVenueDetail,
   replyVenueReview,
   submitVenueReview,
 } from '../../api/venues'
-import { ReportVenueModal } from '../../components/venue/ReportVenueModal'
+import { ReportModal } from '../../components/moderation/ReportModal'
 import { VenueMapEmbed } from '../../components/venue/VenueMapEmbed'
 import { presentVenueCategory } from '../../constants/venueCategories'
 import { VENUE_AMENITIES } from '../../constants/venueAmenities'
@@ -31,14 +31,22 @@ import { galleryPhotos, isVideoMedia, menuPhotos } from '../../utils/mediaKind'
 import { resolveMediaUrl } from '../../utils/mediaUrl'
 import { formatVenueEntry } from '../../utils/venueEntry'
 import { readStoredCity } from '../home/cityStorage'
+import { loginNavigationState } from '../../utils/loginReturn'
 import type { VenueBanner, VenueContacts, VenueDetail, VenuePhoto, VenueReview } from './types'
 import {
   canBlockOrReport,
   canFavorite,
   canReply,
   canReview,
+  canShowSafetyActions,
   isVenueOwner,
 } from './permissions'
+
+type ReportDraft = {
+  targetType: ReportTargetType
+  targetId: string
+  title: string
+}
 
 type TabId = 'about' | 'photos' | 'menu' | 'reviews' | 'contact'
 
@@ -62,7 +70,7 @@ export function VenueDetailPage() {
   const [favorited, setFavorited] = useState(false)
   const [favoriting, setFavoriting] = useState(false)
   const [showAllPromos, setShowAllPromos] = useState(false)
-  const [reportOpen, setReportOpen] = useState(false)
+  const [reportTarget, setReportTarget] = useState<ReportDraft | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const [draftRating, setDraftRating] = useState(0)
@@ -121,9 +129,24 @@ export function VenueDetailPage() {
     return `${base}/#/venue/${encodeURIComponent(venueId)}`
   }, [venueId])
 
+  const loginReturnPath = `venue/${encodeURIComponent(venueId)}`
+
+  function goLogin() {
+    navigate('/login', loginNavigationState(loginReturnPath))
+  }
+
+  function openReport(draft: ReportDraft) {
+    if (!user) {
+      goLogin()
+      return
+    }
+    setReportTarget(draft)
+  }
+
   async function toggleFavorite() {
-    if (!venueId || !canFavorite(user)) {
-      navigate('/login')
+    if (!venueId) return
+    if (!canFavorite(user)) {
+      goLogin()
       return
     }
     setFavoriting(true)
@@ -144,7 +167,7 @@ export function VenueDetailPage() {
 
   async function handleBlock() {
     if (!venueId || !user) {
-      navigate('/login')
+      goLogin()
       return
     }
     if (!window.confirm('Bloquear este estabelecimento? Você poderá desbloquear depois no perfil.')) {
@@ -158,15 +181,19 @@ export function VenueDetailPage() {
     }
   }
 
-  async function handleReport(reason: Parameters<typeof submitReport>[1]['reason'], description: string) {
-    if (!venueId) return
+  async function handleReport(
+    targetType: ReportTargetType,
+    targetId: string,
+    reason: Parameters<typeof submitReport>[1]['reason'],
+    description: string,
+  ) {
     if (!user) {
-      navigate('/login')
+      goLogin()
       return
     }
     await submitReport(api, {
-      targetType: 'VENUE',
-      targetId: venueId,
+      targetType,
+      targetId,
       reason,
       description: description || undefined,
     })
@@ -267,6 +294,8 @@ export function VenueDetailPage() {
   const visiblePromos = showAllPromos ? banners : banners.slice(0, 1)
   const reviews = venue.reviews ?? []
   const owner = isVenueOwner(user, venue)
+  const showSafety = canShowSafetyActions(user, venue)
+  const showFavoriteAction = showSafety
 
   return (
     <div className="mx-auto pb-4" style={{ maxWidth: 820 }}>
@@ -288,25 +317,35 @@ export function VenueDetailPage() {
         >
           Compartilhar link
         </button>
-        {canFavorite(user) ? (
+        {showFavoriteAction ? (
           <button
             type="button"
             className={`btn btn-sm ${favorited ? 'btn-warning' : 'btn-outline-warning'}`}
-            disabled={favoriting}
+            disabled={favoriting && canFavorite(user)}
             onClick={() => void toggleFavorite()}
           >
             {favorited ? 'Favorito' : 'Favoritar'}
           </button>
         ) : null}
+        {showSafety ? (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={() =>
+              openReport({
+                targetType: 'VENUE',
+                targetId: venueId,
+                title: 'Denunciar estabelecimento',
+              })
+            }
+          >
+            Denunciar
+          </button>
+        ) : null}
         {canBlockOrReport(user, venue) ? (
-          <>
-            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => setReportOpen(true)}>
-              Denunciar
-            </button>
-            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void handleBlock()}>
-              Bloquear
-            </button>
-          </>
+          <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void handleBlock()}>
+            Bloquear
+          </button>
         ) : null}
       </div>
 
@@ -374,15 +413,41 @@ export function VenueDetailPage() {
           onTogglePromos={() => setShowAllPromos((v) => !v)}
           contacts={contacts}
           banners={banners}
+          showSafety={showSafety}
+          onReportBanner={(bannerId) =>
+            openReport({
+              targetType: 'BANNER',
+              targetId: bannerId,
+              title: 'Denunciar promoção',
+            })
+          }
         />
       ) : null}
       {tab === 'photos' ? (
-        <PhotosTab gallery={gallery} />
+        <PhotosTab gallery={gallery} showSafety={showSafety} onReport={openReport} />
       ) : null}
-      {tab === 'menu' ? <MediaGrid items={menu} empty="Cardápio não publicado." /> : null}
+      {tab === 'menu' ? (
+        <MediaGrid
+          items={menu}
+          empty="Cardápio não publicado."
+          showSafety={showSafety}
+          onReport={(photoId) =>
+            openReport({ targetType: 'PHOTO', targetId: photoId, title: 'Denunciar foto' })
+          }
+        />
+      ) : null}
       {tab === 'reviews' ? (
         <ReviewsTab
           reviews={reviews}
+          viewerId={user?.id}
+          showSafety={showSafety}
+          onReportReview={(reviewId) =>
+            openReport({
+              targetType: 'REVIEW',
+              targetId: reviewId,
+              title: 'Denunciar avaliação',
+            })
+          }
           avgRating={venue.avgRating}
           reviewCount={venue.reviewCount ?? 0}
           canReview={canReview(user, venue)}
@@ -399,7 +464,7 @@ export function VenueDetailPage() {
             setReplyDrafts((prev) => ({ ...prev, [id]: value }))
           }
           onSubmitReply={(id) => void onSubmitReply(id)}
-          onLogin={() => navigate('/login')}
+          onLogin={goLogin}
         />
       ) : null}
       {tab === 'contact' ? <ContactTab contacts={contacts} /> : null}
@@ -408,11 +473,16 @@ export function VenueDetailPage() {
         <p className="small text-muted mt-4 mb-0">Você está vendo a ficha do seu estabelecimento.</p>
       ) : null}
 
-      <ReportVenueModal
-        show={reportOpen}
-        onClose={() => setReportOpen(false)}
-        onSubmit={handleReport}
-      />
+      {reportTarget ? (
+        <ReportModal
+          show
+          title={reportTarget.title}
+          targetType={reportTarget.targetType}
+          targetId={reportTarget.targetId}
+          onClose={() => setReportTarget(null)}
+          onSubmit={handleReport}
+        />
+      ) : null}
     </div>
   )
 }
@@ -424,6 +494,8 @@ function AboutTab(props: {
   onTogglePromos: () => void
   contacts: VenueContacts
   banners: VenueBanner[]
+  showSafety: boolean
+  onReportBanner: (bannerId: string) => void
 }) {
   const { venue, visiblePromos, contacts, banners } = props
   const cityLine = [venue.city, venue.state].filter(Boolean).join(', ')
@@ -446,7 +518,12 @@ function AboutTab(props: {
           <p className="text-muted small">Nenhuma promoção publicada ainda.</p>
         ) : (
           visiblePromos.map((banner) => (
-            <PromoRow key={banner.id} banner={banner} />
+            <PromoRow
+              key={banner.id}
+              banner={banner}
+              showSafety={props.showSafety}
+              onReport={() => props.onReportBanner(banner.id)}
+            />
           ))
         )}
       </section>
@@ -510,7 +587,15 @@ function AboutTab(props: {
   )
 }
 
-function PromoRow({ banner }: { banner: VenueBanner }) {
+function PromoRow({
+  banner,
+  showSafety,
+  onReport,
+}: {
+  banner: VenueBanner
+  showSafety: boolean
+  onReport: () => void
+}) {
   const imageUrl = resolveMediaUrl(banner.imageUrl)
   const schedules = banner.schedules ?? []
   const vip = schedules.some((s) => s.tier === 'VIP')
@@ -534,12 +619,25 @@ function PromoRow({ banner }: { banner: VenueBanner }) {
             Válido para o dia {dateLabel}
           </p>
         ) : null}
+        {showSafety && banner.id ? (
+          <button type="button" className="btn btn-link btn-sm text-danger px-0" onClick={onReport}>
+            Denunciar promoção
+          </button>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function PhotosTab({ gallery }: { gallery: VenuePhoto[] }) {
+function PhotosTab({
+  gallery,
+  showSafety,
+  onReport,
+}: {
+  gallery: VenuePhoto[]
+  showSafety: boolean
+  onReport: (draft: ReportDraft) => void
+}) {
   const images = gallery.filter((p) => !isVideoMedia(p))
   const videos = gallery.filter((p) => isVideoMedia(p))
   if (images.length === 0 && videos.length === 0) {
@@ -547,19 +645,44 @@ function PhotosTab({ gallery }: { gallery: VenuePhoto[] }) {
   }
   return (
     <div className="vstack gap-4">
-      {images.length > 0 ? <MediaGrid items={images} empty="" /> : null}
+      {images.length > 0 ? (
+        <MediaGrid
+          items={images}
+          empty=""
+          showSafety={showSafety}
+          onReport={(photoId) =>
+            onReport({ targetType: 'PHOTO', targetId: photoId, title: 'Denunciar foto' })
+          }
+        />
+      ) : null}
       {videos.length > 0 ? (
         <section>
           <h2 className="h6 fw-bold mb-2">Vídeos</h2>
           <div className="vstack gap-3">
             {videos.map((item) => (
-              <video
-                key={item.id}
-                className="w-100 rounded"
-                controls
-                preload="metadata"
-                src={resolveMediaUrl(item.url)}
-              />
+              <div key={item.id}>
+                <video
+                  className="w-100 rounded"
+                  controls
+                  preload="metadata"
+                  src={resolveMediaUrl(item.url)}
+                />
+                {showSafety && item.id ? (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm text-danger px-0 mt-1"
+                    onClick={() =>
+                      onReport({
+                        targetType: 'VIDEO',
+                        targetId: item.id,
+                        title: 'Denunciar vídeo',
+                      })
+                    }
+                  >
+                    Denunciar vídeo
+                  </button>
+                ) : null}
+              </div>
             ))}
           </div>
         </section>
@@ -568,9 +691,14 @@ function PhotosTab({ gallery }: { gallery: VenuePhoto[] }) {
   )
 }
 
-function MediaGrid(props: { items: { id: string; url: string }[]; empty: string }) {
+function MediaGrid(props: {
+  items: { id: string; url: string }[]
+  empty: string
+  showSafety?: boolean
+  onReport?: (photoId: string) => void
+}) {
   if (props.items.length === 0) {
-    return <p className="text-muted text-center py-4">{props.empty}</p>
+    return props.empty ? <p className="text-muted text-center py-4">{props.empty}</p> : null
   }
   return (
     <div className="row g-2">
@@ -584,6 +712,15 @@ function MediaGrid(props: { items: { id: string; url: string }[]; empty: string 
               loading="lazy"
             />
           </a>
+          {props.showSafety && props.onReport && item.id ? (
+            <button
+              type="button"
+              className="btn btn-link btn-sm text-danger px-0 mt-1"
+              onClick={() => props.onReport?.(item.id)}
+            >
+              Denunciar
+            </button>
+          ) : null}
         </div>
       ))}
     </div>
@@ -624,6 +761,8 @@ function ReviewsTab(props: {
   reviewCount: number
   canReview: boolean
   canReply: boolean
+  showSafety: boolean
+  viewerId?: string
   draftRating: number
   reviewText: string
   submittingReview: boolean
@@ -634,6 +773,7 @@ function ReviewsTab(props: {
   onSubmitReview: (e: FormEvent) => void
   onReplyDraftChange: (id: string, value: string) => void
   onSubmitReply: (id: string) => void
+  onReportReview: (reviewId: string) => void
   onLogin: () => void
 }) {
   return (
@@ -679,9 +819,22 @@ function ReviewsTab(props: {
       <div className="vstack gap-3">
         {props.reviews.map((review) => (
           <article key={review.id} className="border rounded p-3 bg-white">
-            <div className="d-flex justify-content-between gap-2">
+            <div className="d-flex justify-content-between gap-2 align-items-start">
               <strong className="small">{review.user?.name ?? 'Usuário'}</strong>
-              <span className="small text-warning">{review.rating}★</span>
+              <div className="d-flex align-items-center gap-2">
+                <span className="small text-warning">{review.rating}★</span>
+                {props.showSafety &&
+                review.id &&
+                review.userId !== props.viewerId ? (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm text-danger p-0"
+                    onClick={() => props.onReportReview(review.id)}
+                  >
+                    Denunciar
+                  </button>
+                ) : null}
+              </div>
             </div>
             {review.testimonial ? <p className="small mb-2 mt-1">{review.testimonial}</p> : null}
             {review.venueReply ? (

@@ -6,6 +6,7 @@ import {
   canFavorite,
   canReply,
   canReview,
+  canShowSafetyActions,
   isVenueOwner,
 } from './permissions'
 
@@ -49,5 +50,7 @@ describe('venue permissions', () => {
     expect(canReply(user, venue)).toBe(false)
     expect(canBlockOrReport(user, venue)).toBe(true)
     expect(canBlockOrReport(owner, venue)).toBe(false)
+    expect(canShowSafetyActions(user, venue)).toBe(true)
+    expect(canShowSafetyActions(owner, venue)).toBe(false)
   })
 })

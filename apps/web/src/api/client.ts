@@ -143,4 +143,47 @@ export class ApiClient {
   delete<T>(path: string) {
     return this.request<T>('DELETE', path)
   }
+
+  async upload<T = Record<string, unknown>>(path: string, file: File): Promise<T> {
+    const form = new FormData()
+    form.append('file', file)
+    const headers = new Headers()
+    const token = this.getToken()
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    const url = `${getApiBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`
+    let response: Response
+    try {
+      response = await fetch(url, { method: 'POST', headers, body: form })
+    } catch {
+      throw new ApiError(
+        `Não foi possível conectar à API em ${getApiBaseUrl()}.`,
+        0,
+      )
+    }
+    const text = await response.text()
+    let parsed: unknown = null
+    if (text) {
+      try {
+        parsed = JSON.parse(text) as unknown
+      } catch {
+        parsed = text
+      }
+    }
+    if (response.status === 401) {
+      this.onUnauthorized?.()
+    }
+    if (!response.ok) {
+      const message =
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        'message' in parsed &&
+        typeof (parsed as { message: unknown }).message === 'string'
+          ? (parsed as { message: string }).message
+          : `Erro HTTP ${response.status}`
+      throw new ApiError(message, response.status, parsed)
+    }
+    return parsed as T
+  }
 }

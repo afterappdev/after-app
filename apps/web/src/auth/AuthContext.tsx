@@ -23,6 +23,7 @@ type AuthContextValue = {
   bootstrapping: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  refreshUser: () => Promise<void>
   api: ApiClient
 }
 
@@ -82,6 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [logout])
 
+  const refreshUser = useCallback(async () => {
+    if (!token) return
+    const me = await authApi.fetchMe(api)
+    setUser(me)
+    persistSession(token, me)
+  }, [api, token])
+
   const login = useCallback(
     async (email: string, password: string) => {
       const result = await authApi.login(api, { email, password })
@@ -106,9 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       bootstrapping,
       login,
       logout,
+      refreshUser,
       api,
     }),
-    [user, token, bootstrapping, login, logout, api],
+    [user, token, bootstrapping, login, logout, refreshUser, api],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,10 +1,32 @@
+import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { fetchUnreadNotificationCount } from '../../api/notifications'
 import { useAuth } from '../../auth/AuthContext'
 import { isVenueUser } from '../../api/types/auth'
 
 export function AfterHeader() {
-  const { user, logout } = useAuth()
+  const { user, logout, api } = useAuth()
   const venue = isVenueUser(user)
+  const isUser = user?.role === 'USER'
+  const [unread, setUnread] = useState(0)
+
+  useEffect(() => {
+    if (!isUser) {
+      setUnread(0)
+      return
+    }
+    let cancelled = false
+    void fetchUnreadNotificationCount(api)
+      .then((count) => {
+        if (!cancelled) setUnread(count)
+      })
+      .catch(() => {
+        if (!cancelled) setUnread(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, isUser, user?.id])
 
   return (
     <header className="border-bottom bg-white sticky-top">
@@ -33,6 +55,18 @@ export function AfterHeader() {
                 Início
               </NavLink>
             </li>
+            {isUser ? (
+              <li className="nav-item">
+                <NavLink className="nav-link position-relative" to="/perfil">
+                  Perfil
+                  {unread > 0 ? (
+                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  ) : null}
+                </NavLink>
+              </li>
+            ) : null}
             {user ? (
               <>
                 <li className="nav-item">

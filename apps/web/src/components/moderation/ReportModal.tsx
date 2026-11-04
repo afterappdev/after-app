@@ -1,15 +1,30 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { ReportReason } from '../../api/reports'
+import type { ReportReason, ReportTargetType } from '../../api/reports'
 import { REPORT_REASONS } from '../../constants/reportReasons'
 
 type Props = {
   show: boolean
+  title: string
+  targetType: ReportTargetType
+  targetId: string
   onClose: () => void
-  onSubmit: (reason: ReportReason, description: string) => Promise<void>
+  onSubmit: (
+    targetType: ReportTargetType,
+    targetId: string,
+    reason: ReportReason,
+    description: string,
+  ) => Promise<void>
 }
 
-export function ReportVenueModal({ show, onClose, onSubmit }: Props) {
+export function ReportModal({
+  show,
+  title,
+  targetType,
+  targetId,
+  onClose,
+  onSubmit,
+}: Props) {
   const [reason, setReason] = useState<ReportReason>('INAPPROPRIATE')
   const [description, setDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -22,7 +37,7 @@ export function ReportVenueModal({ show, onClose, onSubmit }: Props) {
     setSubmitting(true)
     setError(null)
     try {
-      await onSubmit(reason, description.trim())
+      await onSubmit(targetType, targetId, reason, description.trim())
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível enviar.')
@@ -37,7 +52,7 @@ export function ReportVenueModal({ show, onClose, onSubmit }: Props) {
         <div className="modal-dialog">
           <form className="modal-content" onSubmit={handleSubmit}>
             <div className="modal-header">
-              <h2 className="modal-title h5">Denunciar estabelecimento</h2>
+              <h2 className="modal-title h5">{title}</h2>
               <button type="button" className="btn-close" onClick={onClose} />
             </div>
             <div className="modal-body vstack gap-3">

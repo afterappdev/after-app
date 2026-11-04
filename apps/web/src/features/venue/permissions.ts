@@ -21,6 +21,12 @@ export function canReply(user: AuthUser | null, venue: VenueDetail | null): bool
 }
 
 export function canBlockOrReport(user: AuthUser | null, venue: VenueDetail | null): boolean {
-  if (!venue) return false
+  if (!venue || !user || user.role !== 'USER') return false
   return !isVenueOwner(user, venue)
+}
+
+/** Menu denunciar/bloquear e denúncias de conteúdo (paridade Flutter). */
+export function canShowSafetyActions(_user: AuthUser | null, venue: VenueDetail | null): boolean {
+  if (!venue) return false
+  return !isVenueOwner(_user, venue)
 }

@@ -6,7 +6,7 @@ export interface LoginPayload {
   password: string
 }
 
-function normalizeUser(raw: Record<string, unknown>): AuthUser {
+export function normalizeUser(raw: Record<string, unknown>): AuthUser {
   const venue = raw.venue
   const nestedVenueId =
     venue && typeof venue === 'object' && venue !== null && 'id' in venue
