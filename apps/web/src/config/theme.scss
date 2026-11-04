@@ -1,0 +1,25 @@
+$primary: #f58634;
+$secondary: #7739c6;
+$body-bg: #f6f8f7;
+$body-color: #282829;
+$font-family-sans-serif: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+$border-radius: 0.5rem;
+$link-color: $secondary;
+
+@import 'bootstrap/scss/bootstrap';
+
+:root {
+  --after-brand: #{$primary};
+  --after-purple: #{$secondary};
+  --after-canvas: #{$body-bg};
+  --after-ink: #{$body-color};
+}
+
+body {
+  min-height: 100vh;
+}
+
+.after-brand-text {
+  color: var(--after-brand);
+  font-weight: 700;
+}
