@@ -36,7 +36,28 @@ describe('auth api', () => {
     )
     const api = new ApiClient()
     const result = await login(api, { email: 'a@b.com', password: 'secret' })
-    expect(result.accessToken).toBe('jwt')
+    expect(result.kind).toBe('session')
+    if (result.kind === 'session') expect(result.accessToken).toBe('jwt')
+  })
+
+  it('POST /auth/login pending deletion returns recovery', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            accountPendingDeletion: true,
+            recoveryToken: 'rec.jwt',
+            deletionStatus: { accountStatus: 'PENDING_DELETION', remainingSeconds: 3600 },
+          }),
+      }),
+    )
+    const api = new ApiClient()
+    const result = await login(api, { email: 'a@b.com', password: 'secret' })
+    expect(result.kind).toBe('recovery')
+    if (result.kind === 'recovery') expect(result.recoveryToken).toBe('rec.jwt')
   })
 
   it('POST /auth/register envia after_web', async () => {

@@ -1,4 +1,5 @@
 import type { AuthUser } from '../api/types/auth'
+import { clearRecoveryToken } from './recoverySession'
 
 const TOKEN_KEY = 'after_web_access_token'
 const USER_KEY = 'after_web_user_json'
@@ -29,4 +30,10 @@ export function persistSession(token: string, user: AuthUser): void {
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+}
+
+/** Limpa sessão normal e token de recuperação (exclusão pendente). */
+export function clearAllAuthStorage(): void {
+  clearSession()
+  clearRecoveryToken()
 }

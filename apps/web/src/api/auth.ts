@@ -65,11 +65,45 @@ export function normalizeUser(raw: Record<string, unknown>): AuthUser {
   }
 }
 
+export type AccountRecoveryLoginResult = {
+  kind: 'recovery'
+  recoveryToken: string
+  deletionStatus: {
+    accountStatus: string
+    deletionRequestedAt: string | null
+    permanentDeletionAt: string | null
+    remainingSeconds: number
+  }
+}
+
+export type LoginResult = ({ kind: 'session' } & LoginResponse) | AccountRecoveryLoginResult
+
 export async function login(
   api: ApiClientType,
   payload: LoginPayload,
-): Promise<LoginResponse> {
+): Promise<LoginResult> {
   const data = await api.post<Record<string, unknown>>('/auth/login', payload)
+  if (data.accountPendingDeletion === true && typeof data.recoveryToken === 'string') {
+    const status = data.deletionStatus
+    const statusObj =
+      status && typeof status === 'object' ? (status as Record<string, unknown>) : {}
+    return {
+      kind: 'recovery',
+      recoveryToken: data.recoveryToken,
+      deletionStatus: {
+        accountStatus: String(statusObj.accountStatus ?? ''),
+        deletionRequestedAt:
+          statusObj.deletionRequestedAt == null
+            ? null
+            : String(statusObj.deletionRequestedAt),
+        permanentDeletionAt:
+          statusObj.permanentDeletionAt == null
+            ? null
+            : String(statusObj.permanentDeletionAt),
+        remainingSeconds: Number(statusObj.remainingSeconds ?? 0),
+      },
+    }
+  }
   const accessToken = String(data.accessToken ?? '')
   if (!accessToken) {
     throw new Error('Resposta de login sem accessToken.')
@@ -79,6 +113,7 @@ export async function login(
     throw new Error('Resposta de login sem usuário.')
   }
   return {
+    kind: 'session',
     accessToken,
     user: normalizeUser(userRaw as Record<string, unknown>),
   }

@@ -56,3 +56,28 @@ export async function requestAccountDeletionByEmail(email: string): Promise<void
   const api = new ApiClient()
   await api.post('/users/delete-request', { email: email.trim().toLowerCase() })
 }
+
+export type DeletionStatusView = {
+  accountStatus: string
+  deletionRequestedAt: string | null
+  permanentDeletionAt: string | null
+  remainingSeconds: number
+}
+
+export async function fetchDeletionStatus(recoveryToken: string): Promise<DeletionStatusView> {
+  const api = new ApiClient({ getToken: () => recoveryToken.trim() })
+  const data = await api.get<Record<string, unknown>>('/users/me/deletion-status')
+  return {
+    accountStatus: String(data.accountStatus ?? ''),
+    deletionRequestedAt:
+      data.deletionRequestedAt == null ? null : String(data.deletionRequestedAt),
+    permanentDeletionAt:
+      data.permanentDeletionAt == null ? null : String(data.permanentDeletionAt),
+    remainingSeconds: Number(data.remainingSeconds ?? 0),
+  }
+}
+
+export async function cancelAccountDeletion(recoveryToken: string): Promise<void> {
+  const api = new ApiClient({ getToken: () => recoveryToken.trim() })
+  await api.post('/users/me/deletion-cancel')
+}

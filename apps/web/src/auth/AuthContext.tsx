@@ -16,17 +16,25 @@ import {
   savePendingSocialOnboarding,
 } from '../utils/socialOnboardingStorage'
 import {
+  clearAllAuthStorage,
   clearSession,
   persistSession,
   readStoredToken,
   readStoredUser,
 } from './session'
+import {
+  clearRecoveryToken,
+  minimalUserFromRecoveryToken,
+  persistRecoveryToken,
+  readStoredRecoveryToken,
+} from './recoverySession'
 
 type AuthContextValue = {
   user: AuthUser | null
   token: string | null
   bootstrapping: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<'session' | 'recovery'>
+  enterAccountRecovery: (recoveryToken: string) => void
   loginWithAccessToken: (accessToken: string) => Promise<void>
   applyAuthPayload: (data: Record<string, unknown>) => Promise<'session' | 'onboarding' | 'recovery'>
   logout: () => void
@@ -42,9 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [bootstrapping, setBootstrapping] = useState(true)
 
   const logout = useCallback(() => {
-    clearSession()
+    clearAllAuthStorage()
     setUser(null)
     setToken(null)
+  }, [])
+
+  const enterAccountRecovery = useCallback((recoveryToken: string) => {
+    clearSession()
+    setToken(null)
+    persistRecoveryToken(recoveryToken)
+    const minimal = minimalUserFromRecoveryToken(recoveryToken)
+    setUser(minimal)
   }, [])
 
   const api = useMemo(
@@ -63,6 +79,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false
     async function bootstrap() {
+      const storedRecovery = readStoredRecoveryToken()
+      if (storedRecovery) {
+        const minimal = minimalUserFromRecoveryToken(storedRecovery)
+        if (minimal) {
+          if (!cancelled) {
+            setUser(minimal)
+            setBootstrapping(false)
+          }
+          return
+        }
+        clearRecoveryToken()
+      }
       const storedToken = readStoredToken()
       const storedUser = readStoredUser()
       if (!storedToken) {
@@ -98,12 +126,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [api, token])
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string): Promise<'session' | 'recovery'> => {
       const result = await authApi.login(api, { email, password })
+      if (result.kind === 'recovery') {
+        enterAccountRecovery(result.recoveryToken)
+        clearPendingSocialOnboarding()
+        return 'recovery'
+      }
       setToken(result.accessToken)
       setUser(result.user)
       persistSession(result.accessToken, result.user)
       clearPendingSocialOnboarding()
+      clearRecoveryToken()
       try {
         const me = await authApi.fetchMe(
           new ApiClient({ getToken: () => result.accessToken }),
@@ -113,8 +147,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* mantém payload do login */
       }
+      return 'session'
     },
-    [api],
+    [api, enterAccountRecovery],
   )
 
   const loginWithAccessToken = useCallback(async (accessToken: string) => {
@@ -134,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'onboarding'
       }
       if (data.accountPendingDeletion === true && typeof data.recoveryToken === 'string') {
-        setToken(data.recoveryToken)
+        enterAccountRecovery(data.recoveryToken)
         return 'recovery'
       }
       const accessToken = String(data.accessToken ?? '')
@@ -144,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await loginWithAccessToken(accessToken)
       return 'session'
     },
-    [loginWithAccessToken],
+    [enterAccountRecovery, loginWithAccessToken],
   )
 
   const value = useMemo(
@@ -153,13 +188,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       bootstrapping,
       login,
+      enterAccountRecovery,
       loginWithAccessToken,
       applyAuthPayload,
       logout,
       refreshUser,
       api,
     }),
-    [user, token, bootstrapping, login, loginWithAccessToken, applyAuthPayload, logout, refreshUser, api],
+    [
+      user,
+      token,
+      bootstrapping,
+      login,
+      enterAccountRecovery,
+      loginWithAccessToken,
+      applyAuthPayload,
+      logout,
+      refreshUser,
+      api,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

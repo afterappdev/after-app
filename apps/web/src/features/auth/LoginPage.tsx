@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { fetchAuthProviders } from '../../api/auth'
 import { useAuth } from '../../auth/AuthContext'
@@ -11,6 +11,7 @@ import {
 
 export function LoginPage() {
   const { login, user, bootstrapping } = useAuth()
+  const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const from =
@@ -56,7 +57,11 @@ export function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      await login(email.trim(), password)
+      const outcome = await login(email.trim(), password)
+      if (outcome === 'recovery') {
+        navigate('/perfil/conta', { replace: true, state: { recovery: true } })
+        return
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message)
