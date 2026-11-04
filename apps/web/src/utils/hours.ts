@@ -1,4 +1,4 @@
-const DAYS: { key: string; label: string }[] = [
+export const DAYS: { key: string; label: string }[] = [
   { key: 'mon', label: 'Segunda' },
   { key: 'tue', label: 'Terça' },
   { key: 'wed', label: 'Quarta' },

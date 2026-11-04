@@ -67,6 +67,13 @@ export function AfterHeader() {
                 </NavLink>
               </li>
             ) : null}
+            {venue ? (
+              <li className="nav-item">
+                <NavLink className="nav-link" to="/estabelecimento">
+                  Painel
+                </NavLink>
+              </li>
+            ) : null}
             {user ? (
               <>
                 <li className="nav-item">

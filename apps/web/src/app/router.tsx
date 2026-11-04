@@ -8,6 +8,8 @@ import { BlockedVenuesPage } from '../features/profile/BlockedVenuesPage'
 import { FavoritesPage } from '../features/profile/FavoritesPage'
 import { NotificationsPage } from '../features/profile/NotificationsPage'
 import { UserProfilePage } from '../features/profile/UserProfilePage'
+import { RequireVenue } from '../features/auth/RequireVenue'
+import { VenuePanelPage } from '../features/venue-manage/VenuePanelPage'
 import { VenueDetailPage } from '../features/venue/VenueDetailPage'
 
 function UserOnly({ children }: { children: ReactNode }) {
@@ -22,6 +24,14 @@ export function AppRouter() {
           <Route index element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/venue/:venueId" element={<VenueDetailPage />} />
+          <Route
+            path="/estabelecimento"
+            element={
+              <RequireVenue>
+                <VenuePanelPage />
+              </RequireVenue>
+            }
+          />
           <Route
             path="/perfil"
             element={
