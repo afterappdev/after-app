@@ -19,9 +19,10 @@ import {
 type Props = {
   api: ApiClient
   venueId: string
+  className?: string
 }
 
-export function VenueFiscalSection({ api, venueId }: Props) {
+export function VenueFiscalSection({ api, venueId, className = '' }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<VenueFiscalDocument | null>(null)
@@ -84,7 +85,7 @@ export function VenueFiscalSection({ api, venueId }: Props) {
       : null
 
   return (
-    <div>
+    <div className={className}>
       {toast ? (
         <div className="alert alert-info alert-dismissible fade show">
           {toast}
@@ -133,7 +134,7 @@ export function VenueFiscalSection({ api, venueId }: Props) {
               {saved.additionalFields.join(', ')}.
             </p>
           ) : null}
-          <button type="submit" className="btn btn-primary btn-sm align-self-start" disabled={saving}>
+          <button type="submit" className="btn btn-primary btn-sm align-self-center" disabled={saving}>
             {saving ? 'Salvando…' : 'Salvar documento'}
           </button>
         </form>

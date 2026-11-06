@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom'
 import { fetchUnreadNotificationCount } from '../../api/notifications'
 import { useAuth } from '../../auth/AuthContext'
 import { isVenueUser } from '../../api/types/auth'
+import { AfterLogo } from './AfterLogo'
 
 export function AfterHeader() {
   const { user, logout, api } = useAuth()
@@ -32,10 +33,8 @@ export function AfterHeader() {
     <header className="border-bottom bg-white sticky-top">
       <nav className="navbar navbar-expand-lg navbar-light container-fluid px-3 px-lg-4">
         <Link className="navbar-brand d-flex align-items-center gap-2" to="/">
-          <span className="after-brand-text fs-4 mb-0">After</span>
-          <span className="text-muted small d-none d-sm-inline">
-            O que tem pra hoje?
-          </span>
+          <AfterLogo height={48} className="d-inline-block after-header-logo" />
+          <span className="text-muted small d-none d-sm-inline">O que tem pra hoje?</span>
         </Link>
         <button
           className="navbar-toggler"

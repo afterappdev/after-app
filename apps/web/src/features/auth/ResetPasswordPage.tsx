@@ -2,6 +2,8 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiClient, ApiError } from '../../api/client'
 import { confirmPasswordReset } from '../../api/auth'
+import { IconLock } from '../../components/icons/AfterIcons'
+import { AfterAuthCard } from '../../components/layout/AfterAuthCard'
 import { passwordResetTokenFromSearch } from '../../utils/passwordResetUri'
 
 export function ResetPasswordPage() {
@@ -46,56 +48,61 @@ export function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="alert alert-warning">
-        Link de redefinição inválido.{' '}
-        <Link to="/esqueci-minha-senha">Solicite um novo e-mail</Link>.
-      </div>
+      <AfterAuthCard logoHeight={56}>
+        <h1 className="after-auth-title">Link inválido</h1>
+        <p className="after-auth-sub">
+          <Link to="/esqueci-minha-senha">Solicite um novo e-mail</Link> de redefinição.
+        </p>
+      </AfterAuthCard>
     )
   }
 
   if (done) {
     return (
-      <div className="alert alert-success">
-        Senha atualizada. <Link to="/login">Entrar no After</Link>
-      </div>
+      <AfterAuthCard logoHeight={56}>
+        <h1 className="after-auth-title">Senha atualizada</h1>
+        <p className="after-auth-sub">
+          <Link to="/login" className="after-link-orange">
+            Entrar no After
+          </Link>
+        </p>
+      </AfterAuthCard>
     )
   }
 
   return (
-    <div className="row justify-content-center">
-      <div className="col-12 col-md-8 col-lg-5">
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-4 vstack gap-3">
-            <h1 className="h4 after-brand-text">Redefinir senha</h1>
-            {error ? <div className="alert alert-danger py-2 small">{error}</div> : null}
-            <form onSubmit={(e) => void onSubmit(e)} className="vstack gap-3">
-              <input
-                type="password"
-                className="form-control"
-                minLength={6}
-                required
-                autoComplete="new-password"
-                placeholder="Nova senha"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <input
-                type="password"
-                className="form-control"
-                minLength={6}
-                required
-                autoComplete="new-password"
-                placeholder="Confirmar senha"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-              <button type="submit" className="btn btn-warning w-100" disabled={loading}>
-                {loading ? 'Salvando…' : 'Salvar nova senha'}
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
+    <AfterAuthCard>
+      <h1 className="after-auth-title">Redefinir senha</h1>
+      {error ? <div className="alert alert-danger py-2 small mt-3">{error}</div> : null}
+      <form onSubmit={(e) => void onSubmit(e)} className="text-start mt-3 vstack gap-3">
+        <label className="after-field">
+          <IconLock />
+          <input
+            type="password"
+            minLength={6}
+            required
+            autoComplete="new-password"
+            placeholder="Nova senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </label>
+        <label className="after-field">
+          <IconLock />
+          <input
+            type="password"
+            minLength={6}
+            required
+            autoComplete="new-password"
+            placeholder="Confirmar senha"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </label>
+        <button type="submit" className="after-btn-black" disabled={loading}>
+          {loading ? 'Salvando…' : 'Salvar nova senha'}
+        </button>
+      </form>
+    </AfterAuthCard>
   )
 }

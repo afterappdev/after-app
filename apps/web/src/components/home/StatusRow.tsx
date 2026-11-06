@@ -1,25 +1,24 @@
 type Props = {
   isOpen?: boolean | null
+  hasOpenInfo?: boolean
   distanceLabel?: string | null
-  distanceClassName?: string
 }
 
-export function StatusRow({
-  isOpen,
-  distanceLabel,
-  distanceClassName = 'text-muted',
-}: Props) {
+export function StatusRow({ isOpen, hasOpenInfo = true, distanceLabel }: Props) {
   return (
-    <div className="d-flex flex-wrap align-items-center gap-2 small">
-      {isOpen != null ? (
+    <div className="d-flex flex-wrap align-items-center gap-2 mt-1">
+      {hasOpenInfo && isOpen != null ? (
         <span
-          className={`badge rounded-pill ${isOpen ? 'text-bg-success' : 'text-bg-secondary'}`}
+          className={`home-open-chip ${isOpen ? 'home-open-chip--open' : 'home-open-chip--closed'}`}
         >
-          {isOpen ? 'Aberto agora' : 'Fechado'}
+          {isOpen ? 'Aberto' : 'Fechado'}
         </span>
       ) : null}
       {distanceLabel ? (
-        <span className={distanceClassName}>{distanceLabel}</span>
+        <span className="home-distance">
+          <span aria-hidden>↗</span>
+          {distanceLabel}
+        </span>
       ) : null}
     </div>
   )

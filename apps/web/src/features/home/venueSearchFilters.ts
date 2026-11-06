@@ -62,8 +62,11 @@ export function buildVenueSearchQuery(
 export function buildOriginQuery(
   city: string,
   origin: { lat: number; lng: number } | null,
+  state?: string,
 ): Record<string, string> {
   const query: Record<string, string> = { city }
+  const uf = state?.trim()
+  if (uf) query.state = uf
   if (origin) {
     query.lat = String(origin.lat)
     query.lng = String(origin.lng)

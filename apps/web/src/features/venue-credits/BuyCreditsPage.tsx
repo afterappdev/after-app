@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   fetchCreditPackages,
@@ -9,6 +9,8 @@ import {
   fetchVipCreditPackages,
 } from '../../api/credits'
 import { AsyncPanel } from '../../components/common/AsyncPanel'
+import { IconLock } from '../../components/icons/AfterIcons'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { useAuth } from '../../auth/AuthContext'
 import { purchaseProviderLabel, purchaseStatusLabel } from '../../utils/purchaseLabels'
 import { reconcilePendingPurchases } from '../../utils/purchasePoll'
@@ -21,11 +23,12 @@ import {
 } from '../../utils/vipCatalog'
 import type { CreditPackage, CreditPurchase } from './types'
 import { WebCheckoutPanel } from './WebCheckoutPanel'
-
-function formatMoney(value: number | undefined): string {
-  if (value == null || Number.isNaN(value)) return '—'
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+import { BuyCreditsPackageTile } from './BuyCreditsPackageTile'
+import { BuyCreditsWalletBadge } from './BuyCreditsWalletBadge'
+import {
+  buildOfferList,
+  formatMoney,
+} from './buyCreditsHelpers'
 
 function checkoutPackForKey(
   key: string,
@@ -112,6 +115,11 @@ export function BuyCreditsPage() {
     void load()
   }, [load])
 
+  const offers = useMemo(
+    () => buildOfferList(packages, vipOffer),
+    [packages, vipOffer],
+  )
+
   const selectedPack = useMemo(() => {
     if (!selectedKey) return null
     return checkoutPackForKey(selectedKey, packages, vipOffer)
@@ -119,10 +127,26 @@ export function BuyCreditsPage() {
 
   const checkoutOpen = !!packParam && !!selectedPack && packParam === selectedKey
 
-  function openCheckout(key: string) {
+  const canContinue =
+    !!selectedKey &&
+    !!selectedPack &&
+    (isVipCreditPackage(selectedPack)
+      ? vipCheckoutReady
+      : selectedPack.priceBrl != null && selectedPack.priceBrl > 0)
+
+  function selectPackage(key: string) {
     setUserPicked(true)
     setSelectedKey(key)
-    setSearchParams({ pack: key })
+    if (packParam) {
+      searchParams.delete('pack')
+      setSearchParams(searchParams)
+    }
+  }
+
+  function openCheckout() {
+    if (!selectedKey || !canContinue) return
+    setUserPicked(true)
+    setSearchParams({ pack: selectedKey })
   }
 
   function closeCheckout() {
@@ -141,35 +165,22 @@ export function BuyCreditsPage() {
     closeCheckout()
   }
 
+  const totalLabel = selectedPack?.priceBrl != null ? `Total: ${formatMoney(selectedPack.priceBrl)}` : null
+
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 640 }}>
-      <div className="d-flex align-items-center gap-2">
-        <Link to="/estabelecimento/creditos" className="btn btn-sm btn-outline-secondary">
-          ← Créditos
-        </Link>
-        <h1 className="h5 mb-0">Comprar créditos</h1>
-      </div>
+    <div className="after-canvas after-canvas--wide buy-credits-page vstack gap-2">
+      <AfterPageHeader
+        title="Comprar créditos"
+        backTo="/perfil"
+        backLabel="← Perfil do local"
+        actions={
+          !loading && !error ? (
+            <BuyCreditsWalletBadge commonBalance={balance} vipBalance={vipBalance} />
+          ) : null
+        }
+      />
 
       <AsyncPanel loading={loading} error={error} onRetry={() => void load()}>
-        <div className="row g-2 mb-3">
-          <div className="col-md-6">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-body">
-                <p className="small text-muted mb-1">Comum</p>
-                <p className="fs-4 fw-bold mb-0">{balance}</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-6">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-body">
-                <p className="small text-muted mb-1">VIP</p>
-                <p className="fs-4 fw-bold mb-0">{vipBalance}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {checkoutOpen && selectedPack ? (
           <WebCheckoutPanel
             pack={selectedPack}
@@ -178,83 +189,81 @@ export function BuyCreditsPage() {
             onBack={closeCheckout}
           />
         ) : (
-          <>
-            <h2 className="h6">Pacotes comuns</h2>
-            <div className="vstack gap-2 mb-4">
-              {packages.length === 0 ? (
-                <p className="text-muted small">Nenhum pacote disponível.</p>
-              ) : (
-                packages.map((pkg) => (
-                  <div key={pkg.key} className="card border-0 shadow-sm">
-                    <div className="card-body d-flex justify-content-between align-items-center gap-2">
-                      <div>
-                        <strong>{pkg.credits} crédito(s)</strong>
-                        <p className="small text-muted mb-0">{pkg.key}</p>
-                      </div>
-                      <div className="text-end">
-                        <p className="mb-0 fw-semibold">{formatMoney(pkg.priceBrl)}</p>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-warning mt-1"
-                          onClick={() => openCheckout(pkg.key)}
-                        >
-                          Comprar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
+          <div className="buy-credits-split">
+            <div className="buy-credits-main">
+              <h2 className="buy-section-title">Escolha um pacote</h2>
+
+              {vipCatalogError && !vipOffer ? (
+                <p className="small text-muted mb-0">{vipCatalogError}</p>
+              ) : null}
+
+              <div className="buy-pack-list">
+                {offers.length === 0 ? (
+                  <p className="text-muted small mb-0">Nenhum pacote disponível.</p>
+                ) : (
+                  offers.map((pack) => (
+                    <BuyCreditsPackageTile
+                      key={pack.key}
+                      pack={pack}
+                      selected={pack.key === selectedKey}
+                      commonPackages={packages}
+                      onSelect={() => selectPackage(pack.key)}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div className="buy-pay-bar">
+                <button
+                  type="button"
+                  className="buy-pay-btn"
+                  disabled={!canContinue}
+                  onClick={openCheckout}
+                >
+                  <span>Continuar para pagamento</span>
+                  {totalLabel ? <span className="buy-pay-total">{totalLabel}</span> : null}
+                </button>
+                <p className="buy-pay-secure mb-0">
+                  <IconLock size={14} />
+                  Pagamento 100% seguro
+                </p>
+              </div>
             </div>
 
-            <h2 className="h6">Pacote VIP</h2>
-            {vipCatalogError && !vipOffer ? (
-              <p className="text-muted small">{vipCatalogError}</p>
-            ) : vipOffer ? (
-              <div className="card border-0 shadow-sm border-warning mb-4">
-                <div className="card-body d-flex justify-content-between align-items-center gap-2">
-                  <div>
-                    <strong>{vipOffer.credits} crédito VIP</strong>
-                    <p className="small text-muted mb-0">
-                      {vipCheckoutReady
-                        ? formatMoney(vipWebCheckoutPack(vipOffer)?.priceBrl ?? vipOffer.priceBrl)
-                        : `Referência ${formatMoney(vipOffer.referencePriceBrl)}`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-warning"
-                    disabled={!vipCheckoutReady}
-                    onClick={() => vipCheckoutReady && openCheckout(vipOffer.key)}
-                  >
-                    {vipCheckoutReady ? 'Comprar VIP' : 'Indisponível'}
-                  </button>
+            <aside className="buy-credits-aside">
+              <div className="card shadow-sm buy-history-card h-100">
+                <div className="card-body">
+                  <h2 className="buy-section-title mb-2">Histórico de compras</h2>
+                  {purchases.length === 0 ? (
+                    <p className="text-muted small mb-0">Nenhuma compra ainda.</p>
+                  ) : (
+                    <ul className="list-group list-group-flush buy-history-list">
+                      {purchases.map((item) => (
+                        <li key={item.id} className="list-group-item px-0">
+                          <div className="d-flex justify-content-between gap-2">
+                            <span className="small">
+                              {item.credits} créd. {item.modality === 'VIP' ? 'VIP' : 'comum'} —{' '}
+                              {purchaseStatusLabel(item.status)}
+                            </span>
+                            <span
+                              className={`small fw-semibold ${item.modality === 'VIP' ? 'buy-price-vip' : 'buy-price-common'}`}
+                            >
+                              {formatMoney(item.amountPaid)}
+                            </span>
+                          </div>
+                          {purchaseProviderLabel(item.provider) ? (
+                            <p className="small text-muted mb-0">
+                              {purchaseProviderLabel(item.provider)}
+                            </p>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
-            ) : null}
-          </>
-        )}
-
-        <h2 className="h6">Histórico de compras</h2>
-        {purchases.length === 0 ? (
-          <p className="text-muted small">Nenhuma compra registrada.</p>
-        ) : (
-          <ul className="list-group list-group-flush">
-            {purchases.map((item) => (
-              <li key={item.id} className="list-group-item px-0">
-                <div className="d-flex justify-content-between gap-2">
-                  <span>
-                    {item.credits} créd. {item.modality === 'VIP' ? 'VIP' : 'comum'} —{' '}
-                    {purchaseStatusLabel(item.status)}
-                  </span>
-                  <span className="text-muted small">{formatMoney(item.amountPaid)}</span>
-                </div>
-                {purchaseProviderLabel(item.provider) ? (
-                  <p className="small text-muted mb-0">{purchaseProviderLabel(item.provider)}</p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+            </aside>
+          </div>
         )}
       </AsyncPanel>
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   cancelBanner,
@@ -10,6 +10,8 @@ import {
 import { fetchCreditWallet, redeemCreditCoupon } from '../../api/credits'
 import { uploadFile } from '../../api/uploads'
 import { AsyncPanel } from '../../components/common/AsyncPanel'
+import { IconCloudUpload, IconCrown, IconStar } from '../../components/icons/AfterIcons'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { PromoMonthCalendar, startOfDay } from '../../components/credits/PromoMonthCalendar'
 import { useAuth } from '../../auth/AuthContext'
 import { resolveMediaUrl } from '../../utils/mediaUrl'
@@ -41,6 +43,7 @@ function historyDatesLabel(item: BannerHistoryItem): string {
 
 export function CreditsBannersPage() {
   const { api } = useAuth()
+  const location = useLocation()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [loading, setLoading] = useState(true)
@@ -135,6 +138,11 @@ export function CreditsBannersPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (location.hash !== '#nova-publicacao' || loading) return
+    document.getElementById('nova-publicacao')?.scrollIntoView({ block: 'start' })
+  }, [loading, location.hash])
 
   useEffect(() => {
     if (billingPlan !== 'vip') return
@@ -333,18 +341,17 @@ export function CreditsBannersPage() {
   }
 
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 720 }}>
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-          <Link to="/estabelecimento" className="btn btn-sm btn-outline-secondary mb-2">
-            ← Painel
+    <div className="after-canvas after-canvas--wide pub-page vstack gap-2">
+      <AfterPageHeader
+        title="Créditos e publicações"
+        backTo="/perfil"
+        backLabel="← Perfil do local"
+        actions={
+          <Link to="/estabelecimento/creditos/comprar" className="after-btn-gradient">
+            Comprar créditos
           </Link>
-          <h1 className="h4 after-brand-text mb-0">Créditos e publicações</h1>
-        </div>
-        <Link to="/estabelecimento/creditos/comprar" className="btn btn-warning">
-          Comprar créditos
-        </Link>
-      </div>
+        }
+      />
 
       {toast ? (
         <div className="alert alert-info alert-dismissible fade show mb-0">
@@ -354,67 +361,17 @@ export function CreditsBannersPage() {
       ) : null}
 
       <AsyncPanel loading={loading} error={error} onRetry={() => void load()}>
-        <div className="row g-2 mb-3">
-          <div className="col-md-6">
-            <div className="card border-0 shadow-sm h-100">
-              <div className="card-body">
-                <p className="small text-muted mb-1">Créditos comuns</p>
-                <p className="fs-3 fw-bold mb-0">{balance}</p>
-                <p className="small text-muted mb-0">
-                  {creditPerDay} créd./dia na publicação comum
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-6">
-            <div className="card border-0 shadow-sm h-100 border-warning">
-              <div className="card-body">
-                <p className="small text-muted mb-1">Créditos VIP</p>
-                <p className="fs-3 fw-bold mb-0">{vipBalance}</p>
-                <p className="small text-muted mb-0">
-                  {vipCreditPerDay} créd. VIP/dia + push
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card border-0 shadow-sm mb-3">
-          <div className="card-body">
-            <h2 className="h6">Cupom de créditos (Web)</h2>
-            <form className="row g-2 align-items-end" onSubmit={(e) => void onRedeemCoupon(e)}>
-              <div className="col-sm-8">
-                <label className="form-label small" htmlFor="coupon-code">
-                  Código
-                </label>
-                <input
-                  id="coupon-code"
-                  className="form-control"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                  autoComplete="off"
-                  disabled={redeeming}
-                />
-              </div>
-              <div className="col-sm-4">
-                <button type="submit" className="btn btn-outline-dark w-100" disabled={redeeming}>
-                  {redeeming ? 'Aplicando…' : 'Resgatar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <h2 className="h5">Nova publicação</h2>
-        <p className="text-muted small">
-          Envie a imagem e escolha as datas. O débito usa o saldo retornado pela API após a
-          publicação.
+        <div className="pub-layout">
+        <div className="pub-form" id="nova-publicacao">
+        <h2 className="h5 mb-1">Nova publicação</h2>
+        <p className="text-muted small mb-2">
+          Faça o upload da sua imagem e escolha quando deseja publicar
         </p>
 
-        <div className="card border-0 shadow-sm mb-3">
-          <div className="card-body vstack gap-3">
+        <div className="card border-0 shadow-sm mb-0 pub-form-card">
+          <div className="card-body pub-form-stack">
             <div>
-              <p className="fw-semibold small mb-2">1. Imagem</p>
+              <p className="pub-section-label">1. Upload da imagem</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -424,32 +381,32 @@ export function CreditsBannersPage() {
               />
               <button
                 type="button"
-                className="btn btn-outline-secondary w-100 p-0 overflow-hidden"
-                style={{ minHeight: 168 }}
+                className="pub-upload-zone"
                 disabled={uploading}
                 onClick={() => fileInputRef.current?.click()}
               >
                 {uploading ? (
-                  <span className="py-5 d-block">Enviando…</span>
+                  <span className="pub-upload-title">Enviando…</span>
                 ) : imageUrl ? (
                   <img
                     src={resolveMediaUrl(imageUrl)}
                     alt="Prévia"
-                    className="w-100 object-fit-cover"
-                    style={{ maxHeight: 220 }}
+                    className="pub-upload-preview"
                   />
                 ) : (
-                  <span className="py-5 d-block text-muted small">
-                    Toque para selecionar • PNG/JPG • máx. 10MB
+                  <span className="pub-upload-placeholder">
+                    <IconCloudUpload size={36} />
+                    <p className="pub-upload-title">Toque para selecionar uma imagem</p>
+                    <p className="pub-upload-sub">PNG, JPG ou JPEG • Máx. 10MB</p>
                   </span>
                 )}
               </button>
             </div>
 
             <div>
-              <p className="fw-semibold small mb-2">2. Texto</p>
+              <p className="pub-section-label">2. Título e descrição</p>
               <input
-                className="form-control mb-2"
+                className="form-control mb-2 pub-title-input"
                 placeholder="Título da promoção"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -457,36 +414,39 @@ export function CreditsBannersPage() {
               />
               <textarea
                 className="form-control"
-                rows={3}
+                rows={2}
                 placeholder="Breve descrição"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                maxLength={500}
+                maxLength={180}
               />
             </div>
 
             <div>
-              <p className="fw-semibold small mb-2">3. Plano</p>
-              <div className="btn-group w-100" role="group">
+              <p className="pub-section-label">3. Plano</p>
+              <div className="pub-plan-row" role="group">
                 <button
                   type="button"
-                  className={`btn ${billingPlan === 'common' ? 'btn-warning' : 'btn-outline-secondary'}`}
+                  className={`pub-plan-chip pub-plan-chip--common ${billingPlan === 'common' ? 'pub-plan-chip--common-on' : ''}`}
                   onClick={() => onBillingPlanChange('common')}
                 >
+                  <IconStar size={16} className="pub-plan-icon--common" />
                   Comum
                 </button>
                 <button
                   type="button"
-                  className={`btn ${billingPlan === 'vip' ? 'btn-warning' : 'btn-outline-secondary'}`}
+                  className={`pub-plan-chip pub-plan-chip--vip ${billingPlan === 'vip' ? 'pub-plan-chip--vip-on' : ''}`}
                   onClick={() => onBillingPlanChange('vip')}
                 >
+                  <IconCrown size={20} className="pub-plan-icon--vip" />
                   VIP
                 </button>
               </div>
             </div>
 
             <div>
-              <p className="fw-semibold small mb-2">4. Datas</p>
+              <p className="pub-section-label">4. Datas</p>
+              <div className="pub-cal-compact">
               <PromoMonthCalendar
                 month={calendarMonth}
                 selected={selectedDates}
@@ -502,6 +462,7 @@ export function CreditsBannersPage() {
                   )
                 }
               />
+              </div>
               {sortedSelected.length > 0 ? (
                 <p className="small mt-2 mb-0">
                   Selecionadas: {sortedSelected.map(formatDayKeyBr).join(', ')}
@@ -564,11 +525,61 @@ export function CreditsBannersPage() {
           </div>
         </div>
 
-        <h2 className="h6">Histórico de publicações</h2>
+        </div>
+        <aside className="pub-rail">
+        <div className="pub-wallet-grid">
+          <div className="pub-wallet pub-wallet--common">
+            <p className="pub-wallet-label">
+              <IconStar size={14} />
+              Créditos comuns
+            </p>
+            <p className="pub-wallet-value">{balance}</p>
+            <p className="pub-wallet-hint">{creditPerDay} créd./dia na publicação comum</p>
+          </div>
+          <div className="pub-wallet pub-wallet--vip">
+            <p className="pub-wallet-label">
+              <IconCrown size={22} className="pub-wallet-crown" />
+              Créditos VIP
+            </p>
+            <p className="pub-wallet-value">{vipBalance}</p>
+            <p className="pub-wallet-hint">{vipCreditPerDay} créd. VIP/dia + push</p>
+          </div>
+        </div>
+
+        <div className="card shadow-sm pub-coupon-card">
+          <div className="card-body">
+            <h2 className="pub-coupon-title">Cupom de créditos (Web)</h2>
+            <form className="row g-2 align-items-end" onSubmit={(e) => void onRedeemCoupon(e)}>
+              <div className="col-sm-8">
+                <label className="form-label small" htmlFor="coupon-code">
+                  Código
+                </label>
+                <input
+                  id="coupon-code"
+                  className="form-control"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  autoComplete="off"
+                  disabled={redeeming}
+                />
+              </div>
+              <div className="col-sm-4">
+                <button type="submit" className="btn pub-coupon-redeem-btn w-100" disabled={redeeming}>
+                  {redeeming ? 'Aplicando…' : 'Resgatar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div className="card shadow-sm pub-history-card">
+          <div className="card-body">
+            <h2 className="pub-history-title h6">Histórico de publicações</h2>
+            <div className="pub-history-panel">
         {history.length === 0 ? (
-          <p className="text-muted small">Nenhuma publicação ainda.</p>
+          <p className="text-muted small mb-0">Nenhuma publicação ainda.</p>
         ) : (
-          <ul className="list-group list-group-flush mb-4">
+          <ul className="list-group list-group-flush mb-0">
             {history.map((item) => {
               const cancelled = (item.status ?? '').toUpperCase() === 'CANCELLED'
               const preview = resolveMediaUrl(item.imageUrl)
@@ -601,11 +612,12 @@ export function CreditsBannersPage() {
                         <span className="badge text-bg-danger mt-1">Cancelada</span>
                       ) : null}
                     </div>
-                    <div className="dropdown">
+                    <div className="dropdown pub-history-actions">
                       <button
                         type="button"
                         className="btn btn-sm btn-outline-secondary dropdown-toggle"
                         data-bs-toggle="dropdown"
+                        data-bs-popper-config='{"strategy":"fixed","placement":"bottom-end"}'
                         aria-expanded="false"
                         disabled={cancellingId === item.id}
                       >
@@ -640,6 +652,11 @@ export function CreditsBannersPage() {
             })}
           </ul>
         )}
+            </div>
+          </div>
+        </div>
+        </aside>
+        </div>
       </AsyncPanel>
     </div>
   )

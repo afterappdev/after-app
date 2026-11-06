@@ -7,16 +7,25 @@ $border-radius: 0.5rem;
 $link-color: $secondary;
 
 @import 'bootstrap/scss/bootstrap';
+@import './after-ui.scss';
 
 :root {
   --after-brand: #{$primary};
   --after-purple: #{$secondary};
   --after-canvas: #{$body-bg};
   --after-ink: #{$body-color};
+  /* Altura visível real no mobile (100vh no iOS pode incluir barra do browser) */
+  --after-vh: 100vh;
+  --after-vh: 100dvh;
+}
+
+html {
+  height: 100%;
 }
 
 body {
   min-height: 100vh;
+  min-height: var(--after-vh);
 }
 
 .after-brand-text {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   fetchNotifications,
@@ -7,6 +7,7 @@ import {
   markNotificationRead,
 } from '../../api/notifications'
 import { AsyncPanel } from '../../components/common/AsyncPanel'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { useAuth } from '../../auth/AuthContext'
 import { resolveMediaUrl } from '../../utils/mediaUrl'
 import type { NotificationItem } from './types'
@@ -69,13 +70,8 @@ export function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 520 }}>
-      <div className="d-flex align-items-center gap-2">
-        <Link to="/perfil" className="btn btn-sm btn-outline-secondary">
-          ← Perfil
-        </Link>
-        <h1 className="h5 mb-0">Notificações</h1>
-      </div>
+    <div className="after-canvas vstack gap-3">
+      <AfterPageHeader title="Notificações" backTo="/perfil" backLabel="← Perfil" />
       <AsyncPanel
         loading={loading}
         error={error}

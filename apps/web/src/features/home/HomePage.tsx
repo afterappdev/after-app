@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import '../../config/homeVisual.scss'
+import { AfterLogo } from '../../components/layout/AfterLogo'
+import { AfterLoading } from '../../components/layout/AfterLoading'
+import { homeLocationCaption } from './homeLocationCaption'
 import {
   fetchHomePromotions,
   fetchHomeVenues,
@@ -39,8 +43,9 @@ import {
 type MainTab = 'explore' | 'search'
 
 export function HomePage() {
-  const { api } = useAuth()
+  const { api, user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const today = useMemo(() => startOfDay(new Date()), [])
 
   const [mainTab, setMainTab] = useState<MainTab>('explore')
@@ -63,11 +68,11 @@ export function HomePage() {
   const [searchLoading, setSearchLoading] = useState(false)
   const [filters, setFilters] = useState(createDefaultVenueSearchFilters)
   const [filterModalOpen, setFilterModalOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const restored = readHomeNavigationState()
     if (restored) {
-      setMainTab(restored.mainTab)
       setCity(restored.city)
       setState(restored.state)
       setVenueQuery(restored.venueQuery)
@@ -88,6 +93,17 @@ export function HomePage() {
   }, [])
 
   useEffect(() => {
+    if (city.trim()) return
+    const stored = readStoredCity()
+    if (stored.city.trim()) return
+    const profileCity = user?.city?.trim() ?? ''
+    if (profileCity) {
+      setCity(profileCity)
+      setState(user?.state?.trim() ?? '')
+    }
+  }, [city, user?.city, user?.state])
+
+  useEffect(() => {
     if (!city.trim()) return
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
@@ -103,16 +119,20 @@ export function HomePage() {
   }, [city])
 
   const loadFeed = useCallback(async () => {
-    const trimmedCity = city.trim()
-    if (!trimmedCity) {
-      setFeedError('Escolha uma cidade para ver promoções e locais.')
+    const feedCity = city.trim() || user?.city?.trim() || ''
+    const feedState = city.trim()
+      ? state.trim()
+      : (user?.state?.trim() ?? state.trim())
+    if (!feedCity) {
       setPromotions([])
       setVenues([])
+      setFeedError(null)
+      setFeedLoading(false)
       return
     }
     setFeedLoading(true)
     setFeedError(null)
-    const originQuery = buildOriginQuery(trimmedCity, origin)
+    const originQuery = buildOriginQuery(feedCity, origin, feedState)
     try {
       const [promoData, venueData] = await Promise.all([
         fetchHomePromotions(api, {
@@ -130,7 +150,17 @@ export function HomePage() {
     } finally {
       setFeedLoading(false)
     }
-  }, [api, city, origin, selectedDay])
+  }, [api, city, origin, selectedDay, state, user?.city, user?.state])
+
+  useEffect(() => {
+    if (searchParams.get('busca') === '1') setMainTab('search')
+    else setMainTab('explore')
+  }, [searchParams])
+
+  useEffect(() => {
+    if (mainTab !== 'search') return
+    searchInputRef.current?.focus()
+  }, [mainTab])
 
   useEffect(() => {
     if (mainTab === 'explore') void loadFeed()
@@ -231,48 +261,41 @@ export function HomePage() {
     })
   }
 
+  const displayCity = city.trim() || user?.city?.trim() || 'Sua cidade'
+  const displayState = city.trim() ? state : user?.state?.trim() ?? state
+  const locationCaption = homeLocationCaption({
+    displayedCity: displayCity,
+    displayedUf: displayState,
+    profileCity: user?.city?.trim() ?? '',
+    profileUf: user?.state?.trim() ?? '',
+  })
+
   return (
-    <div className="mx-auto" style={{ maxWidth: 720 }}>
-      <div className="text-center mb-3">
-        <p className="after-brand-text fs-4 fw-bold mb-0">After</p>
-        <p className="fw-semibold mb-0">O que tem pra hoje?</p>
-      </div>
-
-      <CityPicker
-        city={city}
-        state={state}
-        expanded={cityExpanded}
-        query={cityQuery}
-        loading={cityLoading}
-        results={cityResults}
-        onToggle={() => setCityExpanded((v) => !v)}
-        onQueryChange={setCityQuery}
-        onSelect={selectCity}
-      />
-
-      <ul className="nav nav-pills nav-fill gap-2 mt-3 mb-3">
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link ${mainTab === 'explore' ? 'active' : ''}`}
-            onClick={() => setMainTab('explore')}
-          >
-            Promoções
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link ${mainTab === 'search' ? 'active' : ''}`}
-            onClick={() => setMainTab('search')}
-          >
-            Buscar locais
-          </button>
-        </li>
-      </ul>
+    <div className="home-page-wrap home-canvas">
+      <div className="home-column">
+        <header className="home-top">
+          <div className="home-hero">
+            <AfterLogo height={70} className="d-inline-block" />
+            <p className="home-tagline">O que tem pra hoje?</p>
+          </div>
+          <CityPicker
+            city={displayCity}
+            state={displayState}
+            caption={locationCaption}
+            expanded={cityExpanded}
+            query={cityQuery}
+            loading={cityLoading}
+            results={cityResults}
+            onToggle={() => setCityExpanded((v) => !v)}
+            onQueryChange={setCityQuery}
+            onSelect={selectCity}
+          />
+        </header>
 
       {mainTab === 'search' ? (
         <SearchPanel
+          inputRef={searchInputRef}
+          onBack={() => navigate('/', { replace: true })}
           venueQuery={venueQuery}
           onVenueQueryChange={setVenueQuery}
           filterCount={venueFilterCount(filters)}
@@ -305,6 +328,7 @@ export function HomePage() {
         onClose={() => setFilterModalOpen(false)}
         onApply={applyFilters}
       />
+      </div>
     </div>
   )
 }
@@ -323,13 +347,7 @@ function ExplorePanel(props: {
   onRetry: () => void
 }) {
   if (props.loading) {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-warning" role="status">
-          <span className="visually-hidden">Carregando…</span>
-        </div>
-      </div>
-    )
+    return <AfterLoading />
   }
   if (props.error) {
     return (
@@ -343,9 +361,9 @@ function ExplorePanel(props: {
   }
 
   return (
-    <div className="vstack gap-4">
-      <div>
-        <SectionTitle tone="promotion" title="Promoções / Eventos do dia" />
+    <div className="home-explore">
+      <div className="home-explore-promos">
+        <SectionTitle tone="promotion" title="Promoções/ Eventos do dia" />
         <div className="mt-2">
           <PromoDayStrip
             days={props.promoDays}
@@ -355,9 +373,9 @@ function ExplorePanel(props: {
             onPickDate={props.onPickDate}
           />
         </div>
-        <div className="vstack gap-3 mt-3">
+        <div className="home-card-list vstack gap-3 mt-3">
           {props.promotions.length === 0 ? (
-            <p className="text-muted text-center py-3 mb-0">
+            <p className="text-center py-3 mb-0" style={{ color: 'var(--home-muted)' }}>
               Nenhuma promoção do dia nesta cidade.
             </p>
           ) : (
@@ -373,7 +391,7 @@ function ExplorePanel(props: {
       </div>
       <div>
         <SectionTitle tone="venue" title="Locais próximos" />
-        <div className="vstack gap-3 mt-3">
+        <div className="home-card-list vstack gap-3 mt-3">
           {props.venues.length === 0 ? (
             <p className="text-muted text-center py-3 mb-0">
               Nenhum local cadastrado nesta cidade.
@@ -390,6 +408,8 @@ function ExplorePanel(props: {
 }
 
 function SearchPanel(props: {
+  inputRef: RefObject<HTMLInputElement | null>
+  onBack: () => void
   venueQuery: string
   onVenueQueryChange: (value: string) => void
   filterCount: number
@@ -402,19 +422,20 @@ function SearchPanel(props: {
 }) {
   return (
     <div>
-      <div className="input-group mb-2">
+      <button type="button" className="home-search-back" onClick={props.onBack}>
+        Voltar
+      </button>
+      <div className="after-search-group">
         <input
+          ref={props.inputRef}
           type="search"
-          className="form-control"
+          className="form-control home-search-input"
           placeholder="Buscar por nome"
+          aria-label="Buscar por nome"
           value={props.venueQuery}
           onChange={(e) => props.onVenueQueryChange(e.target.value)}
         />
-        <button
-          type="button"
-          className="btn btn-outline-primary"
-          onClick={props.onOpenFilters}
-        >
+        <button type="button" className="btn btn-outline-secondary" onClick={props.onOpenFilters}>
           Filtros{props.filterCount > 0 ? ` (${props.filterCount})` : ''}
         </button>
       </div>
@@ -422,17 +443,15 @@ function SearchPanel(props: {
         <ActiveFilterChips filters={props.filters} onClear={props.onClearFilter} />
       ) : null}
       {props.loading ? (
-        <div className="text-center py-4">
-          <div className="spinner-border spinner-border-sm text-warning" />
-        </div>
+        <AfterLoading />
       ) : props.results.length === 0 ? (
-        <p className="text-muted text-center py-4">
+        <p className="after-empty mb-0">
           {props.venueQuery.trim().length >= 2 || venueFiltersActive(props.filters)
             ? 'Nenhum local encontrado.'
             : 'Digite ao menos 2 caracteres ou use filtros.'}
         </p>
       ) : (
-        <div className="vstack gap-3 mt-2">
+        <div className="home-search-results vstack gap-3 mt-2">
           {props.results.map((venue) => (
             <VenueCard key={venue.id} venue={venue} onOpen={props.onOpenVenue} />
           ))}
@@ -480,11 +499,12 @@ function ActiveFilterChips(props: {
   return (
     <div className="d-flex flex-wrap gap-2 mb-3">
       {chips.map((chip) => (
-        <span key={chip.label} className="badge rounded-pill text-bg-warning">
+        <span key={chip.label} className="after-filter-chip">
           {chip.label}
           <button
             type="button"
-            className="btn btn-link btn-sm text-dark p-0 ms-1 align-baseline"
+            className="btn btn-link btn-sm p-0 align-baseline"
+            style={{ color: 'inherit', minHeight: 0 }}
             onClick={chip.clear}
             aria-label={`Remover filtro ${chip.label}`}
           >

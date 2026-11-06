@@ -1,16 +1,38 @@
-import { Outlet } from 'react-router-dom'
-import { AfterHeader } from '../components/layout/AfterHeader'
+import { Outlet, useLocation } from 'react-router-dom'
+import { AfterBottomNav } from '../components/layout/AfterBottomNav'
+import { AfterSideNav } from '../components/layout/AfterSideNav'
+
+const AUTH_PATHS = new Set([
+  '/login',
+  '/register',
+  '/esqueci-minha-senha',
+  '/redefinir-senha',
+  '/confirmar-exclusao',
+  '/oauth',
+  '/auth/apple/callback',
+])
 
 export function AppLayout() {
+  const location = useLocation()
+  const isAuth = AUTH_PATHS.has(location.pathname)
+
+  if (isAuth) {
+    return (
+      <div className="after-shell min-vh-100">
+        <main className="after-auth">
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="d-flex flex-column min-vh-100">
-      <AfterHeader />
-      <main className="flex-grow-1 container-fluid px-3 px-lg-4 py-4">
+    <div className="after-shell after-frame">
+      <AfterSideNav />
+      <main className="after-stage">
         <Outlet />
       </main>
-      <footer className="border-top py-3 text-center text-muted small">
-        After Web · prefixo <code>/app/</code> · sem rewrite global na raiz
-      </footer>
+      <AfterBottomNav />
     </div>
   )
 }

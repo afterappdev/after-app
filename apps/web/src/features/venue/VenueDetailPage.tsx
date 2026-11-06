@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
@@ -10,6 +10,7 @@ import {
   replyVenueReview,
   submitVenueReview,
 } from '../../api/venues'
+import { IconFlag } from '../../components/icons/AfterIcons'
 import { ReportModal } from '../../components/moderation/ReportModal'
 import { VenueMapEmbed } from '../../components/venue/VenueMapEmbed'
 import { presentVenueCategory } from '../../constants/venueCategories'
@@ -52,7 +53,7 @@ type TabId = 'about' | 'photos' | 'menu' | 'reviews' | 'contact'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'about', label: 'Sobre' },
-  { id: 'photos', label: 'Fotos' },
+  { id: 'photos', label: 'Fotos do local' },
   { id: 'menu', label: 'Cardápio' },
   { id: 'reviews', label: 'Avaliações' },
   { id: 'contact', label: 'Contato' },
@@ -78,6 +79,60 @@ export function VenueDetailPage() {
   const [submittingReview, setSubmittingReview] = useState(false)
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
   const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null)
+  type LightboxState =
+    | { src: string; kind: 'image'; zoomable?: boolean }
+    | { src: string; kind: 'video' }
+
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null)
+  const [menuLightboxZoom, setMenuLightboxZoom] = useState(1)
+  const [menuLightboxFit, setMenuLightboxFit] = useState<{ w: number; h: number } | null>(null)
+  const menuLightboxViewportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setMenuLightboxZoom(1)
+    setMenuLightboxFit(null)
+  }, [lightbox?.src, lightbox?.kind])
+
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [lightbox])
+
+  useEffect(() => {
+    if (!lightbox || lightbox.kind !== 'image' || !lightbox.zoomable) return
+    const el = menuLightboxViewportRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const step = 0.12
+      setMenuLightboxZoom((z) => {
+        const next = e.deltaY < 0 ? z + step : z - step
+        return Math.min(5, Math.max(1, next))
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [lightbox])
+
+  useEffect(() => {
+    if (!lightbox || lightbox.kind !== 'image' || !lightbox.zoomable || !menuLightboxFit) return
+    const vp = menuLightboxViewportRef.current
+    if (!vp) return
+    requestAnimationFrame(() => {
+      vp.scrollLeft = Math.max(0, (vp.scrollWidth - vp.clientWidth) / 2)
+      vp.scrollTop = Math.max(0, (vp.scrollHeight - vp.clientHeight) / 2)
+    })
+  }, [lightbox, menuLightboxZoom, menuLightboxFit])
 
   const load = useCallback(async () => {
     if (!venueId) return
@@ -122,12 +177,6 @@ export function VenueDetailPage() {
   useEffect(() => {
     void load()
   }, [load])
-
-  const shareUrl = useMemo(() => {
-    if (!venueId) return ''
-    const base = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/$/, '')
-    return `${base}/#/venue/${encodeURIComponent(venueId)}`
-  }, [venueId])
 
   const loginReturnPath = `venue/${encodeURIComponent(venueId)}`
 
@@ -298,7 +347,7 @@ export function VenueDetailPage() {
   const showFavoriteAction = showSafety
 
   return (
-    <div className="mx-auto pb-4" style={{ maxWidth: 820 }}>
+    <div className="after-canvas pb-3">
       {toast ? (
         <div className="alert alert-info alert-dismissible fade show" role="alert">
           {toast}
@@ -306,21 +355,18 @@ export function VenueDetailPage() {
         </div>
       ) : null}
 
-      <div className="d-flex flex-wrap gap-2 mb-3">
-        <Link to="/" className="btn btn-sm btn-outline-secondary">
-          ← Voltar
+      <div className="after-toolbar venue-detail-toolbar">
+        <Link to="/" className="venue-detail-toolbar-btn venue-detail-toolbar-btn--back">
+          ← Home
         </Link>
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-primary"
-          onClick={() => void navigator.clipboard.writeText(shareUrl)}
-        >
-          Compartilhar link
-        </button>
         {showFavoriteAction ? (
           <button
             type="button"
-            className={`btn btn-sm ${favorited ? 'btn-warning' : 'btn-outline-warning'}`}
+            className={
+              favorited
+                ? 'venue-detail-toolbar-btn venue-detail-toolbar-btn--fav venue-detail-toolbar-btn--fav-on'
+                : 'venue-detail-toolbar-btn venue-detail-toolbar-btn--fav'
+            }
             disabled={favoriting && canFavorite(user)}
             onClick={() => void toggleFavorite()}
           >
@@ -330,7 +376,7 @@ export function VenueDetailPage() {
         {showSafety ? (
           <button
             type="button"
-            className="btn btn-sm btn-outline-danger"
+            className="venue-detail-toolbar-btn venue-detail-toolbar-btn--danger-outline"
             onClick={() =>
               openReport({
                 targetType: 'VENUE',
@@ -343,67 +389,86 @@ export function VenueDetailPage() {
           </button>
         ) : null}
         {canBlockOrReport(user, venue) ? (
-          <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => void handleBlock()}>
+          <button
+            type="button"
+            className="venue-detail-toolbar-btn venue-detail-toolbar-btn--danger-outline"
+            onClick={() => void handleBlock()}
+          >
             Bloquear
           </button>
         ) : null}
       </div>
 
-      <div className="card border-0 shadow-sm overflow-hidden mb-3">
+      <div className="venue-detail">
+      <div>
+      <div className="venue-hero">
         {cover ? (
-          <img src={cover} alt="" className="w-100 object-fit-cover" style={{ maxHeight: 220 }} />
+          <button
+            type="button"
+            className="venue-hero-cover-btn"
+            onClick={() => setLightbox({ src: cover, kind: 'image' })}
+            aria-label="Ampliar foto de capa"
+          >
+            <img src={cover} alt="" className="w-100 object-fit-cover venue-cover-img" />
+          </button>
         ) : (
-          <div className="bg-light text-center py-5 text-muted">Sem capa</div>
+          <div className="venue-cover-placeholder" aria-hidden />
         )}
-        <div className="card-body">
-          <div className="d-flex align-items-start gap-3">
-            {venue.logoUrl ? (
-              <img
-                src={resolveMediaUrl(venue.logoUrl)}
-                alt=""
-                className="rounded border"
-                width={64}
-                height={64}
-                style={{ objectFit: 'cover' }}
-              />
-            ) : null}
-            <div>
-              <h1 className="h4 after-brand-text mb-1">{venue.name}</h1>
-              {category ? <p className="text-muted small mb-1">{category}</p> : null}
-              <div className="d-flex flex-wrap gap-2 small">
-                {venue.isOpen != null ? (
-                  <span className={`badge ${venue.isOpen ? 'text-bg-success' : 'text-bg-secondary'}`}>
-                    {venue.isOpen ? 'Aberto agora' : 'Fechado'}
-                  </span>
-                ) : null}
-                {distanceLabel ? <span className="text-muted">{distanceLabel}</span> : null}
-                {venue.avgRating != null && venue.reviewCount ? (
-                  <span className="text-muted">
-                    ★ {venue.avgRating.toFixed(1).replace('.', ',')} ({venue.reviewCount})
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-          {venue.description ? (
-            <p className="mt-3 mb-0 text-muted">{venue.description}</p>
-          ) : null}
-        </div>
       </div>
-
-      <ul className="nav nav-tabs flex-nowrap overflow-auto mb-3">
-        {TABS.map((item) => (
-          <li className="nav-item" key={item.id}>
+      <div className="venue-detail-heading px-3">
+        <div className="venue-detail-identity">
+          {venue.logoUrl ? (
             <button
               type="button"
-              className={`nav-link ${tab === item.id ? 'active' : ''}`}
-              onClick={() => setTab(item.id)}
+              className="venue-detail-logo-wrap"
+              onClick={() => setLightbox({ src: resolveMediaUrl(venue.logoUrl), kind: 'image' })}
+              aria-label="Ampliar logo"
             >
-              {item.label}
+              <img src={resolveMediaUrl(venue.logoUrl)} alt="" className="venue-detail-logo" />
             </button>
-          </li>
+          ) : (
+            <span className="venue-detail-logo venue-detail-logo--empty d-inline-block" aria-hidden />
+          )}
+          <h1 className="venue-detail-title">{venue.name}</h1>
+          {category ? <div className="venue-detail-category">{category}</div> : null}
+          {venue.isOpen != null || distanceLabel ? (
+            <div className="venue-detail-status-row">
+              {venue.isOpen != null ? (
+                <span
+                  className={
+                    venue.isOpen ? 'venue-detail-status venue-detail-status--open' : 'venue-detail-status venue-detail-status--closed'
+                  }
+                >
+                  {venue.isOpen ? 'Aberto' : 'Fechado'}
+                </span>
+              ) : null}
+              {distanceLabel ? <span className="venue-detail-distance-inline">{distanceLabel}</span> : null}
+            </div>
+          ) : null}
+          <div className="venue-detail-ratings">
+            {venue.avgRating != null ? `★ ${venue.avgRating.toFixed(1)}` : 'Sem avaliações'}
+            {typeof venue.reviewCount === 'number' && venue.reviewCount > 0
+              ? ` · ${venue.reviewCount} ${venue.reviewCount === 1 ? 'avaliação' : 'avaliações'}`
+              : null}
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <div>
+      <div className="venue-tabs px-2 mt-2">
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={tab === item.id ? 'active' : undefined}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
         ))}
-      </ul>
+      </div>
+      <div className="px-3 pt-3">
 
       {tab === 'about' ? (
         <AboutTab
@@ -424,13 +489,19 @@ export function VenueDetailPage() {
         />
       ) : null}
       {tab === 'photos' ? (
-        <PhotosTab gallery={gallery} showSafety={showSafety} onReport={openReport} />
+        <PhotosTab
+          gallery={gallery}
+          showSafety={showSafety}
+          onReport={openReport}
+          onExpandMedia={(url, kind) => setLightbox({ src: resolveMediaUrl(url), kind })}
+        />
       ) : null}
       {tab === 'menu' ? (
         <MediaGrid
           items={menu}
           empty="Cardápio não publicado."
           showSafety={showSafety}
+          onExpand={(url) => setLightbox({ src: resolveMediaUrl(url), kind: 'image', zoomable: true })}
           onReport={(photoId) =>
             openReport({ targetType: 'PHOTO', targetId: photoId, title: 'Denunciar foto' })
           }
@@ -472,6 +543,9 @@ export function VenueDetailPage() {
       {owner ? (
         <p className="small text-muted mt-4 mb-0">Você está vendo a ficha do seu estabelecimento.</p>
       ) : null}
+      </div>
+      </div>
+      </div>
 
       {reportTarget ? (
         <ReportModal
@@ -482,6 +556,91 @@ export function VenueDetailPage() {
           onClose={() => setReportTarget(null)}
           onSubmit={handleReport}
         />
+      ) : null}
+
+      {lightbox ? (
+        <div
+          className="venue-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Visualização ampliada"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            type="button"
+            className="venue-lightbox-close"
+            aria-label="Fechar"
+            onClick={(e) => {
+              e.stopPropagation()
+              setLightbox(null)
+            }}
+          >
+            ×
+          </button>
+          <div className="venue-lightbox-inner" onClick={(e) => e.stopPropagation()}>
+            {lightbox.kind === 'image' ? (
+              lightbox.zoomable ? (
+                <div
+                  ref={menuLightboxViewportRef}
+                  className="venue-lightbox-menu-viewport"
+                  role="presentation"
+                >
+                  <img
+                    src={lightbox.src}
+                    alt=""
+                    className={
+                      menuLightboxFit
+                        ? 'venue-lightbox-img venue-lightbox-img--menu-zoom'
+                        : 'venue-lightbox-img venue-lightbox-img--menu-zoom-loading'
+                    }
+                    draggable={false}
+                    onLoad={(e) => {
+                      const im = e.currentTarget
+                      requestAnimationFrame(() => {
+                        const nw = im.naturalWidth
+                        const nh = im.naturalHeight
+                        if (!nw || !nh) return
+                        const vp = menuLightboxViewportRef.current
+                        const maxW =
+                          vp && vp.clientWidth > 0 ? vp.clientWidth : Math.floor(window.innerWidth * 0.92)
+                        const maxH =
+                          vp && vp.clientHeight > 0 ? vp.clientHeight : Math.floor(window.innerHeight * 0.85)
+                        const scale = Math.min(maxW / nw, maxH / nh, 1)
+                        setMenuLightboxFit({ w: Math.round(nw * scale), h: Math.round(nh * scale) })
+                      })
+                    }}
+                    style={
+                      menuLightboxFit
+                        ? {
+                            width: Math.round(menuLightboxFit.w * menuLightboxZoom),
+                            height: Math.round(menuLightboxFit.h * menuLightboxZoom),
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                            display: 'block',
+                          }
+                        : undefined
+                    }
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      setMenuLightboxZoom(1)
+                      const vp = menuLightboxViewportRef.current
+                      if (vp) {
+                        requestAnimationFrame(() => {
+                          vp.scrollLeft = Math.max(0, (vp.scrollWidth - vp.clientWidth) / 2)
+                          vp.scrollTop = Math.max(0, (vp.scrollHeight - vp.clientHeight) / 2)
+                        })
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <img src={lightbox.src} alt="" className="venue-lightbox-img" />
+              )
+            ) : (
+              <video className="venue-lightbox-video" src={lightbox.src} controls playsInline />
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   )
@@ -509,7 +668,7 @@ function AboutTab(props: {
         <div className="d-flex justify-content-between align-items-center mb-2">
           <h2 className="h6 fw-bold mb-0">Promoções em destaque</h2>
           {banners.length > 1 ? (
-            <button type="button" className="btn btn-link btn-sm" onClick={props.onTogglePromos}>
+            <button type="button" className="venue-promo-toggle-btn" onClick={props.onTogglePromos}>
               {props.showAllPromos ? 'Ver menos' : 'Ver todas'}
             </button>
           ) : null}
@@ -596,6 +755,7 @@ function PromoRow({
   showSafety: boolean
   onReport: () => void
 }) {
+  const [imageExpanded, setImageExpanded] = useState(false)
   const imageUrl = resolveMediaUrl(banner.imageUrl)
   const schedules = banner.schedules ?? []
   const vip = schedules.some((s) => s.tier === 'VIP')
@@ -604,27 +764,47 @@ function PromoRow({
       ? formatStoredCalendarDate(schedules[0].displayDate)
       : ''
   return (
-    <div className="d-flex gap-3 mb-3 align-items-start">
-      {imageUrl ? (
-        <img src={imageUrl} alt="" className="rounded" width={72} height={72} style={{ objectFit: 'cover' }} />
-      ) : null}
-      <div>
-        <div className="d-flex align-items-center gap-2">
-          <strong className="small">{banner.title?.trim() || 'Promoção do dia'}</strong>
-          {vip ? <span className="badge text-bg-warning text-dark">VIP</span> : null}
-        </div>
-        {banner.description ? <p className="small text-muted mb-1">{banner.description}</p> : null}
-        {dateLabel ? (
-          <p className="small mb-0" style={{ color: 'var(--after-brand)' }}>
-            Válido para o dia {dateLabel}
-          </p>
-        ) : null}
-        {showSafety && banner.id ? (
-          <button type="button" className="btn btn-link btn-sm text-danger px-0" onClick={onReport}>
-            Denunciar promoção
+    <div className="venue-promo-row">
+      <div className="d-flex gap-3 align-items-start">
+        {imageUrl ? (
+          <button
+            type="button"
+            className="venue-promo-thumb-btn"
+            onClick={() => setImageExpanded((v) => !v)}
+            aria-expanded={imageExpanded}
+            aria-label={imageExpanded ? 'Recolher imagem da promoção' : 'Ampliar imagem da promoção'}
+          >
+            <img src={imageUrl} alt="" className="venue-promo-thumb-img" width={72} height={72} />
+            <span className="venue-promo-thumb-hint small" aria-hidden>
+              {imageExpanded ? 'Recolher' : 'Ampliar'}
+            </span>
           </button>
         ) : null}
+        <div className="flex-grow-1 min-w-0">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <strong className="small">{banner.title?.trim() || 'Promoção do dia'}</strong>
+            {vip ? <span className="badge text-bg-warning text-dark">VIP</span> : null}
+          </div>
+          {banner.description ? <p className="small text-muted mb-1">{banner.description}</p> : null}
+          {dateLabel ? (
+            <p className="small mb-0" style={{ color: 'var(--after-brand)' }}>
+              Válido para o dia {dateLabel}
+            </p>
+          ) : null}
+          {showSafety && banner.id ? (
+            <button type="button" className="venue-promo-report-btn" onClick={onReport}>
+              Denunciar promoção
+            </button>
+          ) : null}
+        </div>
       </div>
+      {imageUrl && imageExpanded ? (
+        <div className="venue-promo-expanded mt-3">
+          <a href={imageUrl} target="_blank" rel="noreferrer" className="venue-promo-expanded-link">
+            <img src={imageUrl} alt="" className="venue-promo-expanded-img" />
+          </a>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -633,10 +813,12 @@ function PhotosTab({
   gallery,
   showSafety,
   onReport,
+  onExpandMedia,
 }: {
   gallery: VenuePhoto[]
   showSafety: boolean
   onReport: (draft: ReportDraft) => void
+  onExpandMedia: (url: string, kind: 'image' | 'video') => void
 }) {
   const images = gallery.filter((p) => !isVideoMedia(p))
   const videos = gallery.filter((p) => isVideoMedia(p))
@@ -650,6 +832,7 @@ function PhotosTab({
           items={images}
           empty=""
           showSafety={showSafety}
+          onExpand={(url) => onExpandMedia(url, 'image')}
           onReport={(photoId) =>
             onReport({ targetType: 'PHOTO', targetId: photoId, title: 'Denunciar foto' })
           }
@@ -660,28 +843,34 @@ function PhotosTab({
           <h2 className="h6 fw-bold mb-2">Vídeos</h2>
           <div className="vstack gap-3">
             {videos.map((item) => (
-              <div key={item.id}>
-                <video
-                  className="w-100 rounded"
-                  controls
-                  preload="metadata"
-                  src={resolveMediaUrl(item.url)}
-                />
-                {showSafety && item.id ? (
-                  <button
-                    type="button"
-                    className="btn btn-link btn-sm text-danger px-0 mt-1"
-                    onClick={() =>
-                      onReport({
-                        targetType: 'VIDEO',
-                        targetId: item.id,
-                        title: 'Denunciar vídeo',
-                      })
-                    }
-                  >
-                    Denunciar vídeo
-                  </button>
-                ) : null}
+              <div key={item.id} className="venue-media-video-cell">
+                <div className="venue-media-frame venue-media-frame--video">
+                  {showSafety && item.id ? (
+                    <button
+                      type="button"
+                      className="venue-media-report-icon"
+                      aria-label="Denunciar vídeo"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onReport({
+                          targetType: 'VIDEO',
+                          targetId: item.id,
+                          title: 'Denunciar vídeo',
+                        })
+                      }}
+                    >
+                      <IconFlag size={14} />
+                    </button>
+                  ) : null}
+                  <video
+                    className="w-100 rounded venue-media-video-el"
+                    controls
+                    preload="metadata"
+                    src={resolveMediaUrl(item.url)}
+                    title="Duplo clique para ampliar"
+                    onDoubleClick={() => onExpandMedia(item.url, 'video')}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -696,6 +885,7 @@ function MediaGrid(props: {
   empty: string
   showSafety?: boolean
   onReport?: (photoId: string) => void
+  onExpand?: (url: string) => void
 }) {
   if (props.items.length === 0) {
     return props.empty ? <p className="text-muted text-center py-4">{props.empty}</p> : null
@@ -703,27 +893,70 @@ function MediaGrid(props: {
   return (
     <div className="row g-2">
       {props.items.map((item) => (
-        <div key={item.id} className="col-6 col-md-4">
-          <a href={resolveMediaUrl(item.url)} target="_blank" rel="noreferrer" className="d-block ratio ratio-1x1">
-            <img
-              src={resolveMediaUrl(item.url)}
-              alt=""
-              className="rounded object-fit-cover w-100 h-100"
-              loading="lazy"
-            />
-          </a>
-          {props.showSafety && props.onReport && item.id ? (
+        <div key={item.id} className="col-6 col-md-4 venue-media-cell">
+          <div className="venue-media-frame">
+            {props.showSafety && props.onReport && item.id ? (
+              <button
+                type="button"
+                className="venue-media-report-icon"
+                aria-label="Denunciar"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  props.onReport?.(item.id)
+                }}
+              >
+                <IconFlag size={14} />
+              </button>
+            ) : null}
             <button
               type="button"
-              className="btn btn-link btn-sm text-danger px-0 mt-1"
-              onClick={() => props.onReport?.(item.id)}
+              className="venue-media-thumb-btn ratio ratio-1x1"
+              onClick={() => props.onExpand?.(item.url)}
             >
-              Denunciar
+              <img
+                src={resolveMediaUrl(item.url)}
+                alt=""
+                className="rounded object-fit-cover w-100 h-100"
+                loading="lazy"
+              />
             </button>
-          ) : null}
+          </div>
         </div>
       ))}
     </div>
+  )
+}
+
+function PhoneGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M6.6 10.8c1.45 1.57 3.03 3.12 4.6 4.57 1.02.95 2.45.9 3.4-.12l1.05-1.15c.35-.38.9-.5 1.37-.28l2.6 1.18c.62.28.92.98.7 1.6-.55 1.55-1.95 2.65-3.6 2.9-4.85.5-10.35-4.55-12.55-9.9-.65-1.55-.35-3.3 1-4.4l1.2-.95c.52-.42 1.28-.32 1.68.22l1.38 1.85c.28.38.22.9-.12 1.22L8.5 7.4c-.45.48-.48 1.22-.08 1.78l-1.82 1.62z"
+      />
+    </svg>
+  )
+}
+
+function WhatsAppGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M20.52 3.48A11.87 11.87 0 0 0 12.02 0C5.4 0 .14 5.25.12 11.87c0 2.1.55 4.15 1.6 5.96L0 24l6.33-1.66a11.82 11.82 0 0 0 5.68 1.45h.01c6.63 0 12-5.37 12-12 0-3.2-1.25-6.2-3.5-8.45zM12.04 21.9h-.01a9.8 9.8 0 0 1-5-1.36l-.36-.21-3.7.97.99-3.6-.23-.38a9.86 9.86 0 0 1-1.5-5.25c.02-5.43 4.44-9.85 9.89-9.85 2.64 0 5.12 1.03 6.98 2.9a9.82 9.82 0 0 1 2.88 7c-.02 5.43-4.44 9.84-9.89 9.84zm5.4-7.15c-.3-.15-1.77-.87-2.05-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.47-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.38-.02-.53-.07-.15-.67-1.61-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.53.08-.8.38-.28.3-1.05 1.03-1.05 2.52 0 1.48 1.08 2.91 1.23 3.11.15.2 2.12 3.24 5.14 4.54.72.31 1.28.5 1.72.64.72.23 1.38.2 1.9.12.58-.09 1.77-.72 2.02-1.42.25-.7.25-1.3.18-1.42-.08-.12-.28-.2-.58-.35z"
+      />
+    </svg>
+  )
+}
+
+function InstagramGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm5 3.5A4.5 4.5 0 1 1 7.5 12 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 14.5 12 2.5 2.5 0 0 0 12 9.5zm5.75-3.25a1 1 0 1 1-1 1 1 1 0 0 1 1-1z"
+      />
+    </svg>
   )
 }
 
@@ -735,20 +968,48 @@ function ContactTab({ contacts }: { contacts: VenueContacts }) {
     return <p className="text-muted text-center py-4">Contato não informado.</p>
   }
   return (
-    <div className="vstack gap-3">
+    <div className="venue-contact-actions vstack gap-3">
       {phone ? (
-        <a className="btn btn-outline-primary text-start" href={telUrl(phone)}>
-          Reservas — {formatPhoneDisplay(phone)}
+        <a className="venue-contact-btn venue-contact-btn--phone" href={telUrl(phone)}>
+          <span className="venue-contact-btn-icon" aria-hidden>
+            <PhoneGlyph />
+          </span>
+          <span className="venue-contact-btn-text">
+            <span className="venue-contact-btn-title">Ligar / reservas</span>
+            <span className="venue-contact-btn-sub">{formatPhoneDisplay(phone)}</span>
+          </span>
         </a>
       ) : null}
       {whatsapp ? (
-        <a className="btn btn-success text-start" href={whatsappUrl(whatsapp)} target="_blank" rel="noreferrer">
-          WhatsApp — {formatPhoneDisplay(whatsapp)}
+        <a
+          className="venue-contact-btn venue-contact-btn--whatsapp"
+          href={whatsappUrl(whatsapp)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className="venue-contact-btn-icon" aria-hidden>
+            <WhatsAppGlyph />
+          </span>
+          <span className="venue-contact-btn-text">
+            <span className="venue-contact-btn-title">WhatsApp</span>
+            <span className="venue-contact-btn-sub">{formatPhoneDisplay(whatsapp)}</span>
+          </span>
         </a>
       ) : null}
       {instagram ? (
-        <a className="btn btn-outline-danger text-start" href={instagramUrl(instagram)} target="_blank" rel="noreferrer">
-          Instagram — {instagramHandle(instagram)}
+        <a
+          className="venue-contact-btn venue-contact-btn--instagram"
+          href={instagramUrl(instagram)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span className="venue-contact-btn-icon" aria-hidden>
+            <InstagramGlyph />
+          </span>
+          <span className="venue-contact-btn-text">
+            <span className="venue-contact-btn-title">Instagram</span>
+            <span className="venue-contact-btn-sub">{instagramHandle(instagram)}</span>
+          </span>
         </a>
       ) : null}
     </div>

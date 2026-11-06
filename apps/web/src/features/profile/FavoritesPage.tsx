@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { listFavorites, removeFavorite } from '../../api/favorites'
 import { AsyncPanel } from '../../components/common/AsyncPanel'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { ProfileVenueRow } from '../../components/profile/ProfileVenueRow'
 import { useAuth } from '../../auth/AuthContext'
 import type { FavoriteItem } from './types'
@@ -57,13 +57,8 @@ export function FavoritesPage() {
   }
 
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 520 }}>
-      <div className="d-flex align-items-center gap-2">
-        <Link to="/perfil" className="btn btn-sm btn-outline-secondary">
-          ← Perfil
-        </Link>
-        <h1 className="h5 mb-0">Favoritos</h1>
-      </div>
+    <div className="after-canvas vstack gap-3">
+      <AfterPageHeader title="Favoritos" backTo="/perfil" backLabel="← Perfil" />
       <AsyncPanel
         loading={loading}
         error={error}

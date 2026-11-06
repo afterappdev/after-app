@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiClient, ApiError } from '../../api/client'
 import { exchangeAppleWebLogin } from '../../api/auth'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterAuthCard } from '../../components/layout/AfterAuthCard'
+import { AfterLoading } from '../../components/layout/AfterLoading'
 import { sanitizeOAuthErrorMessage } from '../../utils/oauthCallback'
 
 export function AppleWebCallbackPage() {
@@ -48,17 +50,21 @@ export function AppleWebCallbackPage() {
 
   if (error) {
     return (
-      <div className="alert alert-warning">
-        {sanitizeOAuthErrorMessage(error) ?? error}{' '}
-        <Link to="/login">Voltar ao login</Link>
-      </div>
+      <AfterAuthCard logoHeight={56}>
+        <h1 className="after-auth-title">Apple</h1>
+        <p className="after-auth-sub">{sanitizeOAuthErrorMessage(error) ?? error}</p>
+        <p className="text-center mt-3 mb-0">
+          <Link to="/login" className="after-link-orange">
+            Voltar ao login
+          </Link>
+        </p>
+      </AfterAuthCard>
     )
   }
 
   return (
-    <div className="text-center py-5">
-      <div className="spinner-border text-warning" role="status" />
-      <p className="small text-muted mt-2 mb-0">Finalizando login Apple…</p>
-    </div>
+    <AfterAuthCard logoHeight={56}>
+      <AfterLoading label="Finalizando login Apple…" />
+    </AfterAuthCard>
   )
 }

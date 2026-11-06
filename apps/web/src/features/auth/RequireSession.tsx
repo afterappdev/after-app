@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterLoading } from '../../components/layout/AfterLoading'
 import { loginReturnPath } from '../../utils/loginReturn'
 import { sessionGuardPhase } from './guardRules'
 
@@ -11,13 +12,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
   const phase = sessionGuardPhase(bootstrapping, user)
 
   if (phase === 'loading') {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-warning" role="status">
-          <span className="visually-hidden">Carregando…</span>
-        </div>
-      </div>
-    )
+    return <AfterLoading />
   }
 
   if (phase === 'guest') {

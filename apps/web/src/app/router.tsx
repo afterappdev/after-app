@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../layouts/AppLayout'
 import { RequireSession } from '../features/auth/RequireSession'
 import { RequireUser } from '../features/auth/RequireUser'
@@ -15,12 +15,13 @@ import { HomePage } from '../features/home/HomePage'
 import { BlockedVenuesPage } from '../features/profile/BlockedVenuesPage'
 import { FavoritesPage } from '../features/profile/FavoritesPage'
 import { NotificationsPage } from '../features/profile/NotificationsPage'
-import { UserProfilePage } from '../features/profile/UserProfilePage'
+import { ProfileEntry } from '../features/profile/ProfileEntry'
 import { RequireVenue } from '../features/auth/RequireVenue'
 import { VenuePanelPage } from '../features/venue-manage/VenuePanelPage'
 import { BuyCreditsPage } from '../features/venue-credits/BuyCreditsPage'
 import { CreditsBannersPage } from '../features/venue-credits/CreditsBannersPage'
 import { VenueDetailPage } from '../features/venue/VenueDetailPage'
+import { NotFoundPage } from '../features/misc/NotFoundPage'
 
 function UserOnly({ children }: { children: ReactNode }) {
   return <RequireUser>{children}</RequireUser>
@@ -67,9 +68,9 @@ export function AppRouter() {
           <Route
             path="/perfil"
             element={
-              <UserOnly>
-                <UserProfilePage />
-              </UserOnly>
+              <RequireSession>
+                <ProfileEntry />
+              </RequireSession>
             }
           />
           <Route
@@ -104,7 +105,7 @@ export function AppRouter() {
               </RequireSession>
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </HashRouter>

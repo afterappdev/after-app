@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { listBlockedVenues, unblockVenue } from '../../api/blockedVenues'
 import { AsyncPanel } from '../../components/common/AsyncPanel'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { ProfileVenueRow } from '../../components/profile/ProfileVenueRow'
 import { useAuth } from '../../auth/AuthContext'
 import type { BlockedVenueItem } from './types'
@@ -56,13 +56,8 @@ export function BlockedVenuesPage() {
   }
 
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 520 }}>
-      <div className="d-flex align-items-center gap-2">
-        <Link to="/perfil" className="btn btn-sm btn-outline-secondary">
-          ← Perfil
-        </Link>
-        <h1 className="h5 mb-0">Bloqueados</h1>
-      </div>
+    <div className="after-canvas vstack gap-3">
+      <AfterPageHeader title="Bloqueados" backTo="/perfil" backLabel="← Perfil" />
       <AsyncPanel
         loading={loading}
         error={error}

@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterLoading } from '../../components/layout/AfterLoading'
 import { loginReturnPath } from '../../utils/loginReturn'
 import { userGuardPhase } from './guardRules'
 
@@ -10,13 +11,7 @@ export function RequireUser({ children }: { children: ReactNode }) {
   const phase = userGuardPhase(bootstrapping, user)
 
   if (phase === 'loading') {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-warning" role="status">
-          <span className="visually-hidden">Carregando…</span>
-        </div>
-      </div>
-    )
+    return <AfterLoading />
   }
 
   if (phase === 'guest') {
@@ -26,7 +21,7 @@ export function RequireUser({ children }: { children: ReactNode }) {
 
   if (phase === 'wrong_role') {
     return (
-      <div className="alert alert-info">
+      <div className="after-canvas alert alert-info">
         Área disponível para contas de usuário. Estabelecimentos usam o painel do app mobile.
       </div>
     )

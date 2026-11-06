@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { AfterLoading } from '../layout/AfterLoading'
 
 type Props = {
   loading: boolean
@@ -11,20 +12,14 @@ type Props = {
 
 export function AsyncPanel(props: Props) {
   if (props.loading) {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-warning" role="status">
-          <span className="visually-hidden">Carregando…</span>
-        </div>
-      </div>
-    )
+    return <AfterLoading />
   }
   if (props.error) {
     return (
       <div className="alert alert-warning d-flex flex-column align-items-start gap-2">
         <span>{props.error}</span>
         {props.onRetry ? (
-          <button type="button" className="btn btn-sm btn-outline-dark" onClick={props.onRetry}>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={props.onRetry}>
             Tentar novamente
           </button>
         ) : null}
@@ -32,11 +27,7 @@ export function AsyncPanel(props: Props) {
     )
   }
   if (props.empty) {
-    return (
-      <p className="text-muted text-center py-5 mb-0">
-        {props.emptyMessage ?? 'Nada por aqui ainda.'}
-      </p>
-    )
+    return <p className="after-empty mb-0">{props.emptyMessage ?? 'Nada por aqui ainda.'}</p>
   }
   return <>{props.children}</>
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterAuthCard } from '../../components/layout/AfterAuthCard'
+import { AfterLoading } from '../../components/layout/AfterLoading'
 import { oauthTokenFromLocation } from '../../utils/oauthCallback'
 import { isAccountRecoveryJwt } from '../../utils/jwtPayload'
 
@@ -38,20 +40,21 @@ export function OAuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="alert alert-warning">
-        {error}{' '}
-        <a href="#/login" className="alert-link">
-          Voltar ao login
-        </a>
-      </div>
+      <AfterAuthCard logoHeight={56}>
+        <h1 className="after-auth-title">Login social</h1>
+        <p className="after-auth-sub">{error}</p>
+        <p className="text-center mt-3 mb-0">
+          <Link to="/login" className="after-link-orange">
+            Voltar ao login
+          </Link>
+        </p>
+      </AfterAuthCard>
     )
   }
 
   return (
-    <div className="text-center py-5">
-      <div className="spinner-border text-warning" role="status">
-        <span className="visually-hidden">Conectando…</span>
-      </div>
-    </div>
+    <AfterAuthCard logoHeight={56}>
+      <AfterLoading label="Conectando…" />
+    </AfterAuthCard>
   )
 }

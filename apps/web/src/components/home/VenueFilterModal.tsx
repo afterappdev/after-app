@@ -59,7 +59,7 @@ export function VenueFilterModal({ show, initial, onClose, onApply }: Props) {
                     <button
                       key={rating}
                       type="button"
-                      className={`btn btn-sm ${draft.minRating === rating ? 'btn-primary' : 'btn-outline-secondary'}`}
+                      className={`btn btn-sm ${draft.minRating === rating ? 'btn-warning' : 'btn-outline-secondary'}`}
                       onClick={() =>
                         setDraft((prev) => ({ ...prev, minRating: rating }))
                       }

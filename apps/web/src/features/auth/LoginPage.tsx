@@ -2,6 +2,10 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { fetchAuthProviders } from '../../api/auth'
+import { AfterLogo } from '../../components/layout/AfterLogo'
+import { IconEye, IconLock, IconMail } from '../../components/icons/AfterIcons'
+import { IconAppleBrand, IconGoogleBrand } from '../../components/icons/SocialBrandIcons'
+import { AuthHomeBackLink } from '../../components/layout/AuthHomeBackLink'
 import { useAuth } from '../../auth/AuthContext'
 import { getApiBaseUrl } from '../../config/env'
 import {
@@ -20,6 +24,7 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [googleBrowser, setGoogleBrowser] = useState(false)
@@ -80,90 +85,87 @@ export function LoginPage() {
   }
 
   return (
-    <div className="row justify-content-center">
-      <div className="col-12 col-md-8 col-lg-5 col-xl-4">
-        <div className="card shadow-sm border-0">
-          <div className="card-body p-4">
-            <h1 className="h4 after-brand-text mb-1">Entrar</h1>
-            <p className="text-muted small mb-4">
-              Institucional e páginas legais ficam na raiz Flutter (fora de <code>/app/</code>).
-            </p>
-            {error ? (
-              <div className="alert alert-danger py-2" role="alert">
-                {error}
-              </div>
-            ) : null}
-            <form onSubmit={onSubmit} className="vstack gap-3">
-              <div>
-                <label htmlFor="email" className="form-label">
-                  E-mail
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  className="form-control"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="form-label">
-                  Senha
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  className="form-control"
-                  autoComplete="current-password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn btn-warning w-100"
-                disabled={submitting}
-              >
-                {submitting ? 'Entrando…' : 'Entrar'}
-              </button>
-            </form>
-
-            {(googleBrowser || appleBrowser) && (
-              <div className="vstack gap-2 mt-3">
-                <p className="small text-muted mb-0 text-center">ou continue com</p>
-                {googleBrowser ? (
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark btn-sm"
-                    onClick={() => startOAuth('google')}
-                  >
-                    Google
-                  </button>
-                ) : null}
-                {appleBrowser ? (
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark btn-sm"
-                    onClick={() => startOAuth('apple')}
-                  >
-                    Apple
-                  </button>
-                ) : null}
-              </div>
-            )}
-
-            <div className="vstack gap-1 mt-3 small">
-              <Link to="/register">Criar conta</Link>
-              <Link to="/esqueci-minha-senha">Esqueci minha senha</Link>
-              <Link to="/">Voltar ao início do app</Link>
-            </div>
-          </div>
-        </div>
+    <>
+      <AuthHomeBackLink />
+      <div className="after-auth-card">
+      <div className="text-center">
+        <AfterLogo height={72} />
       </div>
+      <h1 className="after-auth-title">Bem-vindo(a)!</h1>
+      <p className="after-auth-sub">Entre na sua conta para continuar</p>
+      {error ? (
+        <div className="alert alert-danger py-2 mt-3" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <form onSubmit={onSubmit} className="mt-4">
+        <label className="after-field">
+          <IconMail />
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="Seu e-mail"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </label>
+        <label className="after-field mt-3">
+          <IconLock />
+          <input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
+            required
+            minLength={6}
+            placeholder="Sua senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button type="button" onClick={() => setShowPassword((v) => !v)} aria-label="Mostrar senha">
+            <IconEye size={18} />
+          </button>
+        </label>
+        <div className="text-end mt-2">
+          <Link className="after-link-orange" to="/esqueci-minha-senha">
+            Esqueci minha senha
+          </Link>
+        </div>
+        <button type="submit" className="after-btn-black mt-3" disabled={submitting}>
+          {submitting ? 'Entrando…' : 'Entrar'}
+        </button>
+      </form>
+      <p className="after-auth-or mb-0">ou continue com</p>
+      <div className="d-flex gap-3">
+        <button
+          type="button"
+          className="after-social"
+          disabled={!googleBrowser || submitting}
+          onClick={() => startOAuth('google')}
+          aria-label="Continuar com Google"
+        >
+          <IconGoogleBrand size={20} />
+          Google
+        </button>
+        <button
+          type="button"
+          className="after-social after-social--apple"
+          disabled={!appleBrowser || submitting}
+          onClick={() => startOAuth('apple')}
+          aria-label="Continuar com Apple"
+        >
+          <IconAppleBrand size={22} />
+          Apple
+        </button>
+      </div>
+      <p className="text-center mt-4 mb-0 after-auth-signup-muted">
+        Não tem conta?{' '}
+        <Link className="after-link-orange" to="/register">
+          Crie aqui.
+        </Link>
+      </p>
     </div>
+    </>
   )
 }

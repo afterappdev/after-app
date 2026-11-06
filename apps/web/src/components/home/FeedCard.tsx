@@ -1,58 +1,45 @@
 import type { ReactNode } from 'react'
+import { IconFire, IconStore } from '../icons/AfterIcons'
+
+export type HomeFeedTone = 'promotion' | 'venue'
 
 type Props = {
+  tone: HomeFeedTone
   imageUrl?: string
   emptyIcon?: string
   onClick?: () => void
-  borderAccent?: string
   children: ReactNode
 }
 
 export function FeedCard({
+  tone,
   imageUrl,
-  emptyIcon = '🏪',
+  emptyIcon = '',
   onClick,
-  borderAccent = 'var(--after-brand)',
   children,
 }: Props) {
   return (
-    <article
-      className="card border-0 shadow-sm overflow-hidden h-100"
-      role={onClick ? 'button' : undefined}
+    <button
+      type="button"
+      className={`home-feed-card home-feed-card--${tone}`}
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault()
-          onClick()
-        }
-      }}
-      tabIndex={onClick ? 0 : undefined}
-      style={{ cursor: onClick ? 'pointer' : undefined }}
     >
-      <div className="row g-0">
-        <div className="col-4 col-sm-3">
-          <div
-            className="ratio ratio-1x1 bg-light d-flex align-items-center justify-content-center"
-            style={{ borderLeft: `4px solid ${borderAccent}` }}
-          >
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt=""
-                className="object-fit-cover w-100 h-100"
-                loading="lazy"
-              />
-            ) : (
-              <span className="fs-3" aria-hidden>
-                {emptyIcon}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="col-8 col-sm-9">
-          <div className="card-body py-3 pe-3">{children}</div>
-        </div>
-      </div>
-    </article>
+      <span className={`home-feed-accent home-feed-accent--${tone}`} aria-hidden />
+      <span className="home-feed-body">
+        <span className="home-feed-image-wrap">
+          {imageUrl ? (
+            <img src={imageUrl} alt="" loading="lazy" />
+          ) : (
+            <span
+              className={`home-feed-image-empty ${tone === 'venue' ? 'home-feed-image-empty--venue' : ''}`}
+              aria-hidden
+            >
+              {emptyIcon || (tone === 'venue' ? <IconStore /> : <IconFire />)}
+            </span>
+          )}
+        </span>
+        <span className="home-feed-content">{children}</span>
+      </span>
+    </button>
   )
 }

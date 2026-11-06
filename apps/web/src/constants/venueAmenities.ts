@@ -10,7 +10,6 @@ export const VENUE_AMENITIES: VenueAmenityDef[] = [
   { key: 'hasKidsSpace', label: 'Espaço kids', filterLabel: 'Tem espaço kids' },
   { key: 'hasWheelchairAccess', label: 'Acessibilidade' },
   { key: 'hasLiveMusic', label: 'Música ao vivo' },
-  { key: 'hasBirthdayTreat', label: 'Benefício para aniversariantes' },
   { key: 'hasDelivery', label: 'Delivery' },
   { key: 'hasGlutenFreeFood', label: 'Opções sem glúten' },
   { key: 'hasLactoseFreeFood', label: 'Opções sem lactose' },
@@ -23,4 +22,5 @@ export const VENUE_AMENITIES: VenueAmenityDef[] = [
   { key: 'showsSportsBroadcasts', label: 'Transmissão de jogos' },
   { key: 'hasVegetarianOptions', label: 'Opções vegetarianas' },
   { key: 'hasVeganOptions', label: 'Opções veganas' },
+  { key: 'hasBirthdayTreat', label: 'Benefício para aniversariantes' },
 ]

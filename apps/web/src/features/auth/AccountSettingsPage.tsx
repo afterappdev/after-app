@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import {
   cancelAccountDeletion,
@@ -9,6 +9,7 @@ import {
   type DeletionStatusView,
 } from '../../api/users'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { readStoredRecoveryToken } from '../../auth/recoverySession'
 
 function formatRemainingSeconds(seconds: number): string {
@@ -137,13 +138,8 @@ export function AccountSettingsPage() {
   }
 
   return (
-    <div className="mx-auto vstack gap-3" style={{ maxWidth: 560 }}>
-      <div className="d-flex align-items-center gap-2">
-        <Link to="/perfil" className="btn btn-sm btn-outline-secondary">
-          ← Perfil
-        </Link>
-        <h1 className="h5 mb-0">Conta e segurança</h1>
-      </div>
+    <div className="after-canvas vstack gap-3">
+      <AfterPageHeader title="Conta e segurança" backTo="/perfil" backLabel="← Perfil" />
 
       {inRecovery ? (
         <div className="card border-0 shadow-sm border-warning">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
 import { ApiError } from '../../api/client'
 import { fetchCitiesByState, fetchStates, type CityInState, type StateOption } from '../../api/locations'
 import {
@@ -164,7 +165,7 @@ export function UserProfilePage() {
   const avatarSrc = resolveMediaUrl(avatarUrl)
 
   return (
-    <div className="mx-auto vstack gap-4" style={{ maxWidth: 520 }}>
+    <div className="after-canvas vstack gap-4">
       {toast ? (
         <div className="alert alert-info alert-dismissible fade show">
           {toast}
@@ -172,16 +173,18 @@ export function UserProfilePage() {
         </div>
       ) : null}
 
-      <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
-        <div>
-          <h1 className="h4 after-brand-text mb-1">Meu perfil</h1>
-          <p className="text-muted small mb-0">Dados da sua conta After.</p>
-        </div>
-        <Link to="/perfil/conta" className="btn btn-sm btn-outline-secondary">
-          Conta e segurança
-        </Link>
-      </div>
+      <AfterPageHeader
+        title="Meu perfil"
+        subtitle="Dados da sua conta After."
+        actions={
+          <Link to="/perfil/conta" className="btn btn-sm btn-outline-secondary">
+            Conta e segurança
+          </Link>
+        }
+      />
 
+      <div className="desk-split">
+      <div>
       <form className="card border-0 shadow-sm" onSubmit={onSave}>
         <div className="card-body vstack gap-3">
           <div className="text-center">
@@ -290,7 +293,7 @@ export function UserProfilePage() {
       </form>
 
       <section>
-        <p className="text-muted small fw-bold mb-2">AVISOS</p>
+        <p className="after-section-label mb-2">Avisos</p>
         <div className="card border-0 shadow-sm">
           <div className="card-body">
             <div className="form-check form-switch">
@@ -315,18 +318,20 @@ export function UserProfilePage() {
           </div>
         </div>
       </section>
+      </div>
 
       <nav className="vstack gap-2">
-        <Link to="/perfil/favoritos" className="btn btn-outline-secondary text-start">
+        <Link to="/perfil/favoritos" className="after-menu-link">
           Favoritos
         </Link>
-        <Link to="/perfil/notificacoes" className="btn btn-outline-secondary text-start">
+        <Link to="/perfil/notificacoes" className="after-menu-link">
           Notificações
         </Link>
-        <Link to="/perfil/bloqueados" className="btn btn-outline-secondary text-start">
+        <Link to="/perfil/bloqueados" className="after-menu-link">
           Bloqueados
         </Link>
       </nav>
+      </div>
     </div>
   )
 }

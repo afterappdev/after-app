@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { fetchVenueDetail } from '../../api/venues'
 import {
@@ -12,6 +12,8 @@ import {
 import { updateUserMe } from '../../api/users'
 import { uploadFile } from '../../api/uploads'
 import { useAuth } from '../../auth/AuthContext'
+import { AfterPageHeader } from '../../components/layout/AfterPageHeader'
+import { AfterLoading } from '../../components/layout/AfterLoading'
 import { MultiVenuePlaceholder } from '../../components/venue-manage/MultiVenuePlaceholder'
 import { HoursEditor } from '../../components/venue-manage/HoursEditor'
 import { VenueFiscalSection } from '../../components/venue-manage/VenueFiscalSection'
@@ -27,24 +29,45 @@ import type { VenueDetail, VenuePhoto } from '../venue/types'
 import { useOwnedVenueId } from './useOwnedVenueId'
 import { buildHoursJson, parseHoursForm, type HoursFormState } from '../../utils/venueHours'
 import { isVideoMedia } from '../../utils/mediaKind'
+import { formatBrazilPhoneInput } from '../../utils/phoneDisplay'
+
+function normalizePhoneField(s: string): string {
+  return formatBrazilPhoneInput(s)
+}
 
 type TabId = 'general' | 'location' | 'contact' | 'media' | 'fiscal'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'Geral' },
-  { id: 'location', label: 'Local' },
+  { id: 'location', label: 'Localização e Horários' },
   { id: 'contact', label: 'Contato' },
   { id: 'media', label: 'Mídias' },
   { id: 'fiscal', label: 'Fiscal' },
 ]
 
+function normalizePanelTab(raw: unknown): TabId {
+  if (raw === 'general' || raw === 'location' || raw === 'contact' || raw === 'media' || raw === 'fiscal') {
+    return raw
+  }
+  if (raw === 'profile') return 'general'
+  return 'general'
+}
+
+function isVideoFile(file: File): boolean {
+  if (file.type.startsWith('video/')) return true
+  const ext = file.name.toLowerCase().split('.').pop() ?? ''
+  return ['mp4', 'webm', 'mov', 'm4v', 'ogv'].includes(ext)
+}
+
 export function VenuePanelPage() {
   const venueId = useOwnedVenueId()
   const { api, user, refreshUser } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const pendingKindRef = useRef<{ kind: 'GALLERY' | 'MENU'; video: boolean } | null>(null)
+  const pendingKindRef = useRef<{ kind: 'GALLERY' | 'MENU'; video: boolean | 'infer' } | null>(null)
 
-  const [tab, setTab] = useState<TabId>('general')
+  const location = useLocation()
+  const initialTab = normalizePanelTab((location.state as { panelTab?: unknown } | null)?.panelTab)
+  const [tab, setTab] = useState<TabId>(initialTab)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -74,7 +97,8 @@ export function VenuePanelPage() {
   const [loadedAddress, setLoadedAddress] = useState('')
   const [categoryRequired, setCategoryRequired] = useState(false)
 
-  const applyVenue = useCallback((data: VenueDetail) => {
+  const applyVenue = useCallback(
+    (data: VenueDetail, opts?: { mergePhotosWhenMissing?: boolean }) => {
     setVenue(data)
     setName(data.name ?? '')
     setDescription(data.description ?? '')
@@ -89,13 +113,17 @@ export function VenuePanelPage() {
     setLng(data.lng ?? null)
     setLogoUrl(data.logoUrl ?? null)
     setCoverUrl(data.coverUrl ?? null)
-    setPhotos(data.photos ?? [])
+    if (opts?.mergePhotosWhenMissing === true && !Array.isArray(data.photos)) {
+      /* PUT /venues/:id não inclui photos — manter estado atual */
+    } else {
+      setPhotos(data.photos ?? [])
+    }
     setHours(parseHoursForm(data.hoursJson ?? undefined))
     const contacts = data.contacts ?? {}
     setAddress(String(contacts.address ?? ''))
     setLoadedAddress(String(contacts.address ?? ''))
-    setPhone(String(contacts.phone ?? ''))
-    setWhatsapp(String(contacts.whatsapp ?? ''))
+    setPhone(normalizePhoneField(String(contacts.phone ?? '')))
+    setWhatsapp(normalizePhoneField(String(contacts.whatsapp ?? '')))
     setInstagram(String(contacts.instagram ?? ''))
     setHasCoverCharge(contacts.hasCoverCharge === true)
     setCoverCharge(String(contacts.coverCharge ?? ''))
@@ -104,7 +132,9 @@ export function VenuePanelPage() {
       amenityMap[item.key] = contacts[item.key] === true
     }
     setAmenities(amenityMap)
-  }, [user?.city, user?.state])
+    },
+    [user?.city, user?.state],
+  )
 
   const load = useCallback(async () => {
     if (!venueId) return
@@ -155,9 +185,9 @@ export function VenuePanelPage() {
         ...(coverUrl ? { coverUrl } : {}),
         ...(lat != null && lng != null ? { lat, lng } : {}),
         contacts: {
-          phone: phone.trim(),
+          phone: phone.replace(/\D/g, ''),
           instagram: instagram.trim(),
-          whatsapp: whatsapp.trim(),
+          whatsapp: whatsapp.replace(/\D/g, ''),
           address: address.trim(),
           hasCoverCharge,
           coverCharge: coverCharge.trim(),
@@ -166,7 +196,7 @@ export function VenuePanelPage() {
         hoursJson: buildHoursJson(hours),
       }
       const updated = await updateOwnedVenue(api, venueId, payload)
-      applyVenue(updated)
+      applyVenue(updated, { mergePhotosWhenMissing: true })
       if (trimmedCity !== loadedCity.trim() || trimmedState !== loadedState.trim()) {
         await updateUserMe(api, { city: trimmedCity, state: trimmedState })
         await refreshUser()
@@ -230,7 +260,7 @@ export function VenuePanelPage() {
     }
   }
 
-  function queueMediaPick(kind: 'GALLERY' | 'MENU', video: boolean) {
+  function queueMediaPick(kind: 'GALLERY' | 'MENU', video: boolean | 'infer') {
     pendingKindRef.current = { kind, video }
     fileInputRef.current?.click()
   }
@@ -239,16 +269,17 @@ export function VenuePanelPage() {
     const pending = pendingKindRef.current
     pendingKindRef.current = null
     if (!file || !venueId || !pending) return
+    const useVideo = pending.video === 'infer' ? isVideoFile(file) : pending.video
     setBusy(true)
     try {
       const uploaded = await uploadFile(api, file)
       await addVenuePhoto(api, venueId, {
         url: uploaded.url,
         kind: pending.kind,
-        mediaType: pending.video ? 'VIDEO' : 'IMAGE',
+        mediaType: useVideo ? 'VIDEO' : 'IMAGE',
       })
       await load()
-      setToast(pending.video ? 'Vídeo adicionado.' : 'Foto adicionada.')
+      setToast(useVideo ? 'Vídeo adicionado.' : 'Foto adicionada.')
     } catch (err) {
       setToast(err instanceof ApiError ? err.message : 'Não foi possível adicionar mídia.')
     } finally {
@@ -277,11 +308,7 @@ export function VenuePanelPage() {
   }
 
   if (loading) {
-    return (
-      <div className="text-center py-5">
-        <div className="spinner-border text-warning" />
-      </div>
-    )
+    return <AfterLoading />
   }
 
   if (error || !venue) {
@@ -296,7 +323,7 @@ export function VenuePanelPage() {
   }
 
   return (
-    <div className="mx-auto pb-5" style={{ maxWidth: 820 }}>
+    <div className="after-canvas after-canvas--wide pb-3">
       <input
         ref={fileInputRef}
         type="file"
@@ -312,36 +339,29 @@ export function VenuePanelPage() {
         </div>
       ) : null}
 
-      <div className="d-flex flex-wrap justify-content-between gap-2 mb-3">
-        <div>
-          <h1 className="h4 after-brand-text mb-1">Painel do estabelecimento</h1>
-          <p className="text-muted small mb-0">{venue.name}</p>
-        </div>
-        <div className="d-flex flex-wrap gap-2">
-          <Link to="/estabelecimento/creditos" className="btn btn-sm btn-warning">
-            Créditos
-          </Link>
-          <Link to={`/venue/${encodeURIComponent(venueId)}`} className="btn btn-sm btn-outline-secondary">
-            Ver ficha pública
-          </Link>
-        </div>
-      </div>
+      <AfterPageHeader
+        title="Painel do estabelecimento"
+        subtitle={venue.name}
+        backTo="/perfil"
+        backLabel="← Perfil do local"
+      />
 
       <MultiVenuePlaceholder />
 
-      <ul className="nav nav-tabs flex-nowrap overflow-auto mb-3 mt-3">
+      <div className="venue-panel-tabs" role="tablist">
         {TABS.map((item) => (
-          <li className="nav-item" key={item.id}>
-            <button
-              type="button"
-              className={`nav-link ${tab === item.id ? 'active' : ''}`}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          </li>
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            className={`venue-panel-tab-btn ${tab === item.id ? 'venue-panel-tab-btn--active' : ''}`}
+            onClick={() => setTab(item.id)}
+          >
+            {item.label}
+          </button>
         ))}
-      </ul>
+      </div>
 
       {tab === 'fiscal' ? (
         <VenueFiscalSection api={api} venueId={venueId} />
@@ -351,13 +371,20 @@ export function VenuePanelPage() {
             {tab === 'general' ? (
               <>
                 <div>
-                  <label className="form-label" htmlFor="venue-name">
+                  <label className="form-label venue-panel-field-label" htmlFor="venue-name">
                     Nome
                   </label>
-                  <input id="venue-name" className="form-control" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} />
+                  <input
+                    id="venue-name"
+                    className="form-control venue-panel-name-input"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    minLength={2}
+                  />
                 </div>
                 <div>
-                  <label className="form-label" htmlFor="venue-category">
+                  <label className="form-label venue-panel-field-label" htmlFor="venue-category">
                     Categoria
                   </label>
                   <select
@@ -379,147 +406,198 @@ export function VenuePanelPage() {
                   ) : null}
                 </div>
                 <div>
-                  <label className="form-label" htmlFor="venue-desc">
+                  <label className="form-label venue-panel-field-label" htmlFor="venue-desc">
                     Descrição
                   </label>
                   <textarea id="venue-desc" className="form-control" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} />
+                </div>
+                <div className="venue-panel-cover-charge-row d-flex flex-wrap align-items-center gap-2">
+                  <div className="form-check mb-0">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="cover-charge"
+                      checked={hasCoverCharge}
+                      onChange={(e) => setHasCoverCharge(e.target.checked)}
+                    />
+                    <label className="form-check-label" htmlFor="cover-charge">
+                      Entrada paga
+                    </label>
+                  </div>
+                  {hasCoverCharge ? (
+                    <>
+                      <label className="form-label small mb-0 text-nowrap" htmlFor="cover-charge-value">
+                        Valor da entrada
+                      </label>
+                      <input
+                        id="cover-charge-value"
+                        className="form-control form-control-sm venue-panel-cover-value-input"
+                        value={coverCharge}
+                        onChange={(e) => setCoverCharge(e.target.value)}
+                        placeholder="R$ 20"
+                      />
+                    </>
+                  ) : null}
+                </div>
+                <div>
+                  <h2 className="h6 fw-bold">Comodidades</h2>
+                  <div className="venue-amenities-grid">
+                    {VENUE_AMENITIES.map((item) => (
+                      <div
+                        className={`form-check venue-amenity-check mb-0${item.key === 'hasBirthdayTreat' ? ' venue-amenity-check--nowrap venue-amenity-check--full-row' : ''}`}
+                        key={item.key}
+                      >
+                        <input
+                          className="form-check-input"
+                          type="checkbox"
+                          id={`amenity-${item.key}`}
+                          checked={amenities[item.key] === true}
+                          onChange={(e) =>
+                            setAmenities((prev) => ({
+                              ...prev,
+                              [item.key]: e.target.checked,
+                            }))
+                          }
+                        />
+                        <label className="form-check-label small venue-amenity-label" htmlFor={`amenity-${item.key}`}>
+                          {item.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </>
             ) : null}
 
             {tab === 'location' ? (
               <>
-                <div className="row g-2">
-                  <div className="col-md-8">
+                <div className="row g-2 venue-location-address-row align-items-end">
+                  <div className="col-12 col-lg-5">
                     <label className="form-label" htmlFor="venue-address">
                       Endereço
                     </label>
                     <input id="venue-address" className="form-control" value={address} onChange={(e) => setAddress(e.target.value)} />
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-12 col-lg-5">
                     <label className="form-label" htmlFor="venue-city">
                       Cidade
                     </label>
                     <input id="venue-city" className="form-control" value={city} onChange={(e) => setCity(e.target.value)} required />
                   </div>
-                  <div className="col-md-2">
+                  <div className="col-12 col-lg-2">
                     <label className="form-label" htmlFor="venue-state">
                       UF
                     </label>
-                    <input id="venue-state" className="form-control" value={stateUf} onChange={(e) => setStateUf(e.target.value)} required maxLength={2} />
+                    <input
+                      id="venue-state"
+                      className="form-control text-uppercase"
+                      value={stateUf}
+                      onChange={(e) => setStateUf(e.target.value)}
+                      required
+                      maxLength={2}
+                    />
                   </div>
                 </div>
-                <div className="d-flex flex-wrap gap-2">
-                  <button type="button" className="btn btn-sm btn-outline-primary" disabled={busy} onClick={() => void onGeocode()}>
+                <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm venue-panel-geocode-btn"
+                    disabled={busy}
+                    onClick={() => void onGeocode()}
+                  >
                     Encontrar no mapa
                   </button>
                   {addressChanged && lat != null ? (
-                    <span className="small text-warning align-self-center">
+                    <span className="small text-warning mb-0">
                       Endereço mudou — confirme a localização no mapa.
                     </span>
                   ) : null}
                 </div>
-                {lat != null && lng != null ? (
-                  <VenueMapEmbed lat={lat} lng={lng} label={name} />
-                ) : (
-                  <p className="text-muted small mb-0">Sem coordenadas. Use geocodificação ou salve após ajuste.</p>
-                )}
-                <div className="row g-2">
-                  <div className="col-md-6">
-                    <label className="form-label" htmlFor="venue-lat">
-                      Latitude
-                    </label>
-                    <input
-                      id="venue-lat"
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={lat ?? ''}
-                      onChange={(e) => setLat(e.target.value === '' ? null : Number(e.target.value))}
-                    />
+                <div className="venue-map-hours-grid">
+                  <div className="venue-panel-map-col">
+                    <div className="venue-panel-map-inner">
+                      {lat != null && lng != null ? (
+                        <VenueMapEmbed
+                          lat={lat}
+                          lng={lng}
+                          label={name}
+                          compact
+                          interactive
+                          onPositionChange={(nextLat, nextLng) => {
+                            setLat(nextLat)
+                            setLng(nextLng)
+                          }}
+                        />
+                      ) : (
+                        <p className="text-muted small mb-0 align-self-center">Sem coordenadas. Use &quot;Encontrar no mapa&quot; ou salve após ajuste.</p>
+                      )}
+                    </div>
+                    {lat != null && lng != null ? (
+                      <p className="venue-map-pin-hint small text-muted mb-0 mt-2">
+                        Arraste o PIN para o seu local correto e salve as alterações.
+                      </p>
+                    ) : null}
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label" htmlFor="venue-lng">
-                      Longitude
-                    </label>
-                    <input
-                      id="venue-lng"
-                      type="number"
-                      step="any"
-                      className="form-control"
-                      value={lng ?? ''}
-                      onChange={(e) => setLng(e.target.value === '' ? null : Number(e.target.value))}
-                    />
+                  <div className="venue-panel-hours-col">
+                    <div className="venue-panel-hours-inner">
+                      <HoursEditor variant="panel" value={hours} onChange={setHours} />
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <h2 className="h6 fw-bold">Horários</h2>
-                  <HoursEditor value={hours} onChange={setHours} />
                 </div>
               </>
             ) : null}
 
             {tab === 'contact' ? (
-              <>
-                <div className="row g-2">
-                  <div className="col-md-6">
-                    <label className="form-label">Telefone (reservas)</label>
-                    <input className="form-control" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
-                  <div className="col-md-6">
-                    <label className="form-label">WhatsApp</label>
-                    <input className="form-control" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
-                  </div>
-                  <div className="col-12">
-                    <label className="form-label">Instagram</label>
-                    <input className="form-control" value={instagram} onChange={(e) => setInstagram(e.target.value)} />
-                  </div>
-                </div>
-                <div className="form-check">
-                  <input
-                    className="form-check-input"
-                    type="checkbox"
-                    id="cover-charge"
-                    checked={hasCoverCharge}
-                    onChange={(e) => setHasCoverCharge(e.target.checked)}
-                  />
-                  <label className="form-check-label" htmlFor="cover-charge">
-                    Entrada paga
+              <div className="venue-panel-contact-stack mx-auto">
+                <div className="mb-3">
+                  <label
+                    className="form-label fw-bold venue-panel-contact-label venue-panel-contact-label--phone"
+                    htmlFor="venue-phone-reservas"
+                  >
+                    Telefone pra reservas
                   </label>
+                  <input
+                    id="venue-phone-reservas"
+                    className="form-control"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="(11) 91234-5678"
+                    value={phone}
+                    onChange={(e) => setPhone(formatBrazilPhoneInput(e.target.value))}
+                  />
                 </div>
-                {hasCoverCharge ? (
-                  <div>
-                    <label className="form-label">Valor da entrada</label>
-                    <input className="form-control" value={coverCharge} onChange={(e) => setCoverCharge(e.target.value)} placeholder="R$ 20" />
-                  </div>
-                ) : null}
+                <div className="mb-3">
+                  <label
+                    className="form-label fw-bold venue-panel-contact-label venue-panel-contact-label--whatsapp"
+                    htmlFor="venue-whatsapp"
+                  >
+                    WhatsApp
+                  </label>
+                  <input
+                    id="venue-whatsapp"
+                    className="form-control"
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="(11) 91234-5678"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(formatBrazilPhoneInput(e.target.value))}
+                  />
+                </div>
                 <div>
-                  <h2 className="h6 fw-bold">Comodidades</h2>
-                  <div className="row g-2">
-                    {VENUE_AMENITIES.map((item) => (
-                      <div className="col-12 col-md-6" key={item.key}>
-                        <div className="form-check">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            id={`amenity-${item.key}`}
-                            checked={amenities[item.key] === true}
-                            onChange={(e) =>
-                              setAmenities((prev) => ({
-                                ...prev,
-                                [item.key]: e.target.checked,
-                              }))
-                            }
-                          />
-                          <label className="form-check-label small" htmlFor={`amenity-${item.key}`}>
-                            {item.label}
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <label
+                    className="form-label fw-bold venue-panel-contact-label venue-panel-contact-label--instagram"
+                    htmlFor="venue-instagram"
+                  >
+                    Instagram
+                  </label>
+                  <input
+                    id="venue-instagram"
+                    className="form-control"
+                    value={instagram}
+                    onChange={(e) => setInstagram(e.target.value)}
+                  />
                 </div>
-              </>
+              </div>
             ) : null}
 
             {tab === 'media' ? (
@@ -530,19 +608,19 @@ export function VenuePanelPage() {
                 busy={busy}
                 onUploadLogo={(file) => void uploadBrand('logo', file)}
                 onUploadCover={(file) => void uploadBrand('cover', file)}
-                onAddGallery={(video) => queueMediaPick('GALLERY', video)}
-                onAddMenu={() => queueMediaPick('MENU', false)}
+                onOpenGalleryPicker={() => queueMediaPick('GALLERY', 'infer')}
+                onOpenMenuPicker={() => queueMediaPick('MENU', false)}
                 onRemovePhoto={(photo) => void onRemovePhoto(photo)}
               />
             ) : null}
 
             {tab !== 'media' ? (
-              <button type="submit" className="btn btn-primary align-self-start" disabled={busy}>
+              <button type="submit" className="btn btn-primary align-self-center" disabled={busy}>
                 {busy ? 'Salvando…' : 'Salvar alterações'}
               </button>
             ) : (
-              <p className="small text-muted mb-0">
-                Logo/capa: envie e depois use <strong>Salvar</strong> na aba Geral ou Local. Galeria e cardápio publicam na hora.
+              <p className="small text-muted mb-0 text-center">
+                Logo/capa: envie e depois salve as alterações. Galeria e cardápio publicam na hora.
               </p>
             )}
           </div>
@@ -550,7 +628,7 @@ export function VenuePanelPage() {
       )}
 
       {tab === 'media' ? (
-        <div className="mt-3">
+        <div className="mt-3 text-center">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void saveVenueProfile()}>
             Salvar logo e capa
           </button>

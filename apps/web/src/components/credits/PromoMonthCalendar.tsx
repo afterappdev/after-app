@@ -32,6 +32,12 @@ export function PromoMonthCalendar(props: Props) {
   for (let d = 1; d <= daysInMonth; d += 1) {
     cells.push(new Date(year, monthIndex, d))
   }
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const weeks: (Date | null)[][] = []
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7))
+  }
 
   return (
     <div>
@@ -44,24 +50,23 @@ export function PromoMonthCalendar(props: Props) {
           ›
         </button>
       </div>
-      <div className="row g-1 text-center small text-muted mb-1">
-        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label) => (
-          <div key={label} className="col">
-            {label}
-          </div>
+      <div className="pub-cal-week pub-cal-weekdays text-center small text-muted">
+        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((label, index) => (
+          <div key={`${label}-${index}`}>{label}</div>
         ))}
       </div>
-      <div className="row g-1">
-        {cells.map((day, index) => {
-          if (!day) {
-            return <div key={`empty-${index}`} className="col" style={{ flex: '0 0 14.28%', maxWidth: '14.28%' }} />
-          }
-          const key = formatDayKey(day)
-          const disabled = day < today
-          const selected = props.selected.has(key)
-          return (
-            <div key={key} className="col" style={{ flex: '0 0 14.28%', maxWidth: '14.28%' }}>
+      {weeks.map((week, weekIndex) => (
+        <div key={`week-${weekIndex}`} className="pub-cal-week">
+          {week.map((day, dayIndex) => {
+            if (!day) {
+              return <div key={`empty-${weekIndex}-${dayIndex}`} aria-hidden />
+            }
+            const key = formatDayKey(day)
+            const disabled = day < today
+            const selected = props.selected.has(key)
+            return (
               <button
+                key={key}
                 type="button"
                 className={`btn btn-sm w-100 ${selected ? 'btn-warning' : 'btn-outline-secondary'}`}
                 disabled={disabled}
@@ -69,10 +74,10 @@ export function PromoMonthCalendar(props: Props) {
               >
                 {day.getDate()}
               </button>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }

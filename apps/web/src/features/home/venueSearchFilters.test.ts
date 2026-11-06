@@ -32,8 +32,9 @@ describe('venueSearchFilters', () => {
   })
 
   it('monta origin query com lat/lng', () => {
-    expect(buildOriginQuery('São Paulo', { lat: -23.5, lng: -46.6 })).toEqual({
+    expect(buildOriginQuery('São Paulo', { lat: -23.5, lng: -46.6 }, 'SP')).toEqual({
       city: 'São Paulo',
+      state: 'SP',
       lat: '-23.5',
       lng: '-46.6',
     })

@@ -63,7 +63,7 @@ export function ReportModal({
                 </label>
                 <select
                   id="report-reason"
-                  className="form-select"
+                  className="form-select after-report-reason-select"
                   value={reason}
                   onChange={(e) => setReason(e.target.value as ReportReason)}
                 >
