@@ -106,7 +106,7 @@ void main() {
     );
   });
 
-  test('cupom de créditos fica oculto só no iOS', () {
+  test('cupom de créditos no Web e Android, oculto no iOS', () {
     expect(
       creditsCouponAvailable(isWeb: false, platform: TargetPlatform.iOS),
       isFalse,
@@ -119,6 +119,8 @@ void main() {
       creditsCouponAvailable(isWeb: true, platform: TargetPlatform.iOS),
       isTrue,
     );
+    expect(purchaseDiscountCouponAvailable(isWeb: false), isFalse);
+    expect(purchaseDiscountCouponAvailable(isWeb: true), isTrue);
   });
 
   test('frontend não adiciona créditos sozinho', () {
@@ -707,7 +709,7 @@ void main() {
     );
     await _pumpCredits(tester);
 
-    expect(find.text('Possui um cupom?'), findsNothing);
+    expect(find.text('Possui um cupom de resgate?'), findsNothing);
     expect(find.text('Digite seu cupom'), findsNothing);
     expect(find.text('PIX'), findsNothing);
     expect(find.text('Pagar com PIX'), findsNothing);
@@ -838,6 +840,13 @@ void main() {
           headers: {'content-type': 'application/json'},
         );
       }
+      if (path.endsWith('/credits/vip-packages')) {
+        return http.Response(
+          jsonEncode(<dynamic>[]),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       if (path == '/credits/purchases') {
         purchaseListReads += 1;
         return http.Response(
@@ -884,6 +893,8 @@ void main() {
     expect(purchaseListReads, 1);
     expect(walletReads, 1);
 
+    await tester.tap(find.byKey(const ValueKey('pack-unit_1')));
+    await tester.pump();
     await tester.tap(find.text('Continuar para pagamento'));
     await tester.pump();
     await tester.pump();

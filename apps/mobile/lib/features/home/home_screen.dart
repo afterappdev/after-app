@@ -676,9 +676,6 @@ class _HomeScreenState extends State<HomeScreen> {
       profileCity: profileCity,
       profileUf: profileUf,
     );
-    final showPromoHeader =
-        _promotions.isNotEmpty || !_isSameDay(_selectedDay, _today);
-
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -753,7 +750,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                           onClear: _clearVenueFilter,
                                         ),
                                       ],
-                                    ] else if (showPromoHeader) ...[
+                                    ] else ...[
                                       const SizedBox(height: 22),
                                       const HomeSectionTitle(
                                         tone: HomeAccentTone.promotion,
@@ -803,12 +800,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               )
                             else ...[
-                              if (_promotions.isNotEmpty)
-                                _PromotionCards(
-                                  items: _promotions,
-                                  selectedDay: _selectedDay,
-                                  onOpenVenue: _openVenueById,
-                                ),
+                              _PromotionCards(
+                                items: _promotions,
+                                selectedDay: _selectedDay,
+                                onOpenVenue: _openVenueById,
+                              ),
                               SliverToBoxAdapter(
                                 child: Padding(
                                   padding: EdgeInsets.fromLTRB(
@@ -1255,13 +1251,15 @@ class _PromotionCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
+      return const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
           child: Text(
             'Nenhuma promoção do dia nesta cidade.',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontFamily: AppTheme.fontFamily,
+              fontSize: 13,
               color: Color(0xFF8B8B96),
             ),
           ),
@@ -1283,6 +1281,8 @@ class _PromotionCards extends StatelessWidget {
                   venue['logoUrl']?.toString(),
             ),
             venueName: venue['name']?.toString() ?? 'Local',
+            avgRating: (venue['avgRating'] as num?)?.toDouble(),
+            reviewCount: (venue['reviewCount'] as num?)?.toInt() ?? 0,
             isOpen: item['isOpen'] == true,
             hasOpenInfo: item['isOpen'] != null,
             distanceLabel: _formatDistanceKm(item['distanceKm']),
@@ -1348,6 +1348,8 @@ class _VenueCards extends StatelessWidget {
               venue['logoUrl']?.toString() ?? venue['coverUrl']?.toString(),
             ),
             venueName: venue['name']?.toString() ?? 'Local',
+            avgRating: (venue['avgRating'] as num?)?.toDouble(),
+            reviewCount: (venue['reviewCount'] as num?)?.toInt() ?? 0,
             isOpen: venue['isOpen'] == true,
             hasOpenInfo: venue['isOpen'] != null,
             distanceLabel: _formatDistanceKm(venue['distanceKm']),

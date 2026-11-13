@@ -158,6 +158,7 @@ Map<String, dynamic> cardPayBody({
   required String token,
   required String paymentMethodId,
   Map<String, dynamic>? fiscal,
+  String? couponCode,
 }) {
   return {
     'packageKey': packageKey,
@@ -166,6 +167,8 @@ Map<String, dynamic> cardPayBody({
     'paymentMethodId': paymentMethodId,
     'paymentType': 'credit_card',
     'installments': 1,
+    if (couponCode != null && couponCode.trim().isNotEmpty)
+      'couponCode': couponCode.trim(),
     ...?fiscal,
   };
 }

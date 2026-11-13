@@ -32,6 +32,13 @@ class HomeVisual {
   static const cardRadius = 16.0;
   static const accentBarWidth = 4.0;
   static const imageWidth = 108.0;
+  static const imageHeight = 108.0;
+
+  /// Corpo fixo do card (barra + imagem + texto), no tamanho do local completo.
+  static const feedCardTextHeight = 122.0;
+  static const feedCardBodyHeight = 142.0;
+  static const feedMetaLineHeight = 14.0;
+  static const feedDescriptionHeight = 27.5;
   static const titleFontSize = 16.0;
   static const dayChipHeight = 36.0;
 

@@ -105,7 +105,32 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('as quatro faixas aparecem sem pré-seleção e cabem na tela estreita',
+  testWidgets('o campo de nome muda entre usuário e local', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _api((_) async => http.Response('{}', 404));
+    final auth = AuthController(api: api, storage: AuthStorage())..bootstrapping = false;
+    await tester.pumpWidget(_registerApp(api, auth));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('register-name')), 'José D\'Ávila-017@#!');
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('register-name'))).controller?.text,
+      "José D'Ávila-017",
+    );
+
+    expect(find.text('Digite seu nome'), findsOneWidget);
+    expect(find.text('Nome ou nome do local'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('register-role-venue')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Digite o nome do local'), findsOneWidget);
+    expect(find.text('Digite seu nome'), findsNothing);
+  });
+
+  testWidgets('dropdown de faixa etária sem pré-seleção cabe na tela estreita',
       (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
@@ -117,15 +142,13 @@ void main() {
 
     expect(find.byKey(const Key('register-age-question')), findsOneWidget);
     expect(find.text('Qual é a sua faixa etária?'), findsOneWidget);
+    expect(find.byKey(const Key('register-age-dropdown')), findsOneWidget);
+    expect(find.text(kAgeBandDropdownHint), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('register-age-dropdown')));
+    await tester.pumpAndSettle();
     for (final band in _bands) {
-      final option = find.byKey(Key('register-age-${band.$1}'));
-      await tester.ensureVisible(option);
-      expect(option, findsOneWidget);
-      final label = tester.widget<Text>(find.descendant(
-        of: option,
-        matching: find.text(band.$2),
-      ));
-      expect(label.style?.color, const Color(0xFF282829));
+      expect(find.text(band.$2), findsOneWidget);
     }
     expect(tester.takeException(), isNull);
   });
@@ -188,14 +211,10 @@ void main() {
     await tester.enterText(find.byKey(const Key('register-name')), 'Ana');
     await tester.enterText(find.byKey(const Key('register-password')), 'senha123');
     await tester.enterText(find.byKey(const Key('register-confirm-password')), 'senha123');
-    await tester.ensureVisible(find.byKey(const Key('register-age-AGE_OVER_50')));
-    await tester.tap(find.byKey(const Key('register-age-AGE_OVER_50')));
-    await tester.pump();
-    final selected = tester.widget<Text>(find.descendant(
-      of: find.byKey(const Key('register-age-AGE_OVER_50')),
-      matching: find.text('Mais de 50 anos'),
-    ));
-    expect(selected.style?.color, Colors.white);
+    await tester.tap(find.byKey(const Key('register-age-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mais de 50 anos').last);
+    await tester.pumpAndSettle();
     await _selectLocation(tester);
     await tester.ensureVisible(find.byKey(const Key('register-submit')));
     await tester.tap(find.byKey(const Key('register-submit')));
@@ -263,7 +282,10 @@ void main() {
     await tester.tap(find.byKey(const Key('register-role-user')));
     await tester.pump();
     expect(find.byKey(const Key('register-age-question')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('register-age-AGE_0_18')));
+    await tester.tap(find.byKey(const Key('register-age-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('De 0 a 18 anos').last);
+    await tester.pumpAndSettle();
     await _selectLocation(tester);
     await tester.ensureVisible(find.byKey(const Key('register-submit')));
     await tester.tap(find.byKey(const Key('register-submit')));

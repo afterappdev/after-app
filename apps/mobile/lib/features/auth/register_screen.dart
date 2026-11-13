@@ -1,17 +1,20 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/validation/br_document_validator.dart';
+import '../../core/validation/person_name.dart';
 import '../credits/fiscal_invoice_controller.dart';
 import '../profile/age_band.dart';
 import '../../core/widgets/after_logo.dart';
 import '../public/public_chrome.dart';
 import 'auth_controller.dart';
 import 'models/social_onboarding.dart';
+import '../venue/venue_profile_visibility_hint.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key, this.showPublicHomeLink = false});
@@ -138,6 +141,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             _password.text == _confirmPassword.text);
     return _isValidEmail(_email.text.trim()) &&
         _name.text.trim().length >= 2 &&
+        isPersonName(_name.text) &&
         _selectedUf != null &&
         _selectedCity != null &&
         passwordOk &&
@@ -289,8 +293,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _showErrorSnackBar('E-mail da conta social indisponível. Tente entrar de novo.');
       return;
     }
-    if (name.length < 2) {
-      _showErrorSnackBar('Preencha o nome.');
+    if (!isPersonName(name)) {
+      _showErrorSnackBar(
+        name.length < 2 ? 'Preencha o nome.' : personNameSpecialCharsMessage,
+      );
       return;
     }
     if (_selectedUf == null || _selectedCity == null) {
@@ -333,6 +339,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           documentNumber: _role == 'VENUE' ? _document.text : null,
           ageBand: _role == 'USER' ? _ageBand : null,
         );
+      }
+      if (!mounted) return;
+      if (_role == 'VENUE') {
+        await markVenueProfileVisibilityHintPending();
       }
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -530,17 +540,39 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  for (final option in kAgeBandOptions) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _AgeBandChoice(
-                        key: Key('register-age-${option.value}'),
-                        label: option.label,
-                        selected: _ageBand == option.value,
-                        onTap: () => setState(() => _ageBand = option.value),
+                  DropdownButtonFormField<String>(
+                    key: const Key('register-age-dropdown'),
+                    value: _ageBand,
+                    isExpanded: true,
+                    decoration: _fieldDecoration(
+                      hint: kAgeBandDropdownHint,
+                      icon: Icons.groups_outlined,
+                    ),
+                    hint: const Text(
+                      kAgeBandDropdownHint,
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontFamily,
+                        fontSize: 14,
+                        color: Color(0xFF9A9AA3),
                       ),
                     ),
-                  ],
+                    items: [
+                      for (final option in kAgeBandOptions)
+                        DropdownMenuItem<String>(
+                          key: Key('register-age-${option.value}'),
+                          value: option.value,
+                          child: Text(
+                            option.label,
+                            style: const TextStyle(
+                              fontFamily: AppTheme.fontFamily,
+                              fontSize: 14,
+                              color: Color(0xFF282829),
+                            ),
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => _ageBand = value),
+                  ),
                 ],
                 if (_role == 'VENUE') ...[
                   const SizedBox(height: 20),
@@ -585,6 +617,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: _inputTextStyle,
                     keyboardType: TextInputType.number,
                     textInputAction: TextInputAction.next,
+                    autofillHints: null,
+                    enableSuggestions: false,
                     inputFormatters: [
                       BrDocumentInputFormatter(cnpj: _documentType == 'CNPJ'),
                     ],
@@ -604,7 +638,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   readOnly: _isSocial,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  autofillHints: _isSocial ? null : const [AutofillHints.email],
+                  autofillHints: null,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   decoration: _fieldDecoration(
                     hint: 'Digite seu e-mail',
                     icon: Icons.mail_outline_rounded,
@@ -617,8 +653,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: _inputTextStyle,
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
+                  autofillHints: null,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(personNameChars),
+                  ],
                   decoration: _fieldDecoration(
-                    hint: 'Nome ou nome do local',
+                    hint: _role == 'VENUE'
+                        ? 'Digite o nome do local'
+                        : 'Digite seu nome',
                     icon: Icons.person_outline_rounded,
                   ),
                 ),
@@ -639,6 +683,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: _inputTextStyle,
                   textInputAction: TextInputAction.next,
                   textCapitalization: TextCapitalization.words,
+                  autofillHints: null,
+                  enableSuggestions: false,
+                  autocorrect: false,
                   onChanged: _onCityQueryChanged,
                   decoration: _fieldDecoration(
                     hint: 'Digite sua cidade',
@@ -736,7 +783,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: _inputTextStyle,
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.next,
-                    autofillHints: const [AutofillHints.newPassword],
+                    autofillHints: null,
+                    enableSuggestions: false,
+                    autocorrect: false,
                     decoration: _fieldDecoration(
                       hint: 'Digite sua senha',
                       icon: Icons.lock_outline_rounded,
@@ -760,6 +809,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: _inputTextStyle,
                     obscureText: _obscureConfirm,
                     textInputAction: TextInputAction.done,
+                    autofillHints: null,
+                    enableSuggestions: false,
+                    autocorrect: false,
                     onSubmitted: (_) {
                       if (_canSubmit) _submit();
                     },
@@ -821,54 +873,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     ),
-    );
-  }
-}
-
-class _AgeBandChoice extends StatelessWidget {
-  const _AgeBandChoice({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    const accent = Color(0xFFF58634);
-    const border = Color(0xFFD1D5DB);
-    const text = Color(0xFF282829);
-
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: selected ? accent : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: selected ? accent : border),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppTheme.fontFamily,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: selected ? Colors.white : text,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

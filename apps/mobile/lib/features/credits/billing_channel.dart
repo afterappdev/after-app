@@ -12,20 +12,26 @@ bool billingUsesStore({bool? isWeb, TargetPlatform? platform}) {
 bool billingUsesPix({bool? isWeb, TargetPlatform? platform}) =>
     !billingUsesStore(isWeb: isWeb, platform: platform);
 
-/// Own credit coupons stay available on Web and Android.
-/// iOS hides them because the same credits are sold with In-App Purchase.
+/// Cupom que concede créditos na carteira: Web e Android.
+/// No iOS fica oculto (créditos vendidos só via In-App Purchase).
 bool creditsCouponAvailable({bool? isWeb, TargetPlatform? platform}) {
   if (isWeb ?? kIsWeb) return true;
   final p = platform ?? defaultTargetPlatform;
   return p != TargetPlatform.iOS;
 }
 
+/// Desconto no checkout PIX/cartão — só After Web.
+bool purchaseDiscountCouponAvailable({bool? isWeb}) => isWeb ?? kIsWeb;
+
 Map<String, dynamic> pixCreateBody(
   String packageKey, [
   Map<String, dynamic>? fiscal,
+  String? couponCode,
 ]) =>
     {
       'packageKey': packageKey,
+      if (couponCode != null && couponCode.trim().isNotEmpty)
+        'couponCode': couponCode.trim(),
       ...?fiscal,
     };
 

@@ -320,6 +320,8 @@ class HomePromoCard extends StatelessWidget {
     this.distanceLabel,
     this.onImageTap,
     this.featured = false,
+    this.avgRating,
+    this.reviewCount = 0,
   });
 
   final String imageUrl;
@@ -334,6 +336,8 @@ class HomePromoCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onImageTap;
   final bool featured;
+  final double? avgRating;
+  final int reviewCount;
 
   @override
   Widget build(BuildContext context) {
@@ -360,57 +364,32 @@ class HomePromoCard extends StatelessWidget {
             ],
           ],
         ),
-        const SizedBox(height: 4),
-        _StatusRow(
+        const SizedBox(height: 2),
+        _FixedRatingRow(avgRating: avgRating, reviewCount: reviewCount),
+        const SizedBox(height: 2),
+        _FixedStatusRow(
           hasOpenInfo: hasOpenInfo,
           isOpen: isOpen,
           distanceLabel: distanceLabel,
           distanceColor: HomeVisual.muted,
         ),
-        if (category.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          _MetaLine(
-            icon: _categoryIcon(category),
-            text: category,
-            color: HomeVisual.muted,
-          ),
-        ],
-        if (dealTitle.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            dealTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              color: HomeVisual.ink,
-            ),
-          ),
-        ],
-        if (dealDetail.isNotEmpty)
-          Text(
-            dealDetail,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontSize: 11,
-              color: HomeVisual.muted,
-              height: 1.25,
-            ),
-          ),
-        if (validUntil.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          _MetaLine(
-            icon: Icons.calendar_today_outlined,
-            text: 'Válido para o dia $validUntil',
-            color: HomeVisual.orange,
-            iconColor: HomeVisual.orange,
-            fontSize: 10,
-          ),
-        ],
+        const SizedBox(height: 2),
+        _FixedMetaLine(
+          icon: _categoryIcon(category),
+          text: category,
+          color: HomeVisual.muted,
+        ),
+        const SizedBox(height: 2),
+        _FixedDealTitle(text: dealTitle),
+        _FixedPromoDetail(text: dealDetail),
+        const SizedBox(height: 2),
+        _FixedMetaLine(
+          icon: Icons.calendar_today_outlined,
+          text: validUntil.isEmpty ? '' : 'Válido para o dia $validUntil',
+          color: HomeVisual.orange,
+          iconColor: HomeVisual.orange,
+          fontSize: 10,
+        ),
       ],
     );
   }
@@ -426,8 +405,10 @@ class HomeVenueCard extends StatelessWidget {
     required this.category,
     required this.city,
     required this.description,
-    required this.onTap,
+    required     this.onTap,
     this.distanceLabel,
+    this.avgRating,
+    this.reviewCount = 0,
   });
 
   final String imageUrl;
@@ -439,6 +420,8 @@ class HomeVenueCard extends StatelessWidget {
   final String city;
   final String description;
   final VoidCallback onTap;
+  final double? avgRating;
+  final int reviewCount;
 
   @override
   Widget build(BuildContext context) {
@@ -449,44 +432,94 @@ class HomeVenueCard extends StatelessWidget {
       emptyIcon: Icons.storefront_outlined,
       children: [
         _VenueName(venueName),
-        const SizedBox(height: 4),
-        _StatusRow(
+        const SizedBox(height: 2),
+        _FixedRatingRow(avgRating: avgRating, reviewCount: reviewCount),
+        const SizedBox(height: 2),
+        _FixedStatusRow(
           hasOpenInfo: hasOpenInfo,
           isOpen: isOpen,
           distanceLabel: distanceLabel,
           distanceColor: HomeVisual.purple,
         ),
-        if (category.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          _MetaLine(
-            icon: _categoryIcon(category),
-            text: category,
+        const SizedBox(height: 4),
+        _FixedMetaLine(
+          icon: _categoryIcon(category),
+          text: category,
+          color: HomeVisual.muted,
+        ),
+        const SizedBox(height: 2),
+        _FixedMetaLine(
+          icon: Icons.location_on_outlined,
+          text: city,
+          color: HomeVisual.muted,
+          iconColor: HomeVisual.purple,
+        ),
+        const SizedBox(height: 4),
+        _FixedDescription(text: description),
+      ],
+    );
+  }
+}
+
+class _FixedRatingRow extends StatelessWidget {
+  const _FixedRatingRow({
+    required this.avgRating,
+    required this.reviewCount,
+  });
+
+  final double? avgRating;
+  final int reviewCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = reviewCount > 0 && avgRating != null;
+    return SizedBox(
+      height: HomeVisual.feedMetaLineHeight,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _HomeRatingStars(
+          value: hasRating ? avgRating! : 0,
+          count: reviewCount,
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeRatingStars extends StatelessWidget {
+  const _HomeRatingStars({required this.value, required this.count});
+
+  final double value;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            value >= i
+                ? Icons.star_rounded
+                : value >= i - 0.5
+                    ? Icons.star_half_rounded
+                    : Icons.star_outline_rounded,
+            size: 12,
+            color: HomeVisual.orange,
+          ),
+        const SizedBox(width: 4),
+        Text(
+          count > 0
+              ? '${value.toStringAsFixed(1).replaceAll('.', ',')} ($count)'
+              : 'Sem avaliações',
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
             color: HomeVisual.muted,
+            height: 1.1,
           ),
-        ],
-        if (city.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          _MetaLine(
-            icon: Icons.location_on_outlined,
-            text: city,
-            color: HomeVisual.muted,
-            iconColor: HomeVisual.purple,
-          ),
-        ],
-        if (description.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            description,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: AppTheme.fontFamily,
-              fontSize: 11,
-              color: HomeVisual.muted,
-              height: 1.25,
-            ),
-          ),
-        ],
+        ),
       ],
     );
   }
@@ -509,6 +542,151 @@ class _VenueName extends StatelessWidget {
         fontSize: 17,
         height: 1.15,
         color: HomeVisual.ink,
+      ),
+    );
+  }
+}
+
+class _FixedStatusRow extends StatelessWidget {
+  const _FixedStatusRow({
+    required this.hasOpenInfo,
+    required this.isOpen,
+    required this.distanceLabel,
+    required this.distanceColor,
+  });
+
+  final bool hasOpenInfo;
+  final bool isOpen;
+  final String? distanceLabel;
+  final Color distanceColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 18,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _StatusRow(
+          hasOpenInfo: hasOpenInfo,
+          isOpen: isOpen,
+          distanceLabel: distanceLabel,
+          distanceColor: distanceColor,
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedMetaLine extends StatelessWidget {
+  const _FixedMetaLine({
+    required this.icon,
+    required this.text,
+    required this.color,
+    this.iconColor,
+    this.fontSize = 11,
+  });
+
+  final IconData? icon;
+  final String text;
+  final Color color;
+  final Color? iconColor;
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: HomeVisual.feedMetaLineHeight,
+      child: text.isEmpty
+          ? const SizedBox.shrink()
+          : _MetaLine(
+              icon: icon,
+              text: text,
+              color: color,
+              iconColor: iconColor,
+              fontSize: fontSize,
+            ),
+    );
+  }
+}
+
+class _FixedPromoDetail extends StatelessWidget {
+  const _FixedPromoDetail({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: HomeVisual.feedMetaLineHeight,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 11,
+            color: HomeVisual.muted,
+            height: 1.25,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedDealTitle extends StatelessWidget {
+  const _FixedDealTitle({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = text.trim().isEmpty ? 'Promoção do dia' : text;
+    return SizedBox(
+      height: HomeVisual.feedMetaLineHeight,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            height: 1.15,
+            color: HomeVisual.ink,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedDescription extends StatelessWidget {
+  const _FixedDescription({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: HomeVisual.feedDescriptionHeight,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Text(
+          text,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontFamily,
+            fontSize: 11,
+            color: HomeVisual.muted,
+            height: 1.25,
+          ),
+        ),
       ),
     );
   }
@@ -681,7 +859,8 @@ class _FeedCard extends StatelessWidget {
   }
 
   Widget _body() {
-    return IntrinsicHeight(
+    return SizedBox(
+      height: HomeVisual.feedCardBodyHeight,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -690,7 +869,7 @@ class _FeedCard extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _CardImage(
                     imageUrl: imageUrl,
@@ -701,13 +880,18 @@ class _FeedCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: InkWell(
-                      onTap: onTap,
-                      borderRadius: BorderRadius.circular(12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: children,
+                    child: SizedBox(
+                      height: HomeVisual.feedCardTextHeight,
+                      child: InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ...children,
+                            const Spacer(),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -742,6 +926,7 @@ class _CardImage extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         width: HomeVisual.imageWidth,
+        height: HomeVisual.imageHeight,
         child: Stack(
           fit: StackFit.expand,
           children: [

@@ -7,10 +7,12 @@ import 'package:provider/provider.dart';
 import '../../core/config/api_config.dart';
 import '../../core/constants/venue_categories.dart';
 import 'promo_validity.dart';
+import 'venue_hours.dart';
 import 'venue_public_amenities.dart';
 import '../../core/location/device_position.dart';
 import '../../core/location/open_url.dart';
 import '../../core/media/gallery_media.dart';
+import '../../core/validation/menu_url.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_bottom_nav.dart';
@@ -398,6 +400,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
     final menu = photos
         .where((p) => (p as Map)['kind']?.toString() == 'MENU')
         .toList();
+    final menuOnlineUrl = _venue?['menuUrl']?.toString();
     final contacts = _venue?['contacts'];
 
     return Scaffold(
@@ -508,10 +511,9 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                                       showReport: showSafetyMenu,
                                                     )
                                                   : _tab == 2
-                                                      ? _PhotoGrid(
+                                                      ? _MenuTab(
                                                           photos: menu,
-                                                          emptyLabel:
-                                                              'Cardápio ainda não publicado.',
+                                                          menuUrl: menuOnlineUrl,
                                                           showReport: showSafetyMenu,
                                                         )
                                                       : _tab == 3
@@ -1293,6 +1295,59 @@ class _PromoRow extends StatelessWidget {
             const Icon(Icons.chevron_right_rounded, color: Color(0xFFB0B0B8)),
         ],
       ),
+    );
+  }
+}
+
+class _MenuTab extends StatelessWidget {
+  const _MenuTab({
+    required this.photos,
+    required this.menuUrl,
+    required this.showReport,
+  });
+
+  final List<dynamic> photos;
+  final String? menuUrl;
+  final bool showReport;
+
+  @override
+  Widget build(BuildContext context) {
+    final link = menuUrl?.trim();
+    final showOnline =
+        link != null && link.isNotEmpty && isPublicMenuUrl(link);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showOnline) ...[
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              key: const Key('venue-menu-online'),
+              onPressed: () => openExternalUrl(link),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Acessar cardápio online'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFF58634),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                textStyle: const TextStyle(
+                  fontFamily: AppTheme.fontFamily,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _PhotoGrid(
+          photos: photos,
+          emptyLabel: 'Cardápio ainda não publicado.',
+          showReport: showReport,
+        ),
+      ],
     );
   }
 }
@@ -2250,18 +2305,7 @@ List<Widget> _hoursRows(dynamic hoursJson) {
   final map = Map<String, dynamic>.from(hoursJson);
   return days.map((day) {
     final value = map[day.$1];
-    var hours = 'Fechado';
-    if (value is Map) {
-      if (value['closed'] == true) {
-        hours = 'Fechado';
-      } else {
-        final open = value['open']?.toString();
-        final close = value['close']?.toString();
-        if (open != null && close != null) {
-          hours = '$open – $close';
-        }
-      }
-    }
+    final hours = formatVenueDayHoursText(value);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(

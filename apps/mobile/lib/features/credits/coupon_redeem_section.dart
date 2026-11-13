@@ -83,7 +83,7 @@ class _CouponRedeemSectionState extends State<CouponRedeemSection> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Possui um cupom?',
+            'Possui um cupom de resgate?',
             style: TextStyle(
               fontFamily: AppTheme.fontFamily,
               fontWeight: FontWeight.w800,

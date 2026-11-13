@@ -68,6 +68,32 @@ void main() {
     expect(messaging.permissionRequests, 0);
   });
 
+  test('preferência ativa no login pede permissão do sistema', () async {
+    final api = RecordingPromoApi()..storedEnabled = true;
+    final messaging = FakePromoMessaging()
+      ..permission = PromoOsPermission.denied;
+    final coordinator = _coordinator(api: api, messaging: messaging);
+    await coordinator.onAuthenticated(_user('user-a', city: 'Campinas'));
+
+    expect(coordinator.enabled, isTrue);
+    expect(messaging.permissionRequests, 1);
+    expect(api.registered, isEmpty);
+  });
+
+  test('preferência ativa com permissão já concedida registra token no login',
+      () async {
+    final api = RecordingPromoApi()..storedEnabled = true;
+    final messaging = FakePromoMessaging()
+      ..permission = PromoOsPermission.granted
+      ..token = 'fcm-new';
+    final coordinator = _coordinator(api: api, messaging: messaging);
+    await coordinator.onAuthenticated(_user('user-a', city: 'Campinas'));
+
+    expect(coordinator.enabled, isTrue);
+    expect(messaging.permissionRequests, 0);
+    expect(api.registered, ['fcm-new']);
+  });
+
   test('enabling and disabling follow the backend response', () async {
     final api = RecordingPromoApi();
     final messaging = FakePromoMessaging()

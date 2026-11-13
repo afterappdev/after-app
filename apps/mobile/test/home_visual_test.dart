@@ -75,6 +75,8 @@ void main() {
               HomePromoCard(
                 imageUrl: '',
                 venueName: 'Refúgio',
+                avgRating: 4.5,
+                reviewCount: 12,
                 isOpen: false,
                 hasOpenInfo: true,
                 category: 'Restaurantes',
@@ -135,12 +137,92 @@ void main() {
           .first,
     );
     expect(image.width, 108);
+    expect(image.height, HomeVisual.imageHeight);
     final name = tester.widget<Text>(find.text('Refúgio'));
     expect(name.style?.fontSize, 17);
     expect(name.maxLines, 1);
     expect(find.byType(HomeOfferMark), findsOneWidget);
     expect(find.text('Válido para o dia 14/10/2026'), findsOneWidget);
+    expect(find.text('4,5 (12)'), findsOneWidget);
     expect(find.text('São José do Rio Preto'), findsOneWidget);
+  });
+
+  testWidgets('cards de promoção e local têm a mesma altura', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              HomeVenueCard(
+                imageUrl: '',
+                venueName: 'Vital Store',
+                isOpen: true,
+                hasOpenInfo: true,
+                category: 'Cafeterias',
+                city: 'São José do Rio Preto, SP',
+                description: 'Linha curta',
+                onTap: () {},
+              ),
+              HomeVenueCard(
+                imageUrl: '',
+                venueName: 'Picanha Na Chapa',
+                isOpen: false,
+                hasOpenInfo: true,
+                category: 'Churrascarias',
+                city: 'São José do Rio Preto, SP',
+                description:
+                    'Restaurante Alacarte de Carnes Premium com duas linhas',
+                onTap: () {},
+              ),
+              HomePromoCard(
+                imageUrl: '',
+                venueName: 'Bar',
+                isOpen: true,
+                hasOpenInfo: true,
+                category: 'Bares',
+                dealTitle: 'Chopp em dobro',
+                dealDetail: 'Até as 20h',
+                validUntil: '14/10/2026',
+                onTap: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final heights = <double>[];
+    for (final type in [HomeVenueCard, HomePromoCard]) {
+      for (final element in find.byType(type).evaluate()) {
+        final box = element.renderObject! as RenderBox;
+        heights.add(box.size.height);
+      }
+    }
+    expect(heights.length, 3);
+    expect(heights.toSet().length, 1);
+    expect(heights.first, HomeVisual.feedCardBodyHeight);
+  });
+
+  testWidgets('local sem avaliações mantém linha de estrelas', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HomeVenueCard(
+            imageUrl: '',
+            venueName: 'Novo Bar',
+            isOpen: true,
+            hasOpenInfo: true,
+            category: 'Bares',
+            city: 'São Paulo',
+            description: 'Descrição',
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Sem avaliações'), findsOneWidget);
+    expect(find.byIcon(Icons.star_outline_rounded), findsNWidgets(5));
   });
 
   testWidgets('chip selecionado fica laranja e o restante branco', (

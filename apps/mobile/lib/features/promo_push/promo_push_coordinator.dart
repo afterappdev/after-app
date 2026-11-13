@@ -96,6 +96,7 @@ class PromoPushCoordinator extends ChangeNotifier {
   PromoPushMessage? pendingMessage;
   bool _started = false;
   bool _cityAttempted = false;
+  bool _permissionPromptAttempted = false;
 
   static const firebaseUnavailableMessage =
       'Não foi possível preparar as notificações neste aparelho. '
@@ -151,8 +152,7 @@ class PromoPushCoordinator extends ChangeNotifier {
       statusMessage = 'Não foi possível carregar a preferência de avisos.';
     }
     notifyListeners();
-    await syncToken(_token ?? await _currentToken());
-    await refreshAuthorizedCity(user);
+    await _ensureOsPermissionAndToken();
     await consumePending();
   }
 
@@ -185,25 +185,7 @@ class PromoPushCoordinator extends ChangeNotifier {
         await unregisterDevice();
         statusMessage = null;
       } else {
-        if (!await _ensureMessagingReady()) {
-          saving = false;
-          notifyListeners();
-          return;
-        }
-        final permission = await messaging.requestPermission();
-        if (permission == PromoOsPermission.granted) {
-          await syncToken(await messaging.getToken());
-          if (_token == null && statusMessage == null) {
-            statusMessage =
-                'Preferência salva, mas este aparelho ainda não foi registrado.';
-          }
-        } else if (permission == PromoOsPermission.denied) {
-          statusMessage = permissionBlockedMessage;
-        } else if (permission == PromoOsPermission.unavailable) {
-          statusMessage = firebaseUnavailableMessage;
-        }
-        final session = _session;
-        if (session != null) await refreshAuthorizedCity(session);
+        await _ensureOsPermissionAndToken(forceRequest: true);
       }
     } catch (_) {
       statusMessage ??=
@@ -251,6 +233,7 @@ class PromoPushCoordinator extends ChangeNotifier {
     preferenceKnown = false;
     pendingMessage = null;
     _cityAttempted = false;
+    _permissionPromptAttempted = false;
     router.reset();
     await unregisterDevice();
     if (userId != null) await cityMemory.clear(userId);
@@ -326,6 +309,47 @@ class PromoPushCoordinator extends ChangeNotifier {
       notifyListeners();
     }
     return ready;
+  }
+
+  /// Registers FCM when the user wants promo alerts. Requests OS permission first
+  /// (Android 13+ POST_NOTIFICATIONS / iOS dialog) — same idea as location on Home.
+  Future<void> _ensureOsPermissionAndToken({bool forceRequest = false}) async {
+    if (!enabled || _userId == null) return;
+    if (!await _ensureMessagingReady()) return;
+
+    var permission = await messaging.currentPermission();
+    if (permission == PromoOsPermission.granted) {
+      await syncToken(_token ?? await _currentToken());
+      final session = _session;
+      if (session != null) await refreshAuthorizedCity(session);
+      return;
+    }
+    if (permission == PromoOsPermission.unavailable) {
+      statusMessage = firebaseUnavailableMessage;
+      notifyListeners();
+      return;
+    }
+
+    if (!forceRequest && _permissionPromptAttempted) return;
+
+    _permissionPromptAttempted = true;
+    permission = await messaging.requestPermission();
+
+    if (permission == PromoOsPermission.granted) {
+      await syncToken(await messaging.getToken());
+      if (_token == null && statusMessage == null) {
+        statusMessage =
+            'Preferência salva, mas este aparelho ainda não foi registrado.';
+      }
+      final session = _session;
+      if (session != null) await refreshAuthorizedCity(session);
+    } else if (permission == PromoOsPermission.denied) {
+      statusMessage = permissionBlockedMessage;
+      notifyListeners();
+    } else if (permission == PromoOsPermission.unavailable) {
+      statusMessage = firebaseUnavailableMessage;
+      notifyListeners();
+    }
   }
 
   Future<bool> _foregroundAlreadyGranted(DeviceLocator locator) async {

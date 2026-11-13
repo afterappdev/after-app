@@ -470,6 +470,10 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                   ),
                                   const SizedBox(height: 10),
                                 ],
+                                if (creditsCouponAvailable()) ...[
+                                  const SizedBox(height: 12),
+                                  CouponRedeemSection(onRedeem: _redeemCoupon),
+                                ],
                                 const SizedBox(height: 12),
                                 KeyedSubtree(
                                   key: const Key('purchase-history'),
@@ -515,10 +519,6 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
                                           status: item['status']?.toString() ?? '',
                                         ),
                                       ),
-                                if (creditsCouponAvailable()) ...[
-                                  const SizedBox(height: 8),
-                                  CouponRedeemSection(onRedeem: _redeemCoupon),
-                                ],
                               ],
                             ),
                           ),
