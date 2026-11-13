@@ -720,6 +720,9 @@ void main() {
 
   testWidgets('lista PIX PENDING chama GET :id, ignora finais e lojas, recarrega wallet',
       (tester) async {
+    tester.view.physicalSize = const Size(800, 2200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final paths = <String>[];
     var walletReads = 0;
     final client = MockClient((request) async {
@@ -806,6 +809,7 @@ void main() {
       ),
     );
     await _pumpCredits(tester);
+    await tester.pumpAndSettle();
 
     expect(paths, contains('GET /credits/purchases/pix-pending'));
     expect(paths.where((p) => p.contains('/credits/purchases/pix-paid')), isEmpty);

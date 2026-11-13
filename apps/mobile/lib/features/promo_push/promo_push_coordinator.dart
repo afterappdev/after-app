@@ -185,6 +185,8 @@ class PromoPushCoordinator extends ChangeNotifier {
         await unregisterDevice();
         statusMessage = null;
       } else {
+        final session = _session;
+        if (session != null) await refreshAuthorizedCity(session);
         await _ensureOsPermissionAndToken(forceRequest: true);
       }
     } catch (_) {

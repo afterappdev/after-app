@@ -154,9 +154,8 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
     } on ApiException catch (error) {
       if (error.statusCode == 404) {
         final offer = copyOfficialVipReferenceOffer();
-        final checkoutReady = _usePixCheckout
-            ? vipWebCheckoutPack(offer) != null
-            : nativeVipStoreCheckoutReady(offer);
+        final checkoutReady =
+            !_usePixCheckout && nativeVipStoreCheckoutReady(offer);
         return _VipOfferLoad(offer: offer, checkoutReady: checkoutReady);
       }
       return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
