@@ -637,7 +637,7 @@ export function VenueDetailPage() {
                 <img src={lightbox.src} alt="" className="venue-lightbox-img" />
               )
             ) : (
-              <video className="venue-lightbox-video" src={lightbox.src} controls playsInline />
+              <ExpandedVideo key={lightbox.src} src={lightbox.src} />
             )}
           </div>
         </div>
@@ -809,6 +809,31 @@ function PromoRow({
   )
 }
 
+function ExpandedVideo({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false)
+
+  if (failed) {
+    return (
+      <div className="bg-dark text-white text-center rounded p-3" role="status">
+        <p>O navegador não conseguiu reproduzir este vídeo.</p>
+        <a href={src} target="_blank" rel="noreferrer" className="link-light">
+          Abrir vídeo em outra aba
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <video
+      className="venue-lightbox-video"
+      src={src}
+      controls
+      playsInline
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function PhotosTab({
   gallery,
   showSafety,
@@ -841,39 +866,16 @@ function PhotosTab({
       {videos.length > 0 ? (
         <section>
           <h2 className="h6 fw-bold mb-2">Vídeos</h2>
-          <div className="vstack gap-3">
-            {videos.map((item) => (
-              <div key={item.id} className="venue-media-video-cell">
-                <div className="venue-media-frame venue-media-frame--video">
-                  {showSafety && item.id ? (
-                    <button
-                      type="button"
-                      className="venue-media-report-icon"
-                      aria-label="Denunciar vídeo"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onReport({
-                          targetType: 'VIDEO',
-                          targetId: item.id,
-                          title: 'Denunciar vídeo',
-                        })
-                      }}
-                    >
-                      <IconFlag size={14} />
-                    </button>
-                  ) : null}
-                  <video
-                    className="w-100 rounded venue-media-video-el"
-                    controls
-                    preload="metadata"
-                    src={resolveMediaUrl(item.url)}
-                    title="Duplo clique para ampliar"
-                    onDoubleClick={() => onExpandMedia(item.url, 'video')}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+          <MediaGrid
+            items={videos}
+            empty=""
+            video
+            showSafety={showSafety}
+            onExpand={(url) => onExpandMedia(url, 'video')}
+            onReport={(videoId) =>
+              onReport({ targetType: 'VIDEO', targetId: videoId, title: 'Denunciar vídeo' })
+            }
+          />
         </section>
       ) : null}
     </div>
@@ -883,6 +885,7 @@ function PhotosTab({
 function MediaGrid(props: {
   items: { id: string; url: string }[]
   empty: string
+  video?: boolean
   showSafety?: boolean
   onReport?: (photoId: string) => void
   onExpand?: (url: string) => void
@@ -899,7 +902,7 @@ function MediaGrid(props: {
               <button
                 type="button"
                 className="venue-media-report-icon"
-                aria-label="Denunciar"
+                aria-label={props.video ? 'Denunciar vídeo' : 'Denunciar'}
                 onClick={(e) => {
                   e.stopPropagation()
                   props.onReport?.(item.id)
@@ -911,14 +914,33 @@ function MediaGrid(props: {
             <button
               type="button"
               className="venue-media-thumb-btn ratio ratio-1x1"
+              aria-label={props.video ? 'Ampliar vídeo' : 'Ampliar foto'}
               onClick={() => props.onExpand?.(item.url)}
             >
-              <img
-                src={resolveMediaUrl(item.url)}
-                alt=""
-                className="rounded object-fit-cover w-100 h-100"
-                loading="lazy"
-              />
+              {props.video ? (
+                <>
+                  <video
+                    className="rounded object-fit-cover w-100 h-100 bg-dark"
+                    preload="metadata"
+                    src={resolveMediaUrl(item.url)}
+                    muted
+                    playsInline
+                    aria-hidden="true"
+                  />
+                  <span className="venue-media-play" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </span>
+                </>
+              ) : (
+                <img
+                  src={resolveMediaUrl(item.url)}
+                  alt=""
+                  className="rounded object-fit-cover w-100 h-100"
+                  loading="lazy"
+                />
+              )}
             </button>
           </div>
         </div>
