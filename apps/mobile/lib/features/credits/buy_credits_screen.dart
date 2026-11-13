@@ -149,12 +149,15 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
       final payable = vipWebCheckoutPack(offer);
       final checkoutReady = _usePixCheckout
           ? payable != null
-          : isDisplayableVipOffer(offer) &&
-              offer['storeProductId']?.toString() == 'after.credits.vip.1';
+          : nativeVipStoreCheckoutReady(offer);
       return _VipOfferLoad(offer: offer, checkoutReady: checkoutReady);
     } on ApiException catch (error) {
       if (error.statusCode == 404) {
-        return _VipOfferLoad(offer: copyOfficialVipReferenceOffer());
+        final offer = copyOfficialVipReferenceOffer();
+        final checkoutReady = _usePixCheckout
+            ? vipWebCheckoutPack(offer) != null
+            : nativeVipStoreCheckoutReady(offer);
+        return _VipOfferLoad(offer: offer, checkoutReady: checkoutReady);
       }
       return const _VipOfferLoad(error: vipCatalogUnavailableMessage);
     } catch (_) {
@@ -303,6 +306,10 @@ class _BuyCreditsScreenState extends State<BuyCreditsScreen> {
           );
         }
         await _load();
+        return;
+      }
+      if (!nativeVipStoreCheckoutReady(pack)) {
+        await _blockVipCheckout();
         return;
       }
       final paid = await Navigator.of(context).push<bool>(

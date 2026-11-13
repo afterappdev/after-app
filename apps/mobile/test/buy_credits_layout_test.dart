@@ -553,6 +553,43 @@ void main() {
     expect(posts, isEmpty);
   });
 
+  testWidgets('VIP nativo bloqueado quando produto da loja é desconhecido',
+      (tester) async {
+    final posts = <String>[];
+    await _pumpBuy(
+      tester,
+      size: const Size(800, 1600),
+      usePixCheckout: false,
+      vipBody: [
+        {
+          'key': 'vip_unit_1',
+          'modality': 'VIP',
+          'credits': 1,
+          'referencePriceBrl': 99.9,
+          'storeProductId': 'after.credits.vip.99',
+        },
+      ],
+      onRequest: (request) {
+        if (request.method == 'POST') posts.add(request.url.path);
+      },
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 crédito VIP'), findsOneWidget);
+    expect(find.text('Total: R\$ 34,90'), findsOneWidget);
+
+    await tester.tap(find.text('1 crédito VIP'));
+    await tester.pump();
+    expect(find.text('Total: R\$ 99,90'), findsOneWidget);
+
+    await tester.tap(find.text('Continuar para pagamento'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('ainda não está disponível'), findsOneWidget);
+    expect(find.byType(CheckoutScreen), findsNothing);
+    expect(posts, isEmpty);
+  });
+
   testWidgets('Android abre checkout da loja para VIP', (tester) async {
     final posts = <String>[];
     await _pumpBuy(

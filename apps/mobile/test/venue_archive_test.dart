@@ -175,4 +175,46 @@ void main() {
     expect(find.textContaining('Boteco Central'), findsOneWidget);
     expect(find.byKey(const Key('venue-archive-confirm')), findsOneWidget);
   });
+
+  testWidgets('diálogo cancelar não chama archiveOwnedVenue', (tester) async {
+    var archiveCalled = false;
+    final client = MockClient((req) async {
+      if (req.method == 'POST' && req.url.path.contains('/archive')) {
+        archiveCalled = true;
+      }
+      return http.Response('{}', 404);
+    });
+    final api = ApiClient(client: client);
+    final auth = AuthController(
+      api: api,
+      storage: AuthStorage(),
+      googleSession: _NoOpGoogleSession(),
+    );
+    auth.user = _venueUser();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            return ElevatedButton(
+              onPressed: () async {
+                final ok = await confirmVenueArchive(
+                  context,
+                  venueName: 'Bar A',
+                );
+                if (ok) await auth.archiveOwnedVenue('v1');
+              },
+              child: const Text('open'),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancelar'));
+    await tester.pumpAndSettle();
+    expect(archiveCalled, isFalse);
+    expect(auth.user?.venues.length, 2);
+  });
 }

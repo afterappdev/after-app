@@ -12,6 +12,7 @@ import 'package:after_app/core/network/api_client.dart';
 import 'package:after_app/features/auth/account_recovery_screen.dart';
 import 'package:after_app/features/auth/auth_controller.dart';
 import 'package:after_app/features/auth/google_session.dart';
+import 'package:after_app/features/auth/login_screen.dart';
 import 'package:after_app/features/auth/models/deletion_status.dart';
 import 'package:after_app/features/intro/app_startup.dart';
 
@@ -68,6 +69,50 @@ void main() {
 
     expect(find.byType(AccountRecoveryScreen), findsOneWidget);
     expect(find.byKey(const Key('recovery-title')), findsOneWidget);
+    expect(find.text('Recuperar minha conta'), findsOneWidget);
+  });
+
+  testWidgets('LoginScreen login pendente alimenta AppStartup com recuperação',
+      (tester) async {
+    final client = MockClient((req) async {
+      if (req.url.path.endsWith('/auth/login')) {
+        return http.Response(
+          jsonEncode({
+            'accountPendingDeletion': true,
+            'recoveryToken': 'recovery-jwt',
+            'deletionStatus': {
+              'accountStatus': 'PENDING_DELETION',
+              'remainingSeconds': 86400,
+            },
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response('{}', 404);
+    });
+    final api = ApiClient(client: client);
+    final auth = AuthController(
+      api: api,
+      storage: AuthStorage(),
+      googleSession: _NoOpGoogleSession(),
+    );
+    auth.bootstrapping = false;
+
+    await tester.pumpWidget(_wrap(const LoginScreen(), auth, api));
+    await tester.enterText(find.byType(TextField).first, 'a@b.com');
+    await tester.enterText(find.byType(TextField).last, 'secret1');
+    await tester.tap(find.text('Entrar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(auth.pendingAccountRecovery?.recoveryToken, 'recovery-jwt');
+    expect(find.byType(AccountRecoveryScreen), findsNothing);
+
+    await tester.pumpWidget(_wrap(const AppStartup(), auth, api));
+    await tester.pumpAndSettle(const Duration(seconds: 6));
+
+    expect(find.byType(AccountRecoveryScreen), findsOneWidget);
     expect(find.text('Recuperar minha conta'), findsOneWidget);
   });
 
