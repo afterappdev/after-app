@@ -1,3 +1,4 @@
+import { hasVideoExtension, videoExtensions } from '../../utils/mediaKind'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useLocation } from 'react-router-dom'
@@ -55,8 +56,7 @@ function normalizePanelTab(raw: unknown): TabId {
 
 function isVideoFile(file: File): boolean {
   if (file.type.startsWith('video/')) return true
-  const ext = file.name.toLowerCase().split('.').pop() ?? ''
-  return ['mp4', 'webm', 'mov', 'm4v', 'ogv'].includes(ext)
+  return hasVideoExtension(file.name)
 }
 
 export function VenuePanelPage() {
@@ -328,7 +328,7 @@ export function VenuePanelPage() {
         ref={fileInputRef}
         type="file"
         className="d-none"
-        accept="image/*,video/*"
+        accept={['image/*', 'video/*', ...videoExtensions].join(',')}
         onChange={(e) => void onMediaFileSelected(e.target.files?.[0] ?? null)}
       />
 

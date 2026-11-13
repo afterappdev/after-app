@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { UploadsController } from './uploads.controller';
 import { R2StorageService } from './r2-storage.service';
+import { VideoTranscodeService } from './video-transcode.service';
 
 function uploadedFile(
   overrides: Partial<Express.Multer.File> = {},
@@ -33,7 +34,10 @@ function storage(
 describe('UploadsController R2', () => {
   it('faz upload e devolve URL pública do R2 no formato atual', async () => {
     const r2 = storage();
-    const controller = new UploadsController(r2 as unknown as R2StorageService);
+    const controller = new UploadsController(
+      r2 as unknown as R2StorageService,
+      new VideoTranscodeService(),
+    );
     const file = uploadedFile();
 
     const result = await controller.upload(file);
@@ -55,7 +59,10 @@ describe('UploadsController R2', () => {
 
   it('rejeita upload sem arquivo', async () => {
     const r2 = storage();
-    const controller = new UploadsController(r2 as unknown as R2StorageService);
+    const controller = new UploadsController(
+      r2 as unknown as R2StorageService,
+      new VideoTranscodeService(),
+    );
     await expect(controller.upload(undefined as never)).rejects.toBeInstanceOf(
       BadRequestException,
     );
