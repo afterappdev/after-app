@@ -132,6 +132,9 @@ void main() {
       ),
       'http://10.0.2.2:3000',
     );
+  });
+
+  test('Android release sem define usa a API de produção', () {
     expect(
       resolveApiBaseUrl(
         defined: '',
@@ -139,7 +142,29 @@ void main() {
         releaseMode: true,
         platform: TargetPlatform.android,
       ),
-      'http://10.0.2.2:3000',
+      productionApiBaseUrl,
+    );
+    final host = Uri.parse(
+      resolveApiBaseUrl(
+        defined: '   ',
+        isWeb: false,
+        releaseMode: true,
+        platform: TargetPlatform.android,
+      ),
+    ).host;
+    expect(host, isNot('10.0.2.2'));
+    expect(host, isNot('127.0.0.1'));
+  });
+
+  test('Android release com API_BASE_URL explícita respeita override', () {
+    expect(
+      resolveApiBaseUrl(
+        defined: 'http://192.168.0.20:3000',
+        isWeb: false,
+        releaseMode: true,
+        platform: TargetPlatform.android,
+      ),
+      'http://192.168.0.20:3000',
     );
   });
 
