@@ -8,6 +8,7 @@ import {
   blockedVenueIdsForUser,
   publicVenueWhere,
 } from '../common/moderation/audience';
+import { VenuesService } from '../venues/venues.service';
 
 function sortOpenThenDistance<T extends { isOpen?: boolean | null; distanceKm?: number | null }>(
   items: T[],
@@ -39,9 +40,24 @@ export function businessCalendarDate(now = new Date()): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
+function withReviewStats<T extends { id: string }>(
+  venue: T,
+  stats: Map<string, { avgRating: number | null; reviewCount: number }>,
+) {
+  const review = stats.get(venue.id);
+  return {
+    ...venue,
+    avgRating: review?.avgRating ?? null,
+    reviewCount: review?.reviewCount ?? 0,
+  };
+}
+
 @Injectable()
 export class HomeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly venuesService: VenuesService,
+  ) {}
 
   async promotions(
     city: string,
@@ -99,6 +115,10 @@ export class HomeService {
       orderBy: { displayDate: 'desc' },
     });
 
+    const stats = await this.venuesService.reviewStatsForVenueIds(
+      schedules.map((s) => s.banner.venue.id),
+    );
+
     return sortOpenThenDistance(
       schedules.map((s) => ({
         bannerId: s.banner.id,
@@ -109,7 +129,7 @@ export class HomeService {
         title: s.banner.title,
         description: s.banner.description,
         displayDate: s.displayDate,
-        venue: s.banner.venue,
+        venue: withReviewStats(s.banner.venue, stats),
         isOpen: computeIsOpen(s.banner.venue.hoursJson),
         distanceKm: origin ? haversineKm(origin, s.banner.venue) : null,
       })),
@@ -152,9 +172,13 @@ export class HomeService {
       orderBy: { name: 'asc' },
     });
 
+    const stats = await this.venuesService.reviewStatsForVenueIds(
+      venues.map((v) => v.id),
+    );
+
     return sortOpenThenDistance(
       venues.map((v) => ({
-        ...v,
+        ...withReviewStats(v, stats),
         isOpen: computeIsOpen(v.hoursJson),
         distanceKm: origin ? haversineKm(origin, v) : null,
       })),

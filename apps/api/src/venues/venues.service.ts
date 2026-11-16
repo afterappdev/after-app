@@ -468,6 +468,11 @@ export class VenuesService {
     };
   }
 
+  /** Aggregated ratings for venue cards (home feed, search). */
+  async reviewStatsForVenueIds(venueIds: string[]) {
+    return this.reviewStatsBatch(venueIds);
+  }
+
   private async reviewStatsBatch(venueIds: string[]) {
     const map = new Map<
       string,

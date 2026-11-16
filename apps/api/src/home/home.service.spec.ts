@@ -55,11 +55,15 @@ function createPrisma() {
 
 describe('HomeService geolocation', () => {
   let prisma: ReturnType<typeof createPrisma>;
+  let venuesService: { reviewStatsForVenueIds: jest.Mock };
   let service: HomeService;
 
   beforeEach(() => {
     prisma = createPrisma();
-    service = new HomeService(prisma as never);
+    venuesService = {
+      reviewStatsForVenueIds: jest.fn().mockResolvedValue(new Map()),
+    };
+    service = new HomeService(prisma as never, venuesService as never);
     geocodeCityMock.mockReset();
     geocodeVenueProfileMock.mockReset();
     geocodeCityMock.mockResolvedValue({ lat: -23.5505, lng: -46.6333 });
@@ -244,5 +248,22 @@ describe('HomeService geolocation', () => {
         }),
       }),
     );
+  });
+
+  it('venues expõe avgRating e reviewCount do batch', async () => {
+    prisma.venue.findMany.mockResolvedValue([venueRow()]);
+    venuesService.reviewStatsForVenueIds.mockResolvedValue(
+      new Map([
+        [
+          'venue-1',
+          { avgRating: 4.5, reviewCount: 3 },
+        ],
+      ]),
+    );
+
+    const result = await service.venues('São Paulo');
+
+    expect(result[0].avgRating).toBe(4.5);
+    expect(result[0].reviewCount).toBe(3);
   });
 });
