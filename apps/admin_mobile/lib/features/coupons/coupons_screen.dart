@@ -10,6 +10,7 @@ import '../../data/admin_coupon.dart';
 import 'coupon_detail_screen.dart';
 import 'coupon_form_screen.dart';
 import 'coupons_controller.dart';
+import 'coupons_overview.dart';
 
 class CouponsScreen extends StatefulWidget {
   const CouponsScreen({super.key});
@@ -32,7 +33,7 @@ class _CouponsScreenState extends State<CouponsScreen> {
     final controller = context.watch<CouponsController>();
     return AdminScrollPage(
       title: 'Cupons',
-      subtitle: 'Gerencie os cupons de créditos',
+      subtitle: 'Gerencie cupons de créditos e de desconto',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -96,7 +97,7 @@ class _CouponsScreenState extends State<CouponsScreen> {
     if (items.isEmpty) {
       return const StatusBody.empty(
         title: 'Nenhum cupom',
-        message: 'Crie um cupom para conceder créditos bônus.',
+        message: 'Crie um cupom de créditos ou de desconto na compra.',
       );
     }
     return NotificationListener<ScrollNotification>(
@@ -142,7 +143,7 @@ class _CouponCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final vip = coupon.creditKind == AdminCouponCreditKind.vip;
+    final accent = couponAccent(coupon);
     final statusColor = switch (coupon.statusLabel) {
       'Ativo' => AdminTheme.green,
       'Expirado' => AdminTheme.pink,
@@ -160,12 +161,12 @@ class _CouponCard extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: (vip ? AdminTheme.purple : AdminTheme.orange).withValues(alpha: 0.12),
+                color: accent.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                vip ? Icons.workspace_premium_outlined : Icons.monetization_on_outlined,
-                color: vip ? AdminTheme.purple : AdminTheme.orange,
+                couponIcon(coupon),
+                color: accent,
               ),
             ),
             const SizedBox(width: 12),
@@ -199,7 +200,7 @@ class _CouponCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${coupon.creditAmount} crédito(s) · ${coupon.creditKind.label}',
+                    '${couponCreditsLabel(coupon)} · ${couponTypeLabel(coupon)}',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   const SizedBox(height: 4),

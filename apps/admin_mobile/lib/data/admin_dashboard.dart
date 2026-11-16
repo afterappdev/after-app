@@ -136,34 +136,122 @@ class RankedCategory {
   }
 }
 
+class StoreDownloadSide {
+  const StoreDownloadSide({
+    required this.total,
+    required this.available,
+  });
+
+  final int? total;
+  final bool available;
+
+  factory StoreDownloadSide.fromJson(Map<String, dynamic> json) {
+    return StoreDownloadSide(
+      total: json['total'] == null ? null : asInt(json['total']),
+      available: json['available'] == true,
+    );
+  }
+
+  static const unavailable = StoreDownloadSide(total: null, available: false);
+}
+
+class AdminStoreDownloads {
+  const AdminStoreDownloads({
+    required this.googlePlay,
+    required this.appStore,
+  });
+
+  final StoreDownloadSide googlePlay;
+  final StoreDownloadSide appStore;
+
+  factory AdminStoreDownloads.fromJson(Map<String, dynamic> json) {
+    final play = json['googlePlay'];
+    final app = json['appStore'];
+    return AdminStoreDownloads(
+      googlePlay: play is Map
+          ? StoreDownloadSide.fromJson(Map<String, dynamic>.from(play))
+          : StoreDownloadSide.unavailable,
+      appStore: app is Map
+          ? StoreDownloadSide.fromJson(Map<String, dynamic>.from(app))
+          : StoreDownloadSide.unavailable,
+    );
+  }
+
+  static const unavailable = AdminStoreDownloads(
+    googlePlay: StoreDownloadSide.unavailable,
+    appStore: StoreDownloadSide.unavailable,
+  );
+}
+
+class AdminSiteTraffic {
+  const AdminSiteTraffic({required this.total, required this.available});
+
+  final int? total;
+  final bool available;
+
+  factory AdminSiteTraffic.fromJson(Map<String, dynamic> json) {
+    return AdminSiteTraffic(
+      total: json['total'] == null ? null : asInt(json['total']),
+      available: json['available'] == true,
+    );
+  }
+
+  static const unavailable = AdminSiteTraffic(total: null, available: false);
+}
+
 class AdminDashboardInsights {
   const AdminDashboardInsights({
     required this.topCitiesNewAccounts,
     required this.topVenueCategories,
+    required this.topCitiesRegistered,
+    required this.topVenueCategoriesRegistered,
     required this.reportsCreated,
+    required this.reportsPending,
   });
 
   final List<RankedCity> topCitiesNewAccounts;
   final List<RankedCategory> topVenueCategories;
+  final List<RankedCity> topCitiesRegistered;
+  final List<RankedCategory> topVenueCategoriesRegistered;
   final int reportsCreated;
+  final int reportsPending;
 
   static const empty = AdminDashboardInsights(
     topCitiesNewAccounts: [],
     topVenueCategories: [],
+    topCitiesRegistered: [],
+    topVenueCategoriesRegistered: [],
     reportsCreated: 0,
+    reportsPending: 0,
   );
 
   factory AdminDashboardInsights.fromJson(Map<String, dynamic> json) {
+    final monthCities = AdminDashboard._list(
+      json['topCitiesNewAccounts'],
+      RankedCity.fromJson,
+    );
+    final monthCategories = AdminDashboard._list(
+      json['topVenueCategories'],
+      RankedCategory.fromJson,
+    );
+    final registeredCities = AdminDashboard._list(
+      json['topCitiesRegistered'],
+      RankedCity.fromJson,
+    );
+    final registeredCategories = AdminDashboard._list(
+      json['topVenueCategoriesRegistered'],
+      RankedCategory.fromJson,
+    );
     return AdminDashboardInsights(
-      topCitiesNewAccounts: AdminDashboard._list(
-        json['topCitiesNewAccounts'],
-        RankedCity.fromJson,
-      ),
-      topVenueCategories: AdminDashboard._list(
-        json['topVenueCategories'],
-        RankedCategory.fromJson,
-      ),
+      topCitiesNewAccounts: monthCities,
+      topVenueCategories: monthCategories,
+      topCitiesRegistered:
+          registeredCities.isNotEmpty ? registeredCities : monthCities,
+      topVenueCategoriesRegistered: registeredCategories.isNotEmpty
+          ? registeredCategories
+          : monthCategories,
       reportsCreated: asInt(json['reportsCreated']),
+      reportsPending: asInt(json['reportsPending']),
     );
   }
 }
@@ -305,6 +393,8 @@ class AdminDashboard {
     required this.recentSales,
     required this.warnings,
     this.insights = AdminDashboardInsights.empty,
+    this.storeDownloads = AdminStoreDownloads.unavailable,
+    this.siteTraffic = AdminSiteTraffic.unavailable,
   });
 
   final AdminDashboardTotals totals;
@@ -315,9 +405,13 @@ class AdminDashboard {
   final List<RecentSale> recentSales;
   final List<AdminDashboardWarning> warnings;
   final AdminDashboardInsights insights;
+  final AdminStoreDownloads storeDownloads;
+  final AdminSiteTraffic siteTraffic;
 
   factory AdminDashboard.fromJson(Map<String, dynamic> json) {
     final insightsRaw = json['insights'];
+    final storeRaw = json['storeDownloads'];
+    final siteRaw = json['siteTraffic'];
     return AdminDashboard(
       totals: AdminDashboardTotals.fromJson(asMap(json['totals'])),
       month: AdminDashboardMonth.fromJson(asMap(json['month'])),
@@ -331,6 +425,12 @@ class AdminDashboard {
               Map<String, dynamic>.from(insightsRaw),
             )
           : AdminDashboardInsights.empty,
+      storeDownloads: storeRaw is Map
+          ? AdminStoreDownloads.fromJson(Map<String, dynamic>.from(storeRaw))
+          : AdminStoreDownloads.unavailable,
+      siteTraffic: siteRaw is Map
+          ? AdminSiteTraffic.fromJson(Map<String, dynamic>.from(siteRaw))
+          : AdminSiteTraffic.unavailable,
     );
   }
 

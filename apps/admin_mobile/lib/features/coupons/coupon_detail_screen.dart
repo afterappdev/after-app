@@ -6,6 +6,7 @@ import '../../core/network/api_client.dart';
 import '../../core/widgets/status_body.dart';
 import '../../data/admin_api.dart';
 import '../../data/admin_coupon.dart';
+import 'coupons_overview.dart';
 
 class CouponDetailScreen extends StatefulWidget {
   const CouponDetailScreen({super.key, required this.id});
@@ -116,7 +117,7 @@ class _CouponDetailScreenState extends State<CouponDetailScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                '${coupon.creditAmount} crédito(s) bônus · ${coupon.creditKind.label}',
+                '${couponCreditsLabel(coupon)} · ${couponTypeLabel(coupon)}',
               ),
               const SizedBox(height: 4),
               Text('Status: ${coupon.statusLabel}'),
@@ -157,7 +158,11 @@ class _CouponDetailScreenState extends State<CouponDetailScreen> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     Text(
-                      '${row.creditAmount} crédito(s) · ${row.creditKind.label}',
+                      row.creditAmount == null
+                          ? (row.discountAmountBrl != null
+                              ? 'Desconto ${formatBrl(row.discountAmountBrl!)} na compra'
+                              : 'Desconto na compra')
+                          : '${row.creditAmount} crédito(s) · ${row.creditKind.label}',
                     ),
                     Text(formatDateTime(row.redeemedAt)),
                   ],

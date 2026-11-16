@@ -6,7 +6,13 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { CouponCreditKind, Prisma } from '@prisma/client';
+import {
+  CouponCreditKind,
+  CreditCouponKind,
+  Prisma,
+  PurchaseDiscountType,
+} from '@prisma/client';
+import { toMoneyNumber } from '../admin/money';
 import { AdminPushService } from '../admin/push/admin-push.service';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,8 +31,12 @@ export type CouponWriteInput = {
 
 export type CouponCreateInput = CouponWriteInput & {
   code: string;
-  creditAmount: number;
+  kind?: CreditCouponKind | `${CreditCouponKind}`;
+  creditAmount?: number;
   creditKind?: CouponCreditKind | `${CouponCreditKind}`;
+  discountType?: PurchaseDiscountType | `${PurchaseDiscountType}`;
+  discountPercent?: number;
+  discountAmountBrl?: number;
 };
 
 @Injectable()
@@ -86,28 +96,41 @@ export class CouponsService {
 
   async create(admin: AuthUser, input: CouponCreateInput) {
     const code = this.requireCode(input.code);
-    const creditAmount = this.requireCredits(input.creditAmount);
+    const kind = this.normalizeCouponKind(input.kind);
     const startsAt = this.parseOptionalDate(input.startsAt, 'início');
     const expiresAt = this.parseOptionalDate(input.expiresAt, 'validade');
     this.assertWindow(startsAt, expiresAt);
     const maxRedemptions = this.parseOptionalLimit(input.maxRedemptions);
     const maxRedemptionsPerVenue = input.maxRedemptionsPerVenue ?? 1;
     this.assertLimit(maxRedemptionsPerVenue, 'limite por estabelecimento');
-    const creditKind = this.normalizeCreditKind(input.creditKind);
+
+    const data: Prisma.CreditCouponCreateInput = {
+      code,
+      kind,
+      active: input.active ?? true,
+      startsAt,
+      expiresAt,
+      maxRedemptions,
+      maxRedemptionsPerVenue,
+      createdById: admin.userId,
+    };
+
+    if (kind === CreditCouponKind.PURCHASE_DISCOUNT) {
+      const discount = this.requireDiscountInput(input);
+      data.creditAmount = null;
+      data.discountType = discount.discountType;
+      data.discountPercent = discount.discountPercent;
+      data.discountAmountBrl = discount.discountAmountBrl;
+    } else {
+      const creditAmount = this.requireCredits(input.creditAmount);
+      const creditKind = this.normalizeCreditKind(input.creditKind);
+      data.creditAmount = creditAmount;
+      data.creditKind = creditKind;
+    }
 
     try {
       const created = await this.prisma.creditCoupon.create({
-        data: {
-          code,
-          creditAmount,
-          creditKind,
-          active: input.active ?? true,
-          startsAt,
-          expiresAt,
-          maxRedemptions,
-          maxRedemptionsPerVenue,
-          createdById: admin.userId,
-        },
+        data,
         include: { _count: { select: { redemptions: true } } },
       });
       return this.toSummary(created);
@@ -373,8 +396,12 @@ export class CouponsService {
   private toSummary(row: {
     id: string;
     code: string;
-    creditAmount: number;
+    kind: CreditCouponKind;
+    creditAmount: number | null;
     creditKind: CouponCreditKind;
+    discountType: PurchaseDiscountType | null;
+    discountPercent: number | null;
+    discountAmountBrl: Prisma.Decimal | null;
     active: boolean;
     startsAt: Date | null;
     expiresAt: Date | null;
@@ -387,8 +414,15 @@ export class CouponsService {
     return {
       id: row.id,
       code: row.code,
+      kind: row.kind,
       creditAmount: row.creditAmount,
       creditKind: row.creditKind,
+      discountType: row.discountType,
+      discountPercent: row.discountPercent,
+      discountAmountBrl:
+        row.discountAmountBrl == null
+          ? null
+          : toMoneyNumber(row.discountAmountBrl),
       active: row.active,
       startsAt: row.startsAt,
       expiresAt: row.expiresAt,
@@ -398,6 +432,62 @@ export class CouponsService {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
+  }
+
+  private normalizeCouponKind(
+    raw: CreditCouponKind | `${CreditCouponKind}` | undefined,
+  ): CreditCouponKind {
+    if (raw == null || raw === CreditCouponKind.CREDIT_GRANT) {
+      return CreditCouponKind.CREDIT_GRANT;
+    }
+    if (raw === CreditCouponKind.PURCHASE_DISCOUNT) {
+      return CreditCouponKind.PURCHASE_DISCOUNT;
+    }
+    throw new BadRequestException('Tipo de cupom inválido.');
+  }
+
+  private requireDiscountInput(input: CouponCreateInput): {
+    discountType: PurchaseDiscountType;
+    discountPercent: number | null;
+    discountAmountBrl: Prisma.Decimal | null;
+  } {
+    const discountType = this.normalizeDiscountType(input.discountType);
+    if (discountType === PurchaseDiscountType.PERCENT) {
+      const pct = input.discountPercent;
+      if (pct == null || !Number.isInteger(pct) || pct < 1 || pct > 100) {
+        throw new BadRequestException(
+          'Informe um percentual de desconto entre 1 e 100.',
+        );
+      }
+      return {
+        discountType,
+        discountPercent: pct,
+        discountAmountBrl: null,
+      };
+    }
+    const value = input.discountAmountBrl;
+    if (value == null || !Number.isFinite(value) || value < 0.01) {
+      throw new BadRequestException(
+        'Informe um valor de desconto maior que zero.',
+      );
+    }
+    return {
+      discountType,
+      discountPercent: null,
+      discountAmountBrl: new Prisma.Decimal(value.toFixed(2)),
+    };
+  }
+
+  private normalizeDiscountType(
+    raw: PurchaseDiscountType | `${PurchaseDiscountType}` | undefined,
+  ): PurchaseDiscountType {
+    if (raw === PurchaseDiscountType.FIXED_BRL) {
+      return PurchaseDiscountType.FIXED_BRL;
+    }
+    if (raw === PurchaseDiscountType.PERCENT || raw == null) {
+      return PurchaseDiscountType.PERCENT;
+    }
+    throw new BadRequestException('Forma de desconto inválida.');
   }
 
   private requireCode(raw: string | undefined): string {

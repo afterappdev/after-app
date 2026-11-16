@@ -1,5 +1,14 @@
 import 'json_util.dart';
 
+enum AdminCouponKind { creditGrant, purchaseDiscount }
+
+AdminCouponKind adminCouponKindFromApi(String? raw) {
+  if (raw?.toUpperCase() == 'PURCHASE_DISCOUNT') {
+    return AdminCouponKind.purchaseDiscount;
+  }
+  return AdminCouponKind.creditGrant;
+}
+
 enum AdminCouponCreditKind { common, vip }
 
 AdminCouponCreditKind adminCouponCreditKindFromApi(String? raw) {
@@ -13,12 +22,30 @@ extension AdminCouponCreditKindLabels on AdminCouponCreditKind {
   String get apiValue => this == AdminCouponCreditKind.vip ? 'VIP' : 'COMMON';
 }
 
+enum AdminPurchaseDiscountType { percent, fixedBrl }
+
+AdminPurchaseDiscountType adminPurchaseDiscountTypeFromApi(String? raw) {
+  if (raw?.toUpperCase() == 'FIXED_BRL') {
+    return AdminPurchaseDiscountType.fixedBrl;
+  }
+  return AdminPurchaseDiscountType.percent;
+}
+
+extension AdminPurchaseDiscountTypeLabels on AdminPurchaseDiscountType {
+  String get apiValue =>
+      this == AdminPurchaseDiscountType.fixedBrl ? 'FIXED_BRL' : 'PERCENT';
+}
+
 class AdminCoupon {
   const AdminCoupon({
     required this.id,
     required this.code,
-    required this.creditAmount,
+    required this.kind,
+    this.creditAmount,
     this.creditKind = AdminCouponCreditKind.common,
+    this.discountType,
+    this.discountPercent,
+    this.discountAmountBrl,
     required this.active,
     required this.maxRedemptionsPerVenue,
     required this.redemptionCount,
@@ -30,8 +57,12 @@ class AdminCoupon {
 
   final String id;
   final String code;
-  final int creditAmount;
+  final AdminCouponKind kind;
+  final int? creditAmount;
   final AdminCouponCreditKind creditKind;
+  final AdminPurchaseDiscountType? discountType;
+  final int? discountPercent;
+  final double? discountAmountBrl;
   final bool active;
   final DateTime? startsAt;
   final DateTime? expiresAt;
@@ -52,8 +83,20 @@ class AdminCoupon {
     return AdminCoupon(
       id: asString(json['id']),
       code: asString(json['code']),
-      creditAmount: asInt(json['creditAmount']),
+      kind: adminCouponKindFromApi(json['kind']?.toString()),
+      creditAmount: json['creditAmount'] == null
+          ? null
+          : asInt(json['creditAmount']),
       creditKind: adminCouponCreditKindFromApi(json['creditKind']?.toString()),
+      discountType: json['discountType'] == null
+          ? null
+          : adminPurchaseDiscountTypeFromApi(json['discountType']?.toString()),
+      discountPercent: json['discountPercent'] == null
+          ? null
+          : asInt(json['discountPercent']),
+      discountAmountBrl: json['discountAmountBrl'] == null
+          ? null
+          : asMoney(json['discountAmountBrl']),
       active: json['active'] == true,
       startsAt: asDateTime(json['startsAt']),
       expiresAt: asDateTime(json['expiresAt']),
@@ -72,18 +115,22 @@ class AdminCouponRedemption {
     required this.id,
     required this.venueId,
     required this.venueName,
-    required this.creditAmount,
+    this.creditAmount,
     this.creditKind = AdminCouponCreditKind.common,
+    this.discountAmountBrl,
     required this.redeemedAt,
     this.city,
+    this.purchaseId,
   });
 
   final String id;
   final String venueId;
   final String venueName;
   final String? city;
-  final int creditAmount;
+  final int? creditAmount;
   final AdminCouponCreditKind creditKind;
+  final double? discountAmountBrl;
+  final String? purchaseId;
   final DateTime redeemedAt;
 
   factory AdminCouponRedemption.fromJson(Map<String, dynamic> json) {
@@ -92,8 +139,14 @@ class AdminCouponRedemption {
       venueId: asString(json['venueId']),
       venueName: asString(json['venueName']),
       city: json['city']?.toString(),
-      creditAmount: asInt(json['creditAmount']),
+      creditAmount: json['creditAmount'] == null
+          ? null
+          : asInt(json['creditAmount']),
       creditKind: adminCouponCreditKindFromApi(json['creditKind']?.toString()),
+      discountAmountBrl: json['discountAmountBrl'] == null
+          ? null
+          : asMoney(json['discountAmountBrl']),
+      purchaseId: json['purchaseId']?.toString(),
       redeemedAt: asDateTime(json['redeemedAt']) ?? DateTime.now(),
     );
   }

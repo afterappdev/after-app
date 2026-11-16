@@ -443,6 +443,12 @@ model CreditPurchase {
   refundAudits        CreditRefundAudit[]
   creditObligation    CreditObligation?
   creditLedgerEntries CreditLedgerEntry[]
+  listPriceBrl        Decimal?                @db.Decimal(10, 2)
+  discountCouponId    String?
+  discountCoupon      CreditCoupon?           @relation(fields: [discountCouponId], references: [id], onDelete: SetNull)
+  discountCouponCode  String?
+  discountAmountBrl   Decimal?                @db.Decimal(10, 2)
+  discountRedemption  CreditCouponRedemption?
 
   @@unique([id, venueId])
   @@index([venueId, createdAt])
@@ -543,14 +549,28 @@ enum CouponCreditKind {
   VIP
 }
 
-/// Bonus credits granted by an admin code. Not a store discount.
+enum CreditCouponKind {
+  CREDIT_GRANT
+  PURCHASE_DISCOUNT
+}
+
+enum PurchaseDiscountType {
+  PERCENT
+  FIXED_BRL
+}
+
+/// Admin coupon: bonus credits (resgate) or discount on credit purchase (checkout).
 model CreditCoupon {
   id                     String                   @id @default(cuid())
   /// Stored trimmed and uppercased. Unique regardless of client casing.
   code                   String                   @unique
-  creditAmount           Int
+  kind                   CreditCouponKind         @default(CREDIT_GRANT)
+  creditAmount           Int?
   /// COMMON credits go to CreditWallet.balance; VIP credits go to vipBalance.
   creditKind             CouponCreditKind         @default(COMMON)
+  discountType           PurchaseDiscountType?
+  discountPercent        Int?
+  discountAmountBrl      Decimal?                 @db.Decimal(10, 2)
   active                 Boolean                  @default(true)
   startsAt               DateTime?
   expiresAt              DateTime?
@@ -561,26 +581,31 @@ model CreditCoupon {
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
   redemptions            CreditCouponRedemption[]
+  purchases              CreditPurchase[]
 
   @@index([active, expiresAt])
+  @@index([kind, active])
 }
 
 model CreditCouponRedemption {
-  id           String       @id @default(cuid())
-  couponId     String
-  coupon       CreditCoupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  id                String              @id @default(cuid())
+  couponId          String
+  coupon            CreditCoupon        @relation(fields: [couponId], references: [id], onDelete: Restrict)
   /// Null after the venue account is deleted. The snapshot columns keep the audit trail.
-  venueId      String?
-  venue        Venue?       @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  venueId           String?
+  venue             Venue?              @relation(fields: [venueId], references: [id], onDelete: SetNull)
   /// Public establishment name at redemption. Not the owner's personal data.
   venueNameSnapshot String
   /// Public city at redemption.
   venueCitySnapshot String?
-  creditAmount Int
+  purchaseId        String?             @unique
+  purchase          CreditPurchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  creditAmount      Int?
+  discountAmountBrl Decimal?            @db.Decimal(10, 2)
   /// Snapshot of the coupon kind at redemption time.
-  creditKind   CouponCreditKind @default(COMMON)
-  redeemedAt   DateTime     @default(now())
-  ledgerEntries CreditLedgerEntry[]
+  creditKind        CouponCreditKind    @default(COMMON)
+  redeemedAt        DateTime            @default(now())
+  ledgerEntries     CreditLedgerEntry[]
 
   @@unique([id, venueId])
   @@index([couponId, redeemedAt])

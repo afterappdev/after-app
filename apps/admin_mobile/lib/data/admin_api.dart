@@ -85,8 +85,12 @@ abstract class AdminApi {
 
   Future<AdminCoupon> createCoupon({
     required String code,
-    required int creditAmount,
+    required AdminCouponKind kind,
+    int? creditAmount,
     AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
+    AdminPurchaseDiscountType? discountType,
+    int? discountPercent,
+    double? discountAmountBrl,
     bool active = true,
     String? startsAt,
     String? expiresAt,
@@ -338,8 +342,12 @@ class HttpAdminApi implements AdminApi {
   @override
   Future<AdminCoupon> createCoupon({
     required String code,
-    required int creditAmount,
+    required AdminCouponKind kind,
+    int? creditAmount,
     AdminCouponCreditKind creditKind = AdminCouponCreditKind.common,
+    AdminPurchaseDiscountType? discountType,
+    int? discountPercent,
+    double? discountAmountBrl,
     bool active = true,
     String? startsAt,
     String? expiresAt,
@@ -348,19 +356,31 @@ class HttpAdminApi implements AdminApi {
   }) async {
     final start = startsAt != null && startsAt.isNotEmpty ? startsAt : null;
     final end = expiresAt != null && expiresAt.isNotEmpty ? expiresAt : null;
-    final data = await client.post(
-      '/admin/coupons',
-      body: {
-        'code': code.trim(),
-        'creditAmount': creditAmount,
-        'creditKind': creditKind.apiValue,
-        'active': active,
-        'maxRedemptionsPerVenue': maxRedemptionsPerVenue,
-        'startsAt': ?start,
-        'expiresAt': ?end,
-        'maxRedemptions': ?maxRedemptions,
-      },
-    );
+    final body = <String, dynamic>{
+      'code': code.trim(),
+      'kind': kind == AdminCouponKind.purchaseDiscount
+          ? 'PURCHASE_DISCOUNT'
+          : 'CREDIT_GRANT',
+      'active': active,
+      'maxRedemptionsPerVenue': maxRedemptionsPerVenue,
+      if (start != null) 'startsAt': start,
+      if (end != null) 'expiresAt': end,
+      if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
+    };
+    if (kind == AdminCouponKind.creditGrant) {
+      body['creditAmount'] = creditAmount;
+      body['creditKind'] = creditKind.apiValue;
+    } else {
+      final selected =
+          discountType ?? AdminPurchaseDiscountType.percent;
+      body['discountType'] = selected.apiValue;
+      if (selected == AdminPurchaseDiscountType.percent) {
+        body['discountPercent'] = discountPercent;
+      } else {
+        body['discountAmountBrl'] = discountAmountBrl;
+      }
+    }
+    final data = await client.post('/admin/coupons', body: body);
     return AdminCoupon.fromJson(Map<String, dynamic>.from(data as Map));
   }
 

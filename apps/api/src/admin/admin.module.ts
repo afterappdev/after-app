@@ -18,9 +18,17 @@ import { AdminReportsController } from './reports/admin-reports.controller';
 import { AdminReportsService } from './reports/admin-reports.service';
 import { AdminSalesController } from './sales/admin-sales.controller';
 import { AdminSalesService } from './sales/admin-sales.service';
+import { AdminStoreMetricsModule } from './store-metrics/admin-store-metrics.module';
 
 @Module({
-  imports: [AuthModule, UsersModule, AdminPushModule, UploadsModule, CouponsModule],
+  imports: [
+    AuthModule,
+    UsersModule,
+    AdminPushModule,
+    UploadsModule,
+    CouponsModule,
+    AdminStoreMetricsModule,
+  ],
   controllers: [
     AdminAuthController,
     AdminMeController,

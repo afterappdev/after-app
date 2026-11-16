@@ -24,7 +24,11 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
   DateTime? _startsAt;
   DateTime? _expiresAt;
   bool _active = true;
+  AdminCouponKind _couponKind = AdminCouponKind.creditGrant;
   AdminCouponCreditKind _creditKind = AdminCouponCreditKind.common;
+  AdminPurchaseDiscountType _discountType = AdminPurchaseDiscountType.percent;
+  final _discountPercent = TextEditingController();
+  final _discountBrl = TextEditingController();
   bool _saving = false;
 
   @override
@@ -33,14 +37,28 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
     _credits.dispose();
     _maxTotal.dispose();
     _maxPerVenue.dispose();
+    _discountPercent.dispose();
+    _discountBrl.dispose();
     super.dispose();
   }
 
   String? _validate() {
     if (_code.text.trim().isEmpty) return 'Informe o código do cupom.';
-    final credits = int.tryParse(_credits.text.trim());
-    if (credits == null || credits <= 0) {
-      return 'A quantidade de créditos deve ser maior que zero.';
+    if (_couponKind == AdminCouponKind.creditGrant) {
+      final credits = int.tryParse(_credits.text.trim());
+      if (credits == null || credits <= 0) {
+        return 'A quantidade de créditos deve ser maior que zero.';
+      }
+    } else if (_discountType == AdminPurchaseDiscountType.percent) {
+      final pct = int.tryParse(_discountPercent.text.trim());
+      if (pct == null || pct <= 0 || pct > 100) {
+        return 'Informe um percentual entre 1 e 100.';
+      }
+    } else {
+      final value = double.tryParse(_discountBrl.text.trim().replaceAll(',', '.'));
+      if (value == null || value <= 0) {
+        return 'Informe um valor de desconto maior que zero.';
+      }
     }
     final perVenue = int.tryParse(_maxPerVenue.text.trim());
     if (perVenue == null || perVenue <= 0) {
@@ -91,7 +109,9 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Criar cupom?'),
         content: Text(
-          'O código ${_code.text.trim().toUpperCase()} concederá ${_credits.text.trim()} crédito(s) ${_creditKind.label}.',
+          _couponKind == AdminCouponKind.creditGrant
+              ? 'O código ${_code.text.trim().toUpperCase()} concederá ${_credits.text.trim()} crédito(s) ${_creditKind.label}.'
+              : 'O código ${_code.text.trim().toUpperCase()} dará desconto na compra de créditos (PIX/cartão).',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Voltar')),
@@ -104,8 +124,21 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
     try {
       await context.read<AdminApi>().createCoupon(
         code: _code.text.trim(),
-        creditAmount: int.parse(_credits.text.trim()),
+        kind: _couponKind,
+        creditAmount: _couponKind == AdminCouponKind.creditGrant
+            ? int.parse(_credits.text.trim())
+            : null,
         creditKind: _creditKind,
+        discountType:
+            _couponKind == AdminCouponKind.purchaseDiscount ? _discountType : null,
+        discountPercent: _couponKind == AdminCouponKind.purchaseDiscount &&
+                _discountType == AdminPurchaseDiscountType.percent
+            ? int.parse(_discountPercent.text.trim())
+            : null,
+        discountAmountBrl: _couponKind == AdminCouponKind.purchaseDiscount &&
+                _discountType == AdminPurchaseDiscountType.fixedBrl
+            ? double.parse(_discountBrl.text.trim().replaceAll(',', '.'))
+            : null,
         active: _active,
         startsAt: _iso(_startsAt),
         expiresAt: _iso(_expiresAt),
@@ -177,7 +210,7 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
                           ),
                         ),
                         Text(
-                          'Crie um cupom de créditos',
+                          'Crie cupom de créditos ou de desconto na compra',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -209,6 +242,43 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
                       helper: 'Use letras e números, sem espaços.',
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  _SectionLabel(
+                    icon: Icons.layers_outlined,
+                    title: 'Créditos ou desconto na compra',
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'Créditos',
+                          description: 'Bônus para o estabelecimento resgatar',
+                          icon: Icons.monetization_on_outlined,
+                          accent: AdminTheme.orange,
+                          selected: _couponKind == AdminCouponKind.creditGrant,
+                          onTap: () => setState(
+                            () => _couponKind = AdminCouponKind.creditGrant,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'Desconto',
+                          description: 'Reduz valor na compra de créditos',
+                          icon: Icons.local_offer_outlined,
+                          accent: AdminTheme.green,
+                          selected:
+                              _couponKind == AdminCouponKind.purchaseDiscount,
+                          onTap: () => setState(
+                            () => _couponKind = AdminCouponKind.purchaseDiscount,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_couponKind == AdminCouponKind.creditGrant) ...[
                   const SizedBox(height: 20),
                   _SectionLabel(icon: Icons.category_outlined, title: 'Tipo de crédito'),
                   const SizedBox(height: 10),
@@ -250,6 +320,55 @@ class _CouponFormScreenState extends State<CouponFormScreen> {
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: _inputDecoration(hint: 'Ex.: 5'),
                   ),
+                  ] else ...[
+                  const SizedBox(height: 20),
+                  _SectionLabel(icon: Icons.percent_outlined, title: 'Forma do desconto'),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'Percentual',
+                          description: 'Ex.: 10% do pacote',
+                          icon: Icons.percent,
+                          accent: AdminTheme.purple,
+                          selected:
+                              _discountType == AdminPurchaseDiscountType.percent,
+                          onTap: () => setState(
+                            () => _discountType = AdminPurchaseDiscountType.percent,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _CreditKindCard(
+                          label: 'Valor fixo',
+                          description: 'Desconto em reais',
+                          icon: Icons.attach_money,
+                          accent: AdminTheme.pink,
+                          selected:
+                              _discountType == AdminPurchaseDiscountType.fixedBrl,
+                          onTap: () => setState(
+                            () =>
+                                _discountType = AdminPurchaseDiscountType.fixedBrl,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _discountType == AdminPurchaseDiscountType.percent
+                        ? _discountPercent
+                        : _discountBrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: _inputDecoration(
+                      hint: _discountType == AdminPurchaseDiscountType.percent
+                          ? 'Ex.: 10'
+                          : 'Ex.: 5.00',
+                    ),
+                  ),
+                  ],
                   const SizedBox(height: 20),
                   Row(
                     children: [

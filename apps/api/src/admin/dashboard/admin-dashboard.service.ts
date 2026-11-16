@@ -15,9 +15,14 @@ import {
 import { toMoneyNumber } from '../money';
 import {
   reportsCreatedInRange,
+  reportsPendingCount,
   topCitiesNewAccountsInRange,
+  topCitiesRegistered,
   topVenueCategoriesCreatedInRange,
+  topVenueCategoriesRegistered,
 } from '../aggregates';
+import { SiteTrafficMetricsService } from '../store-metrics/site-traffic-metrics.service';
+import { StoreDownloadMetricsService } from '../store-metrics/store-download-metrics.service';
 import { formatYearMonth, monthRangeUtc, type YearMonth } from '../timezone';
 
 const CONSUMER_ROLES: Role[] = [Role.USER, Role.VENUE];
@@ -30,7 +35,11 @@ export type AdminDashboardWarning = {
 
 @Injectable()
 export class AdminDashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storeDownloads: StoreDownloadMetricsService,
+    private readonly siteTraffic: SiteTrafficMetricsService,
+  ) {}
 
   async getDashboard(now = new Date(), selected?: YearMonth) {
     const ym = selected ?? currentYearMonth(now);
@@ -50,6 +59,11 @@ export class AdminDashboardService {
       topCities,
       topCategories,
       reportsCreated,
+      reportsPending,
+      topCitiesRegisteredAll,
+      topCategoriesRegisteredAll,
+      storeDownloads,
+      siteTraffic,
     ] = await Promise.all([
       this.prisma.user.groupBy({
         by: ['role'],
@@ -111,6 +125,11 @@ export class AdminDashboardService {
       topCitiesNewAccountsInRange(this.prisma, start, end),
       topVenueCategoriesCreatedInRange(this.prisma, start, end),
       reportsCreatedInRange(this.prisma, start, end),
+      reportsPendingCount(this.prisma),
+      topCitiesRegistered(this.prisma),
+      topVenueCategoriesRegistered(this.prisma),
+      this.storeDownloads.getMetrics(),
+      this.siteTraffic.getMetric(),
     ]);
 
     const users =
@@ -174,10 +193,15 @@ export class AdminDashboardService {
         venueName: sale.venue.name,
       })),
       warnings,
+      storeDownloads,
+      siteTraffic,
       insights: {
         topCitiesNewAccounts: topCities,
         topVenueCategories: topCategories,
+        topCitiesRegistered: topCitiesRegisteredAll,
+        topVenueCategoriesRegistered: topCategoriesRegisteredAll,
         reportsCreated,
+        reportsPending,
       },
     };
   }

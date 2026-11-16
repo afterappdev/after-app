@@ -278,6 +278,41 @@ function sale(
   };
 }
 
+const dashboardStoreDownloads = {
+  getMetrics: jest.fn().mockResolvedValue({
+    googlePlay: {
+      total: null,
+      available: false,
+      source: 'google_play',
+      fetchedAt: null,
+    },
+    appStore: {
+      total: null,
+      available: false,
+      source: 'app_store',
+      fetchedAt: null,
+    },
+  }),
+};
+
+const dashboardSiteTraffic = {
+  getMetric: jest.fn().mockResolvedValue({
+    total: null,
+    available: false,
+    metric: 'visits',
+    periodDays: 30,
+    fetchedAt: null,
+  }),
+};
+
+function dashboardService(prisma: unknown) {
+  return new AdminDashboardService(
+    prisma as never,
+    dashboardStoreDownloads as never,
+    dashboardSiteTraffic as never,
+  );
+}
+
 describe('AdminDashboardService metrics', () => {
   const now = new Date('2026-09-03T15:00:00.000Z');
   const september = monthRangeUtc({ year: 2026, month: 9 });
@@ -329,7 +364,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.yearMonth).toBe('2026-09');
@@ -366,7 +401,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
     expect(result.month.paidPurchases).toBe(1);
     expect(result.month.creditsSold).toBe(5);
@@ -386,7 +421,7 @@ describe('AdminDashboardService metrics', () => {
         { role: Role.ADMIN, createdAt: septemberPaid },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.totals).toEqual({ accounts: 2, users: 1, venues: 1 });
@@ -420,7 +455,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
     expect(result.month.paidPurchases).toBe(1);
     expect(result.month.creditsSold).toBe(10);
@@ -438,7 +473,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
     expect(result.month.paidPurchases).toBe(0);
     expect(result.warnings).toEqual([
@@ -498,7 +533,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.paidPurchases).toBe(4);
@@ -526,7 +561,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(34.9);
@@ -565,7 +600,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(115);
@@ -597,7 +632,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(34.9);
@@ -629,7 +664,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.refundPosition.partialRefundsBrl).toBe(0);
@@ -667,7 +702,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(34.9);
@@ -691,7 +726,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(0);
@@ -737,7 +772,7 @@ describe('AdminDashboardService metrics', () => {
       ],
       [],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.refundPosition.yearMonth).toBe('2026-09');
@@ -787,7 +822,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.revenueByProvider).toEqual({
@@ -855,7 +890,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.month.grossRevenueBrl).toBe(0);
@@ -913,7 +948,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.refundPosition.partialRefundsBrl).toBe(10);
@@ -968,7 +1003,7 @@ describe('AdminDashboardService metrics', () => {
         },
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.refundPosition.paidSalesBrl).toBe(69.8);
@@ -1044,7 +1079,7 @@ describe('AdminDashboardService metrics', () => {
         review('stub', { provider: 'stub' }),
       ],
     );
-    const service = new AdminDashboardService(prisma as never);
+    const service = dashboardService(prisma);
     const result = await service.getDashboard(now);
 
     expect(result.refundPosition.paidSalesBrl).toBe(69.8);

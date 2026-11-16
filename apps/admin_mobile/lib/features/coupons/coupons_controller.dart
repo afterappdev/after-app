@@ -12,10 +12,14 @@ class CouponsController extends ChangeNotifier {
   final List<AdminCoupon> items = [];
   int page = 1;
   int totalPages = 1;
+  int total = 0;
+  final int pageLimit = 20;
   bool loading = false;
   bool loadingMore = false;
   String? error;
   String filter = 'all';
+
+  int get totalItems => total;
 
   List<AdminCoupon> get visibleItems {
     return items.where((c) {
@@ -35,6 +39,28 @@ class CouponsController extends ChangeNotifier {
   void setFilter(String value) {
     filter = value;
     notifyListeners();
+  }
+
+  Future<void> goToPage(int target) async {
+    if (target < 1 || target > totalPages || target == page) return;
+    page = target;
+    loading = true;
+    error = null;
+    notifyListeners();
+    try {
+      final result = await api.coupons(page: target, limit: pageLimit);
+      items
+        ..clear()
+        ..addAll(result.items);
+      total = result.total;
+      totalPages = result.totalPages == 0 ? 1 : result.totalPages;
+      error = null;
+    } on ApiException catch (e) {
+      error = e.message;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> load({bool refresh = true}) async {
@@ -58,6 +84,7 @@ class CouponsController extends ChangeNotifier {
         items.addAll(result.items);
       }
       page = result.page;
+      total = result.total;
       totalPages = result.totalPages == 0 ? 1 : result.totalPages;
       error = null;
     } on ApiException catch (e) {

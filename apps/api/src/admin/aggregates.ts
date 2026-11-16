@@ -1,4 +1,4 @@
-import { AgeBand, Prisma, Role } from '@prisma/client';
+import { AgeBand, Prisma, ReportStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   realSaleWhere,
@@ -88,6 +88,53 @@ export async function reportsCreatedInRange(
   return prisma.report.count({
     where: { createdAt: { gte: start, lt: end } },
   });
+}
+
+export async function reportsPendingCount(prisma: PrismaService): Promise<number> {
+  return prisma.report.count({ where: { status: ReportStatus.PENDING } });
+}
+
+export async function topCitiesRegistered(
+  prisma: PrismaService,
+  limit = 3,
+): Promise<RankedCity[]> {
+  const rows = await prisma.$queryRaw<
+    Array<{ city: string; state: string; count: bigint }>
+  >`
+    SELECT u.city, u.state, COUNT(*)::bigint AS count
+    FROM "User" u
+    WHERE u.role IN ('USER', 'VENUE')
+      AND NULLIF(TRIM(u.city), '') IS NOT NULL
+      AND NULLIF(TRIM(u.state), '') IS NOT NULL
+    GROUP BY u.city, u.state
+    ORDER BY count DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => ({
+    city: row.city,
+    state: row.state,
+    count: Number(row.count),
+  }));
+}
+
+export async function topVenueCategoriesRegistered(
+  prisma: PrismaService,
+  limit = 3,
+): Promise<RankedCategory[]> {
+  const rows = await prisma.$queryRaw<
+    Array<{ category: string; count: bigint }>
+  >`
+    SELECT COALESCE(NULLIF(TRIM(v.category), ''), 'Não informado') AS category,
+           COUNT(*)::bigint AS count
+    FROM "Venue" v
+    GROUP BY category
+    ORDER BY count DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => ({
+    category: row.category,
+    count: Number(row.count),
+  }));
 }
 
 export async function countUsersByAgeBand(

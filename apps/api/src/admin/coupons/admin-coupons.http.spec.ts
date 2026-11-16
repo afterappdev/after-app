@@ -108,6 +108,27 @@ describe('Admin coupons HTTP', () => {
     expect(coupons.create).not.toHaveBeenCalled();
   });
 
+  it('admin aceita kind no corpo', async () => {
+    coupons.create.mockResolvedValue({
+      id: 'c-kind',
+      code: 'GANHOU2',
+      kind: 'CREDIT_GRANT',
+      creditAmount: 2,
+      creditKind: 'COMMON',
+    });
+    await request(app.getHttpServer())
+      .post('/admin/coupons')
+      .set('Authorization', `Bearer ${token(Role.ADMIN)}`)
+      .send({
+        code: 'GANHOU2',
+        kind: 'CREDIT_GRANT',
+        creditAmount: 2,
+        creditKind: 'COMMON',
+      })
+      .expect(201);
+    expect(coupons.create).toHaveBeenCalled();
+  });
+
   it('admin cria cupom VIP', async () => {
     coupons.create.mockResolvedValue({
       id: 'c-vip',

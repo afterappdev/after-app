@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { CouponCreditKind, Prisma } from '@prisma/client';
+import { CouponCreditKind, CreditCouponKind, Prisma } from '@prisma/client';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { CouponsService } from './coupons.service';
 
@@ -24,8 +24,12 @@ function coupon(overrides: Record<string, unknown> = {}) {
   return {
     id: 'coupon-1',
     code: 'AFTER2',
+    kind: CreditCouponKind.CREDIT_GRANT,
     creditAmount: 2,
     creditKind: CouponCreditKind.COMMON,
+    discountType: null,
+    discountPercent: null,
+    discountAmountBrl: null,
     active: true,
     startsAt: null,
     expiresAt: null,
