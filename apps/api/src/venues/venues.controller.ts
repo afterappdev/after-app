@@ -89,6 +89,11 @@ class UpdateVenueDto {
 
   @IsOptional()
   hoursJson?: object;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  menuUrl?: string | null;
 }
 
 class GeocodeVenueQueryDto {

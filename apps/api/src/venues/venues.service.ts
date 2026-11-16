@@ -30,6 +30,7 @@ import {
 import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
+import { normalizeMenuUrl } from './venue-menu-url';
 import {
   linkHistoricalWelcomeClaim,
   readWelcomeCreditSecret,
@@ -491,6 +492,7 @@ export class VenuesService {
       lng?: number;
       contacts?: Prisma.InputJsonValue | object;
       hoursJson?: Prisma.InputJsonValue | object;
+      menuUrl?: string | null;
     },
   ) {
     await assertUserAccountActive(this.prisma, userId);
@@ -504,7 +506,7 @@ export class VenuesService {
 
     const previousLogo = venue.logoUrl;
     const previousCover = venue.coverUrl;
-    const { lat: requestedLat, lng: requestedLng, ...rest } = data;
+    const { lat: requestedLat, lng: requestedLng, menuUrl, ...rest } = data;
     if (typeof rest.category === 'string') {
       const trimmed = rest.category.trim();
       if (!trimmed) {
@@ -532,7 +534,11 @@ export class VenuesService {
       lat?: number;
       lng?: number;
       ibgeCityId?: number | null;
+      menuUrl?: string | null;
     } = { ...rest };
+    if (menuUrl !== undefined) {
+      updateData.menuUrl = normalizeMenuUrl(menuUrl);
+    }
     const cityChanged =
       data.city !== undefined && data.city.trim() !== venue.city.trim();
     const stateChanged =
