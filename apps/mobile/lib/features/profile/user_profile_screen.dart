@@ -709,6 +709,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                       ],
                     ),
+                    if (user?.isVenue != true) ...[
+                      const SizedBox(height: 22),
+                      const PromoAlertsPreference(),
+                    ],
                     const SizedBox(height: 22),
                     const _SectionLabel('MINHA CONTA'),
                     const SizedBox(height: 8),
@@ -730,10 +734,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         ),
                       ],
                     ),
-                    if (user?.isVenue != true) ...[
-                      const SizedBox(height: 22),
-                      const PromoAlertsPreference(),
-                    ],
                     const SizedBox(height: 22),
                     const _SectionLabel('SEGURANÇA'),
                     const SizedBox(height: 8),
