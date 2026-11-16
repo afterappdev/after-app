@@ -166,6 +166,8 @@ export class VenuesController {
   search(
     @CurrentUser() user?: AuthUser,
     @Query('q') q?: string,
+    @Query('city') city?: string,
+    @Query('state') state?: string,
     @Query('category') category?: string,
     @Query('minRating') minRating?: string,
     @Query('acceptsMealVoucher') acceptsMealVoucher?: string,
@@ -192,6 +194,8 @@ export class VenuesController {
     return this.venuesService.searchByName(
       q ?? '',
       {
+        city: city?.trim() || undefined,
+        state: state?.trim() || undefined,
         category: category?.trim() || undefined,
         minRating: Number.isFinite(rating) && rating > 0 ? rating : undefined,
         acceptsMealVoucher: acceptsMealVoucher === 'true',

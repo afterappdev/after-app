@@ -174,14 +174,28 @@ export class VenuesService {
   async searchByName(
     query: string,
     filters: {
+      city?: string;
+      state?: string;
       category?: string;
       minRating?: number;
     } & Partial<Record<AmenityBoolKey, boolean>> = {},
     user?: AuthUser | null,
   ) {
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
+    const term = normalize(query);
+    const scopeCity = filters.city?.trim();
+    const scopeState = filters.state?.trim();
+    const cityScope =
+      !term && scopeCity
+        ? {
+            city: { equals: scopeCity, mode: 'insensitive' as const },
+            ...(scopeState
+              ? { state: { equals: scopeState, mode: 'insensitive' as const } }
+              : {}),
+          }
+        : {};
     const venues = await this.prisma.venue.findMany({
-      where: publicVenueWhere(blockedIds),
+      where: { ...publicVenueWhere(blockedIds), ...cityScope },
       select: {
         id: true,
         name: true,
@@ -197,7 +211,6 @@ export class VenuesService {
       orderBy: { name: 'asc' },
     });
 
-    const term = normalize(query);
     let ranked = term
       ? venues
           .map((venue) => {

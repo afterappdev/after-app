@@ -461,10 +461,16 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _searchingVenues = true);
     try {
       final api = context.read<ApiClient>();
+      final user = context.read<AuthController>().user;
+      final trimmed = query.trim();
+      final profileCity = user?.city?.trim() ?? '';
+      final profileUf = user?.state?.trim() ?? '';
       final data = await api.get(
         '/venues/search',
         query: {
-          'q': query.trim(),
+          'q': trimmed,
+          if (trimmed.isEmpty && profileCity.isNotEmpty) 'city': profileCity,
+          if (trimmed.isEmpty && profileUf.isNotEmpty) 'state': profileUf,
           if (_venueFilters.category != null)
             'category': _venueFilters.category!,
           if (_venueFilters.minRating > 0)
