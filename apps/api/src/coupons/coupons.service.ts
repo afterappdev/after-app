@@ -104,7 +104,7 @@ export class CouponsService {
     const maxRedemptionsPerVenue = input.maxRedemptionsPerVenue ?? 1;
     this.assertLimit(maxRedemptionsPerVenue, 'limite por estabelecimento');
 
-    const data: Prisma.CreditCouponCreateInput = {
+    const data: Prisma.CreditCouponUncheckedCreateInput = {
       code,
       kind,
       active: input.active ?? true,
@@ -273,6 +273,12 @@ export class CouponsService {
       if (coupon.expiresAt && coupon.expiresAt <= now) {
         throw new BadRequestException('Este cupom expirou.');
       }
+      if (coupon.kind === CreditCouponKind.PURCHASE_DISCOUNT) {
+        throw new BadRequestException(
+          'Este cupom concede desconto na compra. Use o checkout, não o resgate.',
+        );
+      }
+      const creditAmount = this.requireCredits(coupon.creditAmount ?? undefined);
 
       const total = await tx.creditCouponRedemption.count({
         where: { couponId: coupon.id },
@@ -298,7 +304,7 @@ export class CouponsService {
           venueId: venue.id,
           venueNameSnapshot: venue.name,
           venueCitySnapshot: venue.city,
-          creditAmount: coupon.creditAmount,
+          creditAmount,
           creditKind: coupon.creditKind,
         },
       });
@@ -306,7 +312,7 @@ export class CouponsService {
       const wallet = this.applyCouponCredits(
         await tx.creditWallet.findUnique({ where: { venueId: venue.id } }),
         venue.id,
-        coupon.creditAmount,
+        creditAmount,
         coupon.creditKind,
       );
       const persisted = await tx.creditWallet.upsert({
@@ -319,7 +325,7 @@ export class CouponsService {
         redemptionId: redemption.id,
         couponId: coupon.id,
         code: coupon.code,
-        creditAmount: coupon.creditAmount,
+        creditAmount,
         creditKind: coupon.creditKind,
         balance: persisted.balance,
         vipBalance: persisted.vipBalance,
