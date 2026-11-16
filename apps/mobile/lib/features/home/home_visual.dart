@@ -36,9 +36,9 @@ class HomeVisual {
   static const imageHeight = 108.0;
 
   /// Corpo fixo do card de promoção (barra + imagem + texto).
-  /// Miolo do card de promoção: 3 linhas na descrição (sem avaliações).
-  static const feedCardTextHeight = 141.0;
-  static const feedCardBodyHeight = 161.0;
+  /// Miolo do card de promoção: 2 linhas na descrição (sem avaliações).
+  static const feedCardTextHeight = 127.0;
+  static const feedCardBodyHeight = 147.0;
 
   /// Card de local: altura do miolo = logo quadrada + padding (sem folga abaixo).
   static const venueCardTextHeight = imageHeight;
@@ -49,7 +49,7 @@ class HomeVisual {
   static const promoImageWidth = 98.0;
   static const promoImageHeight = feedCardTextHeight;
   static const feedMetaLineHeight = 14.0;
-  static const promoDetailHeight = 41.25;
+  static const promoDetailHeight = 27.5;
   static const feedDescriptionHeight = 27.5;
   static const titleFontSize = 16.0;
   static const dayChipHeight = 36.0;
@@ -124,6 +124,21 @@ String? homeLocationCaption({
       profileCity.trim().isNotEmpty;
   if (sameCity) return HomeVisual.accountCityCaption;
   return HomeVisual.selectedCityCaption;
+}
+
+/// True when the home feed is scoped to the account city (not a temporary browse).
+bool homeFeedMatchesProfileCity({
+  required String displayedCity,
+  required String displayedUf,
+  required String profileCity,
+  required String profileUf,
+}) {
+  final city = displayedCity.trim().toLowerCase();
+  final uf = displayedUf.trim().toUpperCase();
+  final pc = profileCity.trim().toLowerCase();
+  final pu = profileUf.trim().toUpperCase();
+  if (pc.isEmpty) return city.isEmpty;
+  return city == pc && (pu.isEmpty || uf.isEmpty || uf == pu);
 }
 
 /// Selo de oferta sobre a imagem. Só quando o texto já traz um sinal comercial

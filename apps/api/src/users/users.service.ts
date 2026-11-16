@@ -223,6 +223,7 @@ export class UsersService {
       state?: string;
       avatarUrl?: string | null;
       ageBand?: string | null;
+      ibgeCityId?: number;
     },
   ) {
     const current = await this.prisma.user.findUnique({
@@ -233,8 +234,23 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
+    let patchCity = data.city;
+    let patchState = data.state;
     let ibgeCityId: number | null | undefined;
-    if (data.city !== undefined || data.state !== undefined) {
+    if (data.ibgeCityId !== undefined) {
+      if (!this.locations) {
+        throw new BadRequestException('Serviço de localização indisponível');
+      }
+      const municipality = await this.locations.municipalityById(
+        data.ibgeCityId,
+      );
+      if (!municipality) {
+        throw new BadRequestException('Cidade inválida');
+      }
+      patchCity = municipality.name;
+      patchState = municipality.uf;
+      ibgeCityId = municipality.id;
+    } else if (data.city !== undefined || data.state !== undefined) {
       const city = data.city ?? current.city;
       const state = data.state ?? current.state;
       ibgeCityId = this.locations
@@ -250,8 +266,8 @@ export class UsersService {
       where: { id: userId },
       data: {
         name: data.name,
-        city: data.city,
-        state: data.state,
+        city: patchCity,
+        state: patchState,
         avatarUrl:
           data.avatarUrl === undefined ? undefined : data.avatarUrl || null,
         ...(ibgeCityId !== undefined ? { ibgeCityId } : {}),

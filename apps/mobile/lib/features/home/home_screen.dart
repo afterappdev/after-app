@@ -643,6 +643,27 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchVenues(_venueQuery.text);
   }
 
+  void _resetToProfileCityIfNeeded() {
+    final user = context.read<AuthController>().user;
+    final profileCity = user?.city?.trim() ?? '';
+    final profileUf = user?.state?.trim() ?? '';
+    final matches = homeFeedMatchesProfileCity(
+      displayedCity: _selectedCity,
+      displayedUf: _selectedUf,
+      profileCity: profileCity,
+      profileUf: profileUf,
+    );
+    if (matches) return;
+    setState(() {
+      _selectedCity = profileCity;
+      _selectedUf = profileUf;
+      _pickingCity = false;
+    });
+    _cityQuery.clear();
+    _cityFocus.unfocus();
+    _load();
+  }
+
   void _onNavTap(int index) {
     if (index == 2) {
       final isVenue = context.read<AuthController>().user?.isVenue == true;
@@ -655,6 +676,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (index == 3) {
       _openProfile();
+      return;
+    }
+    if (index == 0) {
+      setState(() {
+        _navIndex = 0;
+        _pickingCity = false;
+      });
+      _venueFocus.unfocus();
+      _resetToProfileCityIfNeeded();
       return;
     }
     final openingSearch = index == 1 && _navIndex != 1;

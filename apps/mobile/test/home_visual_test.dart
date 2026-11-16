@@ -4,6 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('home feed reconhece cidade de cadastro vs navegação', () {
+    expect(
+      homeFeedMatchesProfileCity(
+        displayedCity: 'São Paulo',
+        displayedUf: 'SP',
+        profileCity: 'São Paulo',
+        profileUf: 'SP',
+      ),
+      isTrue,
+    );
+    expect(
+      homeFeedMatchesProfileCity(
+        displayedCity: 'Campinas',
+        displayedUf: 'SP',
+        profileCity: 'São Paulo',
+        profileUf: 'SP',
+      ),
+      isFalse,
+    );
+  });
+
   test('coluna da home aproveita a largura sem esticar os cards', () {
     expect(HomeVisual.columnMaxWidth(360), 480);
     expect(HomeVisual.columnMaxWidth(800), 540);

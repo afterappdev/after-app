@@ -631,7 +631,7 @@ class _FixedPromoDetail extends StatelessWidget {
         alignment: Alignment.topLeft,
         child: Text(
           text,
-          maxLines: 3,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: AppTheme.fontFamily,

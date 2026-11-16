@@ -381,7 +381,7 @@ class CreditsField extends StatelessWidget {
             helperText: helper,
             helperMaxLines: 2,
             hintText: hint,
-            counterText: maxLines > 1 ? null : '',
+            counterText: maxLength != null ? null : (maxLines > 1 ? null : ''),
             prefixIcon: prefixIcon,
             suffixIcon: suffixIcon,
             filled: true,

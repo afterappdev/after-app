@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 /** Limits chosen so title + description fit collapsed mobile push notifications. */
-export const PROMO_PUBLICATION_TITLE_MAX = 30;
+export const PROMO_PUBLICATION_TITLE_MAX = 20;
 export const PROMO_PUBLICATION_DESCRIPTION_MAX = 60;
 
 export function assertBannerCopyForPush(

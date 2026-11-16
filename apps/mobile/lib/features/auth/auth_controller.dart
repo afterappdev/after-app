@@ -554,18 +554,21 @@ class AuthController extends ChangeNotifier {
 
   Future<void> updateProfile({
     required String name,
-    required String state,
-    required String city,
+    String? state,
+    String? city,
+    int? ibgeCityId,
     String? avatarUrl,
     String? ageBand,
   }) async {
-    final data = await api.patch('/users/me', body: {
+    final body = <String, dynamic>{
       'name': name.trim(),
-      'state': state.trim(),
-      'city': city.trim(),
       'avatarUrl': avatarUrl ?? '',
-      'ageBand': ?ageBand,
-    }) as Map<String, dynamic>;
+      if (ageBand != null) 'ageBand': ageBand,
+      if (state != null && state.trim().isNotEmpty) 'state': state.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (ibgeCityId != null) 'ibgeCityId': ibgeCityId,
+    };
+    final data = await api.patch('/users/me', body: body) as Map<String, dynamic>;
     await _updateStoredUser(
       user!.copyWith(
         name: data['name'] as String,

@@ -9,7 +9,15 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { IsIn, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 import {
   AuthUser,
   CurrentUser,
@@ -43,6 +51,12 @@ class UpdateUserDto {
   @IsOptional()
   @IsIn(AGE_BANDS, { message: AGE_BAND_INVALID })
   ageBand?: (typeof AGE_BANDS)[number];
+
+  /** IBGE municipality id from GET /locations/cities (sets city + UF server-side). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  ibgeCityId?: number;
 }
 
 class SetActiveVenueDto {

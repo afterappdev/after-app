@@ -132,6 +132,16 @@ export class LocationsService {
     }
   }
 
+  async municipalityById(id: number): Promise<CitySearchDto | null> {
+    if (!Number.isInteger(id) || id <= 0) return null;
+    try {
+      const cities = await this.loadAllCities();
+      return cities.find((city) => city.id === id) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private async loadAllCities(): Promise<CitySearchDto[]> {
     if (this.allCitiesCache) {
       return this.allCitiesCache;

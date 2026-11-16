@@ -2,6 +2,6 @@
 class PublicationPushLimits {
   const PublicationPushLimits._();
 
-  static const titleMax = 30;
+  static const titleMax = 20;
   static const descriptionMax = 60;
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -29,9 +31,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   late final TextEditingController _name;
   String? _selectedUf;
   String? _selectedCity;
-  List<Map<String, dynamic>> _states = [];
-  List<Map<String, dynamic>> _cities = [];
-  bool _loadingCities = false;
+  int? _selectedIbgeId;
   bool _saving = false;
   bool _uploadingPhoto = false;
   String? _avatarUrl;
@@ -48,10 +48,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _selectedUf = user?.state;
     _selectedCity = user?.city;
     _avatarUrl = user?.avatarUrl;
-    _loadStates();
-    if (_selectedUf != null && _selectedUf!.isNotEmpty) {
-      _loadCities(_selectedUf!, keepCity: true);
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       context.read<NotificationsController>().refresh();
@@ -90,14 +86,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  String _stateLabel(String? uf) {
-    if (uf == null || uf.isEmpty) return 'Selecione';
-    for (final s in _states) {
-      if (s['uf'] == uf) {
-        return s['name']?.toString() ?? uf;
-      }
-    }
-    return uf;
+  String _cityLabel() {
+    final city = _selectedCity?.trim() ?? '';
+    if (city.isEmpty) return 'Selecione sua cidade';
+    final uf = _selectedUf?.trim() ?? '';
+    return uf.isEmpty ? city : '$city, $uf';
   }
 
   void _showSnack(String message) {
@@ -202,58 +195,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _loadStates() async {
-    try {
-      final api = context.read<ApiClient>();
-      final data = await api.get('/locations/states') as List<dynamic>;
-      if (!mounted) return;
-      setState(() {
-        _states = data.cast<Map<String, dynamic>>();
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      _showSnack(e.message);
-    }
-  }
-
-  Future<void> _loadCities(String uf, {bool keepCity = false}) async {
-    setState(() {
-      _loadingCities = true;
-      if (!keepCity) _selectedCity = null;
-      _cities = [];
-    });
-    try {
-      final api = context.read<ApiClient>();
-      final data =
-          await api.get('/locations/states/$uf/cities') as List<dynamic>;
-      if (!mounted) return;
-      setState(() {
-        _cities = data.cast<Map<String, dynamic>>();
-        _loadingCities = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _loadingCities = false);
-      _showSnack(e.message);
-    }
-  }
-
   Future<void> _save() async {
     final name = _name.text.trim();
     if (name.length < 2) {
       _showSnack('Preencha o nome.');
       return;
     }
-    if (_selectedUf == null || _selectedCity == null) {
-      _showSnack('Selecione o estado e a cidade.');
+    if (_selectedCity == null || _selectedCity!.trim().isEmpty) {
+      _showSnack('Selecione sua cidade.');
       return;
     }
     setState(() => _saving = true);
     try {
       await context.read<AuthController>().updateProfile(
             name: name,
-            state: _selectedUf!,
-            city: _selectedCity!,
+            state: _selectedUf,
+            city: _selectedCity,
+            ibgeCityId: _selectedIbgeId,
             avatarUrl: _avatarUrl,
             ageBand: _ageBand,
           );
@@ -349,72 +307,115 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     });
   }
 
-  Future<void> _pickState() async {
-    if (_states.isEmpty) await _loadStates();
-    if (!mounted) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return ListView.builder(
-          itemCount: _states.length,
-          itemBuilder: (_, index) {
-            final item = _states[index];
-            final uf = item['uf']?.toString() ?? '';
-            final name = item['name']?.toString() ?? uf;
-            return ListTile(
-              title: Text(
-                name,
-                style: const TextStyle(fontFamily: AppTheme.fontFamily),
-              ),
-              trailing: uf == _selectedUf
-                  ? const Icon(Icons.check, color: _accent)
-                  : null,
-              onTap: () => Navigator.pop(ctx, uf),
-            );
-          },
-        );
-      },
-    );
-    if (selected == null || selected == _selectedUf) return;
-    setState(() => _selectedUf = selected);
-    await _loadCities(selected);
-  }
-
   Future<void> _pickCity() async {
-    if (_selectedUf == null) {
-      _showSnack('Selecione o estado primeiro.');
-      return;
+    final query = TextEditingController(text: _cityLabel());
+    var results = <Map<String, dynamic>>[];
+    var searching = false;
+    var searchGen = 0;
+    Timer? debounce;
+
+    Future<void> runSearch(void Function(void Function()) setSheet, String q) async {
+      final gen = ++searchGen;
+      setSheet(() => searching = true);
+      try {
+        final data = await context.read<ApiClient>().get(
+              '/locations/cities',
+              query: {'q': q.trim()},
+            );
+        if (gen != searchGen) return;
+        setSheet(() {
+          results = (data as List<dynamic>)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          searching = false;
+        });
+      } on ApiException {
+        if (gen != searchGen) return;
+        setSheet(() {
+          results = [];
+          searching = false;
+        });
+      }
     }
-    if (_cities.isEmpty && !_loadingCities) {
-      await _loadCities(_selectedUf!, keepCity: true);
-    }
-    if (!mounted) return;
-    if (_loadingCities) return;
-    final selected = await showModalBottomSheet<String>(
+
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) {
-        return ListView.builder(
-          itemCount: _cities.length,
-          itemBuilder: (_, index) {
-            final name = _cities[index]['name']?.toString() ?? '';
-            return ListTile(
-              title: Text(
-                name,
-                style: const TextStyle(fontFamily: AppTheme.fontFamily),
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            if (results.isEmpty && !searching) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                runSearch(setSheet, query.text);
+              });
+            }
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 8,
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
               ),
-              trailing: name == _selectedCity
-                  ? const Icon(Icons.check, color: _accent)
-                  : null,
-              onTap: () => Navigator.pop(ctx, name),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: query,
+                    autofocus: true,
+                    style: const TextStyle(fontFamily: AppTheme.fontFamily),
+                    decoration: const InputDecoration(
+                      hintText: 'Busque sua cidade',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                    onChanged: (value) {
+                      debounce?.cancel();
+                      debounce = Timer(const Duration(milliseconds: 280), () {
+                        runSearch(setSheet, value);
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  if (searching) const LinearProgressIndicator(minHeight: 2),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      itemBuilder: (_, index) {
+                        final item = results[index];
+                        final name = item['name']?.toString() ?? '';
+                        final uf = item['uf']?.toString() ?? '';
+                        final label = uf.isEmpty ? name : '$name, $uf';
+                        return ListTile(
+                          title: Text(
+                            label,
+                            style: const TextStyle(fontFamily: AppTheme.fontFamily),
+                          ),
+                          onTap: () => Navigator.pop(ctx, item),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             );
           },
         );
       },
     );
-    if (selected == null) return;
-    setState(() => _selectedCity = selected);
+    debounce?.cancel();
+    query.dispose();
+    if (picked == null || !mounted) return;
+    final name = picked['name']?.toString().trim();
+    if (name == null || name.isEmpty) return;
+    final uf = picked['uf']?.toString().trim();
+    final rawId = picked['id'];
+    final ibgeId = rawId is int ? rawId : int.tryParse('$rawId');
+    setState(() {
+      _selectedCity = name;
+      _selectedUf = uf;
+      _selectedIbgeId = ibgeId;
+    });
   }
 
   Future<void> _changePassword() async {
@@ -694,17 +695,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         const _RowDivider(),
                         _ProfileRow(
                           icon: Icons.location_on_outlined,
-                          label: 'Estado',
-                          value: _stateLabel(_selectedUf),
-                          onTap: _pickState,
-                        ),
-                        const _RowDivider(),
-                        _ProfileRow(
-                          icon: Icons.apartment_outlined,
                           label: 'Cidade',
-                          value: _loadingCities
-                              ? 'Carregando...'
-                              : (_selectedCity ?? 'Selecione sua cidade'),
+                          value: _cityLabel(),
                           onTap: _pickCity,
                         ),
                         const _RowDivider(),
