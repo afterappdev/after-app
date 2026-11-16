@@ -12,6 +12,7 @@ import '../coupons/coupon_detail_screen.dart';
 import '../coupons/coupon_form_screen.dart';
 import '../coupons/coupons_screen.dart';
 import '../dashboard/dashboard_screen.dart';
+import '../finance/finance_screen.dart';
 import '../reports/report_detail_screen.dart';
 import '../reports/reports_screen.dart';
 import '../sales/sale_detail_screen.dart';
@@ -126,6 +127,7 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
       AdminSection.sales => SaleDetailScreen(id: id),
       AdminSection.coupons => CouponDetailScreen(id: id),
       AdminSection.reports => ReportDetailScreen(id: id),
+      AdminSection.finance => null,
       AdminSection.dashboard => null,
     };
   }
@@ -141,6 +143,7 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
           SalesScreen(),
           CouponsScreen(),
           ReportsScreen(),
+          FinanceScreen(),
         ],
       ),
     );
@@ -191,6 +194,11 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
               icon: Icon(Icons.flag_outlined),
               selectedIcon: Icon(Icons.flag),
               label: 'Denúncias',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.account_balance_wallet_outlined),
+              selectedIcon: Icon(Icons.account_balance_wallet),
+              label: 'Finanças',
             ),
           ],
         ),

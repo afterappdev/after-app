@@ -154,6 +154,7 @@ model User {
   sessionInvalidatedAt      DateTime?
   /// Bumped when global session invalidation occurs; normal JWTs carry claim sv.
   sessionVersion            Int                      @default(0)
+  adminFinanceEntriesCreated AdminFinanceEntry[]
 
   @@index([role, createdAt])
   @@index([ibgeCityId])
@@ -169,6 +170,35 @@ enum AdminPushEventType {
   PURCHASE_PAID
   REPORT_CREATED
   COUPON_REDEEMED
+}
+
+enum AdminFinanceDirection {
+  INFLOW
+  OUTFLOW
+}
+
+enum AdminFinanceCategory {
+  VENDAS
+  INFRAESTRUTURA
+  MARKETING
+  OUTROS
+}
+
+/// Manual admin ledger rows (entrada/saída). Sales still come from CreditPurchase.
+model AdminFinanceEntry {
+  id          String                 @id @default(cuid())
+  direction   AdminFinanceDirection
+  description String
+  amountBrl   Decimal                @db.Decimal(10, 2)
+  category    AdminFinanceCategory
+  occurredAt  DateTime
+  notes       String?
+  createdById String?
+  createdBy   User?                  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime               @default(now())
+
+  @@index([occurredAt])
+  @@index([direction, occurredAt])
 }
 
 /// FCM registration tokens for After Admin devices. Not used by the consumer app.

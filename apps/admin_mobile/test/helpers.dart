@@ -7,6 +7,7 @@ import 'package:after_admin/data/admin_sales_summary.dart';
 import 'package:after_admin/data/admin_coupon.dart';
 import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/data/admin_dashboard.dart';
+import 'package:after_admin/data/admin_finance.dart';
 import 'package:after_admin/data/admin_report.dart';
 import 'package:after_admin/data/admin_sale.dart';
 import 'package:after_admin/data/admin_session.dart';
@@ -274,6 +275,48 @@ class FakeAdminApi implements AdminApi {
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<AdminFinanceOverview> financeOverview({required String yearMonth}) async {
+    return AdminFinanceOverview(
+      yearMonth: yearMonth,
+      month: const AdminFinanceTotals(
+        inflowBrl: 0,
+        inflowCount: 0,
+        outflowBrl: 0,
+        outflowCount: 0,
+      ),
+      monthBalanceBrl: 0,
+      accumulatedBalanceBrl: 0,
+      accumulatedThrough: null,
+      daily: const [],
+    );
+  }
+
+  @override
+  Future<Paginated<AdminFinanceMovement>> financeMovements({
+    required String yearMonth,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    return Paginated(
+      items: const [],
+      page: page,
+      limit: limit,
+      total: 0,
+      totalPages: 0,
+    );
+  }
+
+  @override
+  Future<void> createFinanceEntry({
+    required AdminFinanceDirection direction,
+    required String description,
+    required double amountBrl,
+    required AdminFinanceCategory category,
+    required String occurredAt,
+    String? notes,
+  }) async {}
 }
 
 AdminDashboard sampleDashboard({

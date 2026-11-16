@@ -335,6 +335,7 @@ class AdminSidebar extends StatelessWidget {
     (Icons.payments_outlined, Icons.payments, 'Vendas'),
     (Icons.confirmation_number_outlined, Icons.confirmation_number, 'Cupons'),
     (Icons.flag_outlined, Icons.flag, 'Denúncias'),
+    (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Finanças'),
   ];
 
   @override

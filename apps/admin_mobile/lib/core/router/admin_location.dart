@@ -1,4 +1,4 @@
-enum AdminSection { dashboard, accounts, sales, coupons, reports }
+enum AdminSection { dashboard, accounts, sales, coupons, reports, finance }
 
 class AdminLocation {
   const AdminLocation({
@@ -26,6 +26,7 @@ class AdminLocation {
       AdminSection.sales => '/vendas',
       AdminSection.coupons => '/cupons',
       AdminSection.reports => '/denuncias',
+      AdminSection.finance => '/financas',
     };
     final id = detailId;
     if (id == null || id.isEmpty) return base;
@@ -59,6 +60,7 @@ AdminLocation parseAdminLocation(String raw) {
       ),
     'cupons' => AdminLocation(section: AdminSection.coupons, detailId: rest),
     'denuncias' => AdminLocation(section: AdminSection.reports, detailId: rest),
+    'financas' => AdminLocation(section: AdminSection.finance),
     'perfil' => const AdminLocation(
         section: AdminSection.dashboard,
         settings: true,

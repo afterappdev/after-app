@@ -4,6 +4,7 @@ import 'package:after_admin/data/admin_api.dart';
 import 'package:after_admin/features/accounts/accounts_controller.dart';
 import 'package:after_admin/features/coupons/coupons_controller.dart';
 import 'package:after_admin/features/dashboard/dashboard_controller.dart';
+import 'package:after_admin/features/finance/finance_controller.dart';
 import 'package:after_admin/features/reports/reports_controller.dart';
 import 'package:after_admin/features/sales/sales_controller.dart';
 import 'package:after_admin/features/shell/admin_shell.dart';
@@ -82,6 +83,7 @@ void main() {
 
     expect(parseAdminLocation('/cupons/novo').newCoupon, isTrue);
     expect(parseAdminLocation('/denuncias/r1').section, AdminSection.reports);
+    expect(parseAdminLocation('/financas').section, AdminSection.finance);
     expect(parseAdminLocation('/perfil').settings, isTrue);
     expect(parseAdminLocation('/baixar').section, AdminSection.dashboard);
     expect(parseAdminLocation('').fragment, '/dashboard');
@@ -151,6 +153,7 @@ Widget _shell(FakeAdminApi api, {AdminLocation? location}) {
       ChangeNotifierProvider(create: (_) => SalesController(api)),
       ChangeNotifierProvider(create: (_) => CouponsController(api)),
       ChangeNotifierProvider(create: (_) => ReportsController(api)),
+      ChangeNotifierProvider(create: (_) => FinanceController(api)),
     ],
     child: MaterialApp(
       home: AdminShell(initialLocation: location ?? AdminLocation.dashboard),

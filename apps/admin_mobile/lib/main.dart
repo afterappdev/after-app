@@ -17,6 +17,7 @@ import 'features/auth/auth_controller.dart';
 import 'features/coupons/coupons_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_controller.dart';
+import 'features/finance/finance_controller.dart';
 import 'features/reports/reports_controller.dart';
 import 'features/sales/sales_controller.dart';
 import 'features/shell/admin_shell.dart';
@@ -52,6 +53,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (_) => SalesController(api)),
         ChangeNotifierProvider(create: (_) => CouponsController(api)),
         ChangeNotifierProvider(create: (_) => ReportsController(api)),
+        ChangeNotifierProvider(create: (_) => FinanceController(api)),
       ],
       child: const AfterAdminApp(),
     ),

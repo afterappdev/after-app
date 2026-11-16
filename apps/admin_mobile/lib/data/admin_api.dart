@@ -4,6 +4,7 @@ import 'admin_accounts_stats.dart';
 import 'admin_city_scope.dart';
 import 'admin_coupon.dart';
 import 'admin_dashboard.dart';
+import 'admin_finance.dart';
 import 'admin_sales_summary.dart';
 import 'admin_report.dart';
 import 'admin_sale.dart';
@@ -105,6 +106,23 @@ abstract class AdminApi {
     String? expiresAt,
     int? maxRedemptions,
     int? maxRedemptionsPerVenue,
+  });
+
+  Future<AdminFinanceOverview> financeOverview({required String yearMonth});
+
+  Future<Paginated<AdminFinanceMovement>> financeMovements({
+    required String yearMonth,
+    int page = 1,
+    int limit = 20,
+  });
+
+  Future<void> createFinanceEntry({
+    required AdminFinanceDirection direction,
+    required String description,
+    required double amountBrl,
+    required AdminFinanceCategory category,
+    required String occurredAt,
+    String? notes,
   });
 }
 
@@ -404,5 +422,56 @@ class HttpAdminApi implements AdminApi {
       },
     );
     return AdminCoupon.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<AdminFinanceOverview> financeOverview({required String yearMonth}) async {
+    final data = await client.get(
+      '/admin/finance/overview',
+      query: {'yearMonth': yearMonth},
+    );
+    return AdminFinanceOverview.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  @override
+  Future<Paginated<AdminFinanceMovement>> financeMovements({
+    required String yearMonth,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final data = await client.get(
+      '/admin/finance/movements',
+      query: {
+        'yearMonth': yearMonth,
+        'page': '$page',
+        'limit': '$limit',
+      },
+    );
+    return Paginated.fromJson(
+      Map<String, dynamic>.from(data as Map),
+      AdminFinanceMovement.fromJson,
+    );
+  }
+
+  @override
+  Future<void> createFinanceEntry({
+    required AdminFinanceDirection direction,
+    required String description,
+    required double amountBrl,
+    required AdminFinanceCategory category,
+    required String occurredAt,
+    String? notes,
+  }) async {
+    await client.post(
+      '/admin/finance/entries',
+      body: {
+        'direction': direction.apiValue,
+        'description': description,
+        'amountBrl': amountBrl,
+        'category': category.apiValue,
+        'occurredAt': occurredAt,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      },
+    );
   }
 }
