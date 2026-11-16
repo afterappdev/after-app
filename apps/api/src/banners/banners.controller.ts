@@ -57,12 +57,12 @@ class CreateBannerDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(80)
+  @MaxLength(30)
   title?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(180)
+  @MaxLength(60)
   description?: string;
 
   @IsOptional()

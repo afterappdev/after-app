@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PromoContentKind } from '../promo-push/promo-push.copy';
+import { assertBannerCopyForPush } from '../promo-push/promo-push.limits';
 import {
   NoopPromoPushPublisher,
   PROMO_PUSH_PUBLISHER,
@@ -110,6 +111,8 @@ export class BannersService {
     idempotencyKeyRaw?: string,
     vipPublications?: VipPublicationPlan[],
   ) {
+    assertBannerCopyForPush(title, description);
+
     const now = new Date();
     const vipInput = normalizeVipPublicationInput(
       vipDates,
@@ -315,6 +318,8 @@ export class BannersService {
           venueName: venue.name,
           bannerId: banner.id,
           promoTitle: title,
+          promoDescription: description,
+          contentKind: contentKind ?? null,
         });
       } catch {
         // Publishing still succeeds if inbox fan-out fails.

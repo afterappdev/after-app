@@ -90,6 +90,17 @@ class _Switch extends StatelessWidget {
             promo.statusMessage!,
             style: const TextStyle(color: Color(0xFFB45309), fontSize: 13),
           ),
+          if (promo.statusMessage ==
+              PromoPushCoordinator.permissionBlockedMessage) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: promo.openSystemNotificationSettings,
+                child: const Text('Abrir ajustes do aparelho'),
+              ),
+            ),
+          ],
         ],
       ],
     );

@@ -382,10 +382,12 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Column(
-                  children: [
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                  child: Column(
+                    children: [
                     Row(
                       children: [
                         const Text(
@@ -441,7 +443,8 @@ class _CheckoutScreenState extends State<CheckoutScreen>
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],

@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
@@ -43,8 +44,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   final _name = TextEditingController();
   final _description = TextEditingController();
   final _address = TextEditingController();
-  final _city = TextEditingController();
-  final _state = TextEditingController();
+  final _cityQuery = TextEditingController();
   final _phone = TextEditingController();
   final _instagram = TextEditingController();
   final _whatsapp = TextEditingController();
@@ -63,6 +63,13 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   int _tab = 0;
   String _loadedCity = '';
   String _loadedState = '';
+  String? _selectedCity;
+  String? _selectedUf;
+  List<Map<String, dynamic>> _cityResults = [];
+  bool _searchingCities = false;
+  String? _locationsError;
+  Timer? _cityDebounce;
+  int _citySearchGen = 0;
   String _loadedAddress = '';
   bool _hasCoverCharge = false;
   final Map<String, bool> _amenities = {
@@ -72,7 +79,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   final _mapController = MapController();
   bool _mapReady = false;
   bool _geocoding = false;
-  bool _showVisibilityHint = false;
 
   final _picker = ImagePicker();
   AuthController? _auth;
@@ -94,16 +100,19 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     auth.addListener(_onActiveVenueChanged);
     _applyAccountFields(auth.user);
     _address.addListener(_onAddressFieldsChanged);
-    _city.addListener(_onAddressFieldsChanged);
-    _state.addListener(_onAddressFieldsChanged);
     _load();
-    _loadVisibilityHint();
   }
 
-  Future<void> _loadVisibilityHint() async {
-    final pending = await consumeVenueProfileVisibilityHintPending();
-    if (!mounted) return;
-    if (pending) setState(() => _showVisibilityHint = true);
+  bool get _showVisibilityHint {
+    if (_venueId == null) return false;
+    return venueListingProfileIncompleteFromPin(
+      logoUrl: _logoUrl,
+      coverUrl: _coverUrl,
+      description: _description.text,
+      category: _category,
+      requiresCategoryChoice: _requiresCategoryChoice,
+      pin: _pin,
+    );
   }
 
   void _onAddressFieldsChanged() {
@@ -118,9 +127,11 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
 
   bool get _showRelocateHint {
     if (!_pin.hasValid) return false;
+    final city = _selectedCity?.trim() ?? '';
+    final state = _selectedUf?.trim() ?? '';
     return _address.text.trim() != _loadedAddress.trim() ||
-        _city.text.trim() != _loadedCity.trim() ||
-        _state.text.trim() != _loadedState.trim();
+        city != _loadedCity.trim() ||
+        state != _loadedState.trim();
   }
 
   String _nonEmpty(dynamic value, [String fallback = '']) {
@@ -130,10 +141,102 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
 
   void _applyAccountFields(UserSession? user, {Map<String, dynamic>? venue}) {
     _name.text = _nonEmpty(venue?['name'], _nonEmpty(user?.name));
-    _city.text = _nonEmpty(venue?['city'], _nonEmpty(user?.city));
-    _state.text = _nonEmpty(venue?['state'], _nonEmpty(user?.state));
-    _loadedCity = _city.text;
-    _loadedState = _state.text;
+    _syncCitySelection(
+      city: _nonEmpty(venue?['city'], _nonEmpty(user?.city)),
+      state: _nonEmpty(venue?['state'], _nonEmpty(user?.state)),
+    );
+  }
+
+  void _syncCitySelection({required String city, required String state}) {
+    final c = city.trim();
+    final s = state.trim();
+    _selectedCity = c.isEmpty ? null : c;
+    _selectedUf = s.isEmpty ? null : s;
+    _loadedCity = c;
+    _loadedState = s;
+    final label = _cityRegistrationLabel;
+    _cityQuery.value = TextEditingValue(
+      text: label,
+      selection: TextSelection.collapsed(offset: label.length),
+    );
+  }
+
+  String get _cityRegistrationLabel {
+    if (_selectedCity == null || _selectedCity!.isEmpty) return '';
+    final uf = _selectedUf?.trim() ?? '';
+    return uf.isEmpty ? _selectedCity! : '$_selectedCity, $uf';
+  }
+
+  Future<void> _searchCities(String query) async {
+    final gen = ++_citySearchGen;
+    setState(() {
+      _searchingCities = true;
+      _locationsError = null;
+    });
+    try {
+      final data = await context.read<ApiClient>().get(
+            '/locations/cities',
+            query: {'q': query.trim()},
+          );
+      if (!mounted || gen != _citySearchGen) return;
+      final list = (data as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      setState(() {
+        _cityResults = list;
+        _searchingCities = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted || gen != _citySearchGen) return;
+      setState(() {
+        _cityResults = [];
+        _searchingCities = false;
+        _locationsError = e.message;
+      });
+    }
+  }
+
+  void _onCityQueryChanged(String value) {
+    _cityDebounce?.cancel();
+    final label = _cityRegistrationLabel;
+    if (_selectedCity != null && value.trim() == label) return;
+    setState(() {
+      _selectedCity = null;
+      _selectedUf = null;
+    });
+    if (value.trim().isEmpty) {
+      _citySearchGen++;
+      setState(() {
+        _cityResults = [];
+        _searchingCities = false;
+        _locationsError = null;
+      });
+      return;
+    }
+    _cityDebounce = Timer(const Duration(milliseconds: 280), () {
+      _searchCities(value);
+    });
+  }
+
+  void _selectCity(Map<String, dynamic> city) {
+    final name = city['name']?.toString().trim() ?? '';
+    final uf = city['uf']?.toString().trim() ?? '';
+    if (name.isEmpty || uf.isEmpty) return;
+    _cityDebounce?.cancel();
+    _citySearchGen++;
+    final label = '$name, $uf';
+    setState(() {
+      _selectedCity = name;
+      _selectedUf = uf;
+      _cityResults = [];
+      _searchingCities = false;
+      _locationsError = null;
+      _cityQuery.value = TextEditingValue(
+        text: label,
+        selection: TextSelection.collapsed(offset: label.length),
+      );
+    });
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _load() async {
@@ -216,8 +319,8 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
         '/venues/geocode',
         query: {
           'address': address,
-          'city': _city.text.trim(),
-          'state': _state.text.trim(),
+          'city': _selectedCity?.trim() ?? '',
+          'state': _selectedUf?.trim() ?? '',
         },
       );
       if (!mounted) return;
@@ -414,10 +517,14 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       _toast('Selecione uma categoria do catálogo atual.');
       return;
     }
+    final city = _selectedCity?.trim() ?? '';
+    final state = _selectedUf?.trim() ?? '';
+    if (city.isEmpty || state.isEmpty) {
+      _toast('Selecione a cidade de cadastro na lista.');
+      return;
+    }
     setState(() => _loading = true);
     try {
-      final city = _city.text.trim();
-      final state = _state.text.trim();
       await context.read<ApiClient>().put('/venues/$venueId', body: {
         'name': _name.text.trim(),
         'category': _category ?? '',
@@ -483,6 +590,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     required String hint,
     IconData? icon,
     bool dense = false,
+    Widget? suffix,
   }) {
     return InputDecoration(
       hintText: hint,
@@ -490,6 +598,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       filled: true,
       fillColor: _inputFill,
       prefixIcon: icon == null ? null : Icon(icon, color: _accent, size: 20),
+      suffixIcon: suffix,
       contentPadding: EdgeInsets.symmetric(
         horizontal: 14,
         vertical: dense ? 10 : 14,
@@ -518,17 +627,15 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
     _auth?.removeListener(_onActiveVenueChanged);
     _name.dispose();
     _description.dispose();
+    _cityDebounce?.cancel();
     _address.dispose();
-    _city.dispose();
-    _state.dispose();
+    _cityQuery.dispose();
     _phone.dispose();
     _instagram.dispose();
     _whatsapp.dispose();
     _coverCharge.dispose();
     _menuUrl.dispose();
     _address.removeListener(_onAddressFieldsChanged);
-    _city.removeListener(_onAddressFieldsChanged);
-    _state.removeListener(_onAddressFieldsChanged);
     _mapController.dispose();
     super.dispose();
   }
@@ -567,10 +674,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                         children: [
                           if (_showVisibilityHint)
-                            VenueProfileVisibilityHintCard(
-                              onDismiss: () =>
-                                  setState(() => _showVisibilityHint = false),
-                            ),
+                            const VenueProfileVisibilityHintCard(),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -809,6 +913,65 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
             ),
           ],
           const SizedBox(height: 10),
+          if (_locationsError != null) ...[
+            Text(
+              _locationsError!,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontFamily,
+                color: Color(0xFFC62828),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: _cityQuery,
+            style: _inputTextStyle,
+            textCapitalization: TextCapitalization.words,
+            onChanged: _onCityQueryChanged,
+            decoration: _fieldDecoration(
+              hint: 'Cidade de cadastro',
+              icon: Icons.apartment_outlined,
+              suffix: _searchingCities
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _accent,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+          if (_cityResults.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              child: Column(
+                children: [
+                  for (final city in _cityResults.take(8))
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                        city['name']?.toString() ?? '',
+                        style: _inputTextStyle,
+                      ),
+                      subtitle: Text(
+                        city['uf']?.toString() ?? '',
+                        style: const TextStyle(fontSize: 11, color: _hint),
+                      ),
+                      onTap: () => _selectCity(city),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
           TextField(
             controller: _address,
             style: _inputTextStyle,
@@ -816,32 +979,6 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
               hint: 'Endereço',
               icon: Icons.signpost_outlined,
             ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _city,
-                  style: _inputTextStyle,
-                  decoration: _fieldDecoration(
-                    hint: 'Cidade',
-                    icon: Icons.apartment_outlined,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _state,
-                  style: _inputTextStyle,
-                  decoration: _fieldDecoration(
-                    hint: 'Estado',
-                    icon: Icons.location_on_outlined,
-                  ),
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 10),
           SizedBox(

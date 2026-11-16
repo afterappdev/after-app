@@ -369,6 +369,7 @@ void main() {
     await tester.pump();
     expect(find.text('Total: R\$ 34,90'), findsOneWidget);
     expect(_border(tester, 'unit_1'), buyCreditsOrange);
+    expect(_border(tester, 'vip_unit_1'), buyCreditsBorder);
     expect(_border(tester, 'combo_5'), buyCreditsBorder);
 
     await tester.tap(find.text('5 créditos'));

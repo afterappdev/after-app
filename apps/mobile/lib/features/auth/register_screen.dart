@@ -14,7 +14,6 @@ import '../../core/widgets/after_logo.dart';
 import '../public/public_chrome.dart';
 import 'auth_controller.dart';
 import 'models/social_onboarding.dart';
-import '../venue/venue_profile_visibility_hint.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key, this.showPublicHomeLink = false});
@@ -339,10 +338,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
           documentNumber: _role == 'VENUE' ? _document.text : null,
           ageBand: _role == 'USER' ? _ageBand : null,
         );
-      }
-      if (!mounted) return;
-      if (_role == 'VENUE') {
-        await markVenueProfileVisibilityHintPending();
       }
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);

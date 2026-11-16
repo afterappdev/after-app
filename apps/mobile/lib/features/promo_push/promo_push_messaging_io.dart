@@ -140,6 +140,18 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   }
 
   @override
+  Future<bool> systemNotificationsEnabled() async {
+    if (!await ensureReady()) return false;
+    if (isAndroid) {
+      final android = _local.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final enabled = await android?.areNotificationsEnabled();
+      return enabled ?? false;
+    }
+    return (await currentPermission()) == PromoOsPermission.granted;
+  }
+
+  @override
   Future<String?> getToken() async {
     if (!await ensureReady()) return null;
     return _messaging?.getToken();
@@ -185,16 +197,11 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
   Future<void> showForeground(PromoPushMessage message) async {
     if (!_ready) return;
     final id = message.eventId.hashCode & 0x7fffffff;
-    StyleInformation? styleInformation;
+    AndroidBitmap<Object>? largeIcon;
     if (isAndroid && message.imageUrl != null) {
       final bytes = await fetchPromoPushNotificationImage(message.imageUrl!);
       if (bytes != null) {
-        styleInformation = BigPictureStyleInformation(
-          ByteArrayAndroidBitmap(bytes),
-          hideExpandedLargeIcon: true,
-          contentTitle: message.title,
-          summaryText: message.body,
-        );
+        largeIcon = ByteArrayAndroidBitmap(bytes);
       }
     }
     await _local.show(
@@ -210,8 +217,9 @@ class FirebasePromoPushMessaging implements PromoPushMessaging {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@drawable/ic_promo_notification',
+          largeIcon: largeIcon,
           color: const Color(0xFFF58634),
-          styleInformation: styleInformation,
+          styleInformation: BigTextStyleInformation(message.body),
         ),
         iOS: const DarwinNotificationDetails(),
       ),

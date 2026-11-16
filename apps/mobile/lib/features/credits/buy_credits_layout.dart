@@ -242,17 +242,15 @@ class BuyCreditsPackageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = vip
-        ? buyCreditsPurple
-        : selected
-            ? buyCreditsOrange
-            : buyCreditsBorder;
+    final borderColor = selected
+        ? (vip ? buyCreditsPurple : buyCreditsOrange)
+        : buyCreditsBorder;
     final priceColor = vip ? buyCreditsPurple : buyCreditsOrange;
     return Material(
       color: vip ? buyCreditsLilac : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor, width: selected || vip ? 1.6 : 1),
+        side: BorderSide(color: borderColor, width: selected ? 1.6 : 1),
       ),
       child: InkWell(
         onTap: onTap,

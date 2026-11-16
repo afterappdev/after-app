@@ -1,58 +1,51 @@
+import {
+  PROMO_PUBLICATION_DESCRIPTION_MAX,
+  PROMO_PUBLICATION_TITLE_MAX,
+} from './promo-push.limits';
+
 export type PromoContentKind = 'PROMOTION' | 'EVENT' | null;
 
 export const PROMO_PUSH_BODY_FALLBACK =
   'Confira o que está rolando na sua cidade. Toque para ver!';
 
-/**
- * FCM accepts long notification bodies; Android and iOS may truncate what they
- * show in the shade. We send the banner description verbatim (UTF-8, newlines).
- * Each data value must stay under 4KB; the body lives in `notification`, not data.
- */
+/** Hard ceiling for FCM transport; UI limits are much lower. */
 export const PROMO_PUSH_FCM_BODY_MAX = 4096;
 
 export function promoPushBody(description: string | null | undefined): string {
   const trimmed = description?.trim() ?? '';
   if (!trimmed) return PROMO_PUSH_BODY_FALLBACK;
-  if (trimmed.length <= PROMO_PUSH_FCM_BODY_MAX) return trimmed;
-  return `${trimmed.slice(0, PROMO_PUSH_FCM_BODY_MAX - 1)}…`;
+  if (trimmed.length <= PROMO_PUBLICATION_DESCRIPTION_MAX) return trimmed;
+  return trimmed.slice(0, PROMO_PUBLICATION_DESCRIPTION_MAX);
 }
 
-function promoPushTitleFallback(
-  venueName: string,
-  contentKind: PromoContentKind,
-): string {
-  const name = venueName.trim() || 'Um estabelecimento';
-  const kind =
-    contentKind === 'PROMOTION'
-      ? 'uma promoção'
-      : contentKind === 'EVENT'
-        ? 'um evento'
-        : 'uma novidade';
-  return `${name} publicou ${kind} para hoje!`;
+function promoPushTitleFallback(contentKind: PromoContentKind): string {
+  if (contentKind === 'PROMOTION') return 'Promoção do dia';
+  if (contentKind === 'EVENT') return 'Evento do dia';
+  return 'Novidade do dia';
 }
 
-/** `{venue} publicou {banner.title}`; generic kind-based title when banner title is missing. */
+/** Push title = banner title only (After icon comes from the app, venue logo from imageUrl). */
 export function promoPushTitle(
-  venueName: string,
   contentKind: PromoContentKind,
   bannerTitle?: string | null,
 ): string {
   const trimmed = bannerTitle?.trim() ?? '';
   if (trimmed) {
-    const name = venueName.trim() || 'Um estabelecimento';
-    return `${name} publicou ${trimmed}`;
+    return trimmed.length <= PROMO_PUBLICATION_TITLE_MAX
+      ? trimmed
+      : trimmed.slice(0, PROMO_PUBLICATION_TITLE_MAX);
   }
-  return promoPushTitleFallback(venueName, contentKind);
+  return promoPushTitleFallback(contentKind);
 }
 
 export function promoPushCopy(
-  venueName: string,
+  _venueName: string,
   contentKind: PromoContentKind,
   bannerTitle?: string | null,
   description?: string | null,
 ): { title: string; body: string } {
   return {
-    title: promoPushTitle(venueName, contentKind, bannerTitle),
+    title: promoPushTitle(contentKind, bannerTitle),
     body: promoPushBody(description),
   };
 }

@@ -125,29 +125,35 @@ void main() {
       promoSurface.borderRadius,
       BorderRadius.circular(HomeVisual.cardRadius),
     );
-    final image = tester.widget<SizedBox>(
+    final promoImage = tester.widget<SizedBox>(
       find
           .descendant(
             of: find.byType(HomePromoCard),
             matching: find.byWidgetPredicate(
               (widget) =>
-                  widget is SizedBox && widget.width == HomeVisual.imageWidth,
+                  widget is SizedBox &&
+                  widget.width == HomeVisual.promoImageWidth,
             ),
           )
           .first,
     );
-    expect(image.width, 108);
-    expect(image.height, HomeVisual.imageHeight);
+    expect(promoImage.width, HomeVisual.promoImageWidth);
+    expect(promoImage.height, HomeVisual.promoImageHeight);
+    expect(
+      HomeVisual.promoImageHeight,
+      greaterThan(HomeVisual.imageHeight),
+    );
     final name = tester.widget<Text>(find.text('Refúgio'));
     expect(name.style?.fontSize, 17);
     expect(name.maxLines, 1);
     expect(find.byType(HomeOfferMark), findsOneWidget);
     expect(find.text('Válido para o dia 14/10/2026'), findsOneWidget);
-    expect(find.text('4,5 (12)'), findsOneWidget);
+    expect(find.text('4,5 (12)'), findsNothing);
     expect(find.text('São José do Rio Preto'), findsOneWidget);
   });
 
-  testWidgets('cards de promoção e local têm a mesma altura', (tester) async {
+  testWidgets('card de local tem altura rente à logo; promo usa altura do miolo', (
+      tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -191,16 +197,22 @@ void main() {
       ),
     );
 
-    final heights = <double>[];
-    for (final type in [HomeVenueCard, HomePromoCard]) {
-      for (final element in find.byType(type).evaluate()) {
-        final box = element.renderObject! as RenderBox;
-        heights.add(box.size.height);
-      }
+    final venueHeights = <double>[];
+    for (final element in find.byType(HomeVenueCard).evaluate()) {
+      final box = element.renderObject! as RenderBox;
+      venueHeights.add(box.size.height);
     }
-    expect(heights.length, 3);
-    expect(heights.toSet().length, 1);
-    expect(heights.first, HomeVisual.feedCardBodyHeight);
+    final promoBox =
+        tester.renderObject(find.byType(HomePromoCard)) as RenderBox;
+    expect(venueHeights, [
+      HomeVisual.venueCardBodyHeight,
+      HomeVisual.venueCardBodyHeight,
+    ]);
+    expect(promoBox.size.height, HomeVisual.feedCardBodyHeight);
+    expect(
+      HomeVisual.venueCardBodyHeight,
+      lessThan(HomeVisual.feedCardBodyHeight),
+    );
   });
 
   testWidgets('local sem avaliações mantém linha de estrelas', (tester) async {

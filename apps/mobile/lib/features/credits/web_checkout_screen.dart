@@ -404,9 +404,12 @@ class _WebCheckoutScreenState extends State<WebCheckoutScreen>
                           ],
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                        child: _bottom(attempt),
+                      SafeArea(
+                        top: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                          child: _bottom(attempt),
+                        ),
                       ),
                     ],
                   ),

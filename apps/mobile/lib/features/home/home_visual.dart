@@ -31,13 +31,25 @@ class HomeVisual {
   /// dessas medidas; a imagem e o texto não crescem.
   static const cardRadius = 16.0;
   static const accentBarWidth = 4.0;
+  /// Logo do local no card (quadrado).
   static const imageWidth = 108.0;
   static const imageHeight = 108.0;
 
-  /// Corpo fixo do card (barra + imagem + texto), no tamanho do local completo.
-  static const feedCardTextHeight = 122.0;
-  static const feedCardBodyHeight = 142.0;
+  /// Corpo fixo do card de promoção (barra + imagem + texto).
+  /// Miolo do card de promoção: 3 linhas na descrição (sem avaliações).
+  static const feedCardTextHeight = 141.0;
+  static const feedCardBodyHeight = 161.0;
+
+  /// Card de local: altura do miolo = logo quadrada + padding (sem folga abaixo).
+  static const venueCardTextHeight = imageHeight;
+  static const venueCardBodyHeight = imageHeight + 20.0;
+  static const venueFeedDescriptionHeight = 14.0;
+
+  /// Arte da publicação no card de promoção (retrato 4:5, altura do miolo).
+  static const promoImageWidth = 98.0;
+  static const promoImageHeight = feedCardTextHeight;
   static const feedMetaLineHeight = 14.0;
+  static const promoDetailHeight = 41.25;
   static const feedDescriptionHeight = 27.5;
   static const titleFontSize = 16.0;
   static const dayChipHeight = 36.0;

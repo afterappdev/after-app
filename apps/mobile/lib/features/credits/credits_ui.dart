@@ -334,6 +334,7 @@ class CreditsField extends StatelessWidget {
     this.maxLines = 1,
     this.prefixIcon,
     this.suffixIcon,
+    this.helper,
     this.onChanged,
   });
 
@@ -345,6 +346,7 @@ class CreditsField extends StatelessWidget {
   final int maxLines;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
+  final String? helper;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -376,6 +378,8 @@ class CreditsField extends StatelessWidget {
             color: kCreditsInk,
           ),
           decoration: InputDecoration(
+            helperText: helper,
+            helperMaxLines: 2,
             hintText: hint,
             counterText: maxLines > 1 ? null : '',
             prefixIcon: prefixIcon,

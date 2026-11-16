@@ -352,6 +352,8 @@ class HomePromoCard extends StatelessWidget {
       onImageTap: onImageTap,
       offerMark: showOffer,
       vipFrame: featured,
+      imageWidth: HomeVisual.promoImageWidth,
+      imageHeight: HomeVisual.promoImageHeight,
       emptyIcon: Icons.local_offer_outlined,
       children: [
         Row(
@@ -364,8 +366,6 @@ class HomePromoCard extends StatelessWidget {
             ],
           ],
         ),
-        const SizedBox(height: 2),
-        _FixedRatingRow(avgRating: avgRating, reviewCount: reviewCount),
         const SizedBox(height: 2),
         _FixedStatusRow(
           hasOpenInfo: hasOpenInfo,
@@ -429,6 +429,8 @@ class HomeVenueCard extends StatelessWidget {
       tone: HomeAccentTone.venue,
       onTap: onTap,
       imageUrl: imageUrl,
+      bodyHeight: HomeVisual.venueCardBodyHeight,
+      textHeight: HomeVisual.venueCardTextHeight,
       emptyIcon: Icons.storefront_outlined,
       children: [
         _VenueName(venueName),
@@ -454,8 +456,12 @@ class HomeVenueCard extends StatelessWidget {
           color: HomeVisual.muted,
           iconColor: HomeVisual.purple,
         ),
-        const SizedBox(height: 4),
-        _FixedDescription(text: description),
+        const SizedBox(height: 2),
+        _FixedDescription(
+          text: description,
+          height: HomeVisual.venueFeedDescriptionHeight,
+          maxLines: 1,
+        ),
       ],
     );
   }
@@ -495,7 +501,6 @@ class _HomeRatingStars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 1; i <= 5; i++)
           Icon(
@@ -508,16 +513,20 @@ class _HomeRatingStars extends StatelessWidget {
             color: HomeVisual.orange,
           ),
         const SizedBox(width: 4),
-        Text(
-          count > 0
-              ? '${value.toStringAsFixed(1).replaceAll('.', ',')} ($count)'
-              : 'Sem avaliações',
-          style: const TextStyle(
-            fontFamily: AppTheme.fontFamily,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: HomeVisual.muted,
-            height: 1.1,
+        Expanded(
+          child: Text(
+            count > 0
+                ? '${value.toStringAsFixed(1).replaceAll('.', ',')} ($count)'
+                : 'Sem avaliações',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppTheme.fontFamily,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: HomeVisual.muted,
+              height: 1.1,
+            ),
           ),
         ),
       ],
@@ -617,12 +626,12 @@ class _FixedPromoDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: HomeVisual.feedMetaLineHeight,
+      height: HomeVisual.promoDetailHeight,
       child: Align(
         alignment: Alignment.topLeft,
         child: Text(
           text,
-          maxLines: 1,
+          maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: AppTheme.fontFamily,
@@ -666,19 +675,25 @@ class _FixedDealTitle extends StatelessWidget {
 }
 
 class _FixedDescription extends StatelessWidget {
-  const _FixedDescription({required this.text});
+  const _FixedDescription({
+    required this.text,
+    this.height = HomeVisual.feedDescriptionHeight,
+    this.maxLines = 2,
+  });
 
   final String text;
+  final double height;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: HomeVisual.feedDescriptionHeight,
+      height: height,
       child: Align(
         alignment: Alignment.topLeft,
         child: Text(
           text,
-          maxLines: 2,
+          maxLines: maxLines,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: AppTheme.fontFamily,
@@ -811,6 +826,10 @@ class _FeedCard extends StatelessWidget {
     this.onImageTap,
     this.offerMark = false,
     this.vipFrame = false,
+    this.bodyHeight = HomeVisual.feedCardBodyHeight,
+    this.textHeight = HomeVisual.feedCardTextHeight,
+    this.imageWidth = HomeVisual.imageWidth,
+    this.imageHeight = HomeVisual.imageHeight,
   });
 
   final HomeAccentTone tone;
@@ -821,6 +840,10 @@ class _FeedCard extends StatelessWidget {
   final VoidCallback? onImageTap;
   final bool offerMark;
   final bool vipFrame;
+  final double bodyHeight;
+  final double textHeight;
+  final double imageWidth;
+  final double imageHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -860,7 +883,7 @@ class _FeedCard extends StatelessWidget {
 
   Widget _body() {
     return SizedBox(
-      height: HomeVisual.feedCardBodyHeight,
+      height: bodyHeight,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -877,11 +900,13 @@ class _FeedCard extends StatelessWidget {
                     iconColor: HomeVisual.accent(tone),
                     offerMark: offerMark,
                     onTap: onImageTap ?? onTap,
+                    width: imageWidth,
+                    height: imageHeight,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
-                      height: HomeVisual.feedCardTextHeight,
+                      height: textHeight,
                       child: InkWell(
                         onTap: onTap,
                         borderRadius: BorderRadius.circular(12),
@@ -889,7 +914,8 @@ class _FeedCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             ...children,
-                            const Spacer(),
+                            if (textHeight > HomeVisual.venueCardTextHeight)
+                              const Spacer(),
                           ],
                         ),
                       ),
@@ -911,6 +937,8 @@ class _CardImage extends StatelessWidget {
     required this.emptyIcon,
     required this.iconColor,
     required this.offerMark,
+    required this.width,
+    required this.height,
     this.onTap,
   });
 
@@ -918,6 +946,8 @@ class _CardImage extends StatelessWidget {
   final IconData emptyIcon;
   final Color iconColor;
   final bool offerMark;
+  final double width;
+  final double height;
   final VoidCallback? onTap;
 
   @override
@@ -925,8 +955,8 @@ class _CardImage extends StatelessWidget {
     final image = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        width: HomeVisual.imageWidth,
-        height: HomeVisual.imageHeight,
+        width: width,
+        height: height,
         child: Stack(
           fit: StackFit.expand,
           children: [

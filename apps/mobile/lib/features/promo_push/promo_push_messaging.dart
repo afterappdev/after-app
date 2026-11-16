@@ -14,6 +14,9 @@ abstract class PromoPushMessaging {
 
   Future<PromoOsPermission> requestPermission();
 
+  /// OS-level notifications enabled (Android 13+ channel; iOS authorization).
+  Future<bool> systemNotificationsEnabled();
+
   Future<String?> getToken();
 
   Stream<String> get onTokenRefresh;
@@ -48,6 +51,9 @@ class UnavailablePromoPushMessaging implements PromoPushMessaging {
   @override
   Future<PromoOsPermission> requestPermission() async =>
       PromoOsPermission.unavailable;
+
+  @override
+  Future<bool> systemNotificationsEnabled() async => false;
 
   @override
   Future<String?> getToken() async => null;

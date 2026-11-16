@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AccountLifecycleStatus, Prisma } from '@prisma/client';
 import { isVenuePubliclyVisible } from '../common/moderation/audience';
+import {
+  promoPushCopy,
+  type PromoContentKind,
+} from '../promo-push/promo-push.copy';
 import { PrismaService } from '../prisma/prisma.service';
 
 function inboxWhere(userId: string): Prisma.NotificationWhereInput {
@@ -63,6 +67,8 @@ export class NotificationsService {
     venueName: string;
     bannerId: string;
     promoTitle?: string | null;
+    promoDescription?: string | null;
+    contentKind?: PromoContentKind;
   }) {
     const venue = await this.prisma.venue.findUnique({
       where: { id: params.venueId },
@@ -87,8 +93,14 @@ export class NotificationsService {
     });
     if (!followers.length) return;
 
-    const title = `${params.venueName} publicou uma promoção`;
-    const body = params.promoTitle?.trim() || 'Confira a novidade no After';
+    const copy = promoPushCopy(
+      params.venueName,
+      params.contentKind ?? null,
+      params.promoTitle,
+      params.promoDescription,
+    );
+    const title = copy.title;
+    const body = copy.body;
 
     await this.prisma.notification.createMany({
       data: followers.map((f) => ({

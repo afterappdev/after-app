@@ -136,7 +136,7 @@ model User {
   /// IBGE municipality id of the registered city. Null when name+UF is ambiguous.
   ibgeCityId                Int?
   /// Product consent for promotional pushes. Independent of the OS permission.
-  promoNotificationsEnabled Boolean              @default(false)
+  promoNotificationsEnabled Boolean              @default(true)
   /// Null on accounts created before the field existed. Not used for ads or pushes.
   ageBand                   AgeBand?
   lastAuthorizedIbgeCityId  Int?

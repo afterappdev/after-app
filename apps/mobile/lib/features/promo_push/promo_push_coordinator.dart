@@ -8,6 +8,7 @@ import '../../core/location/device_locator.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/user_session.dart';
 import 'municipality_geocoder.dart';
+import 'promo_offer_memory.dart';
 import 'promo_push_api.dart';
 import 'promo_push_message.dart';
 import 'promo_push_messaging.dart';
@@ -67,18 +68,25 @@ class PromoPushCoordinator extends ChangeNotifier {
     required this.ledger,
     required this.router,
     required this.cityMemory,
+    PromoLegacyOfferMemory? legacyOfferMemory,
+    PromoOsPromptMemory? osPromptMemory,
     this.geocoder,
     this.locator,
     this.onSessionEnd,
     this.locationMaxAge = const Duration(hours: 6),
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now;
+  })  : legacyOfferMemory =
+            legacyOfferMemory ?? PreferencesPromoLegacyOfferMemory(),
+        osPromptMemory = osPromptMemory ?? PreferencesPromoOsPromptMemory(),
+        _now = now ?? DateTime.now;
 
   final PromoPushApi api;
   final PromoPushMessaging messaging;
   final PromoDeliveryLedger ledger;
   final PromoPushRouter router;
   final PromoCityMemory cityMemory;
+  final PromoLegacyOfferMemory legacyOfferMemory;
+  final PromoOsPromptMemory osPromptMemory;
   final MunicipalityGeocoder? geocoder;
   final DeviceLocator? locator;
   final Future<void> Function()? onSessionEnd;
@@ -97,14 +105,20 @@ class PromoPushCoordinator extends ChangeNotifier {
   bool _started = false;
   bool _cityAttempted = false;
   bool _permissionPromptAttempted = false;
+  bool _pendingLegacyActivationOffer = false;
+  bool _onboardingInFlight = false;
+
+  bool get shouldShowLegacyActivationOffer =>
+      _pendingLegacyActivationOffer && !_onboardingInFlight && _userId != null;
 
   static const firebaseUnavailableMessage =
       'Não foi possível preparar as notificações neste aparelho. '
       'Use uma versão do app com Firebase configurado (google-services.json).';
 
   static const permissionBlockedMessage =
-      'A preferência foi salva, mas o Android está bloqueando os avisos. '
-      'Abra Ajustes → Apps → After → Notificações e permita os alertas.';
+      'Os avisos estão bloqueados neste aparelho. '
+      'Abra os ajustes do After e permita notificações para receber promoções.';
+
   StreamSubscription<String>? _refreshSub;
   StreamSubscription<PromoPushMessage>? _foregroundSub;
   StreamSubscription<PromoPushMessage>? _openedSub;
@@ -135,11 +149,15 @@ class PromoPushCoordinator extends ChangeNotifier {
       enabled = false;
       loaded = true;
       preferenceKnown = false;
+      _pendingLegacyActivationOffer = false;
       notifyListeners();
       return;
     }
     _userId = user.id;
     _session = user;
+    _pendingLegacyActivationOffer = false;
+    _cityAttempted = false;
+    _permissionPromptAttempted = false;
     try {
       final preference = await api.getPreferences();
       enabled = preference.enabled;
@@ -150,9 +168,16 @@ class PromoPushCoordinator extends ChangeNotifier {
       loaded = true;
       preferenceKnown = false;
       statusMessage = 'Não foi possível carregar a preferência de avisos.';
+      notifyListeners();
+      return;
     }
     notifyListeners();
-    await _ensureOsPermissionAndToken();
+
+    if (enabled) {
+      await _runEnabledUserNotificationFlow(user);
+    } else {
+      await _maybeQueueLegacyActivationOffer(user);
+    }
     await consumePending();
   }
 
@@ -162,14 +187,77 @@ class PromoPushCoordinator extends ChangeNotifier {
     await onAuthenticated(user);
   }
 
+  /// One-shot offer for accounts that still have promo alerts off on the server.
+  Future<void> respondToLegacyActivationOffer(bool accept) async {
+    final uid = _userId;
+    if (uid == null || _onboardingInFlight) return;
+    _onboardingInFlight = true;
+    _pendingLegacyActivationOffer = false;
+    notifyListeners();
+
+    try {
+      if (!accept) {
+        await legacyOfferMemory.remember(uid, PromoLegacyOfferDecision.dismissed);
+        return;
+      }
+      if (uid != _userId) return;
+
+      if (!await _ensureMessagingReady()) {
+        await legacyOfferMemory.remember(uid, PromoLegacyOfferDecision.dismissed);
+        return;
+      }
+
+      final effective = await _ensurePromoOsPermission(requestIfNeeded: true);
+      if (!effective || uid != _userId) {
+        await legacyOfferMemory.remember(uid, PromoLegacyOfferDecision.dismissed);
+        if (uid == _userId) {
+          statusMessage = permissionBlockedMessage;
+          notifyListeners();
+        }
+        return;
+      }
+
+      final ok = await _persistEnabledAndRegister(uid);
+      if (uid != _userId) return;
+      if (ok) {
+        await legacyOfferMemory.remember(uid, PromoLegacyOfferDecision.accepted);
+        statusMessage = null;
+      } else {
+        await legacyOfferMemory.remember(uid, PromoLegacyOfferDecision.dismissed);
+      }
+      notifyListeners();
+    } finally {
+      _onboardingInFlight = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> setEnabled(bool value) async {
     if (saving || _userId == null) return;
     saving = true;
     statusMessage = null;
     notifyListeners();
     final previous = enabled;
+    final uid = _userId!;
     late final PromoPreference saved;
     try {
+      if (value) {
+        if (!await _ensureMessagingReady()) {
+          enabled = previous;
+          saving = false;
+          notifyListeners();
+          return;
+        }
+        final effective = await _ensurePromoOsPermission(requestIfNeeded: true);
+        if (!effective) {
+          enabled = previous;
+          statusMessage = permissionBlockedMessage;
+          saving = false;
+          notifyListeners();
+          return;
+        }
+      }
+
       saved = await api.setEnabled(value);
     } catch (_) {
       enabled = previous;
@@ -183,11 +271,21 @@ class PromoPushCoordinator extends ChangeNotifier {
     try {
       if (!saved.enabled) {
         await unregisterDevice();
+        await legacyOfferMemory.remember(
+          uid,
+          PromoLegacyOfferDecision.dismissed,
+        );
+        _pendingLegacyActivationOffer = false;
         statusMessage = null;
       } else {
+        await legacyOfferMemory.remember(
+          uid,
+          PromoLegacyOfferDecision.accepted,
+        );
         final session = _session;
         if (session != null) await refreshAuthorizedCity(session);
-        await _ensureOsPermissionAndToken(forceRequest: true);
+        await syncToken(_token ?? await _currentToken());
+        await osPromptMemory.markPrompted(uid);
       }
     } catch (_) {
       statusMessage ??=
@@ -198,12 +296,15 @@ class PromoPushCoordinator extends ChangeNotifier {
     }
   }
 
+  Future<void> openSystemNotificationSettings() async {
+    await Geolocator.openAppSettings();
+  }
+
   Future<void> syncToken(String? token) async {
     final next = token?.trim() ?? '';
     if (next.isEmpty || _userId == null || !enabled) return;
     if (!await _ensureMessagingReady()) return;
-    final permission = await messaging.currentPermission();
-    if (permission != PromoOsPermission.granted) return;
+    if (!await _permissionEffectiveForPromo()) return;
     final previous = _token;
     try {
       await api.registerToken(next);
@@ -236,6 +337,8 @@ class PromoPushCoordinator extends ChangeNotifier {
     pendingMessage = null;
     _cityAttempted = false;
     _permissionPromptAttempted = false;
+    _pendingLegacyActivationOffer = false;
+    _onboardingInFlight = false;
     router.reset();
     await unregisterDevice();
     if (userId != null) await cityMemory.clear(userId);
@@ -295,6 +398,91 @@ class PromoPushCoordinator extends ChangeNotifier {
     await router.open(message);
   }
 
+  Future<void> _runEnabledUserNotificationFlow(UserSession user) async {
+    if (!await _ensureMessagingReady()) return;
+    final firstPrompt = !await osPromptMemory.hasPrompted(user.id);
+    if (firstPrompt) {
+      final effective = await _ensurePromoOsPermission(requestIfNeeded: true);
+      await osPromptMemory.markPrompted(user.id);
+      if (effective) {
+        await syncToken(_token ?? await _currentToken());
+        await refreshAuthorizedCity(user);
+      } else {
+        statusMessage = permissionBlockedMessage;
+        notifyListeners();
+      }
+      return;
+    }
+    if (await _permissionEffectiveForPromo()) {
+      await syncToken(_token ?? await _currentToken());
+      await refreshAuthorizedCity(user);
+    }
+  }
+
+  Future<void> _maybeQueueLegacyActivationOffer(UserSession user) async {
+    final prior = await legacyOfferMemory.decision(user.id);
+    if (prior != null) return;
+    _pendingLegacyActivationOffer = true;
+    notifyListeners();
+  }
+
+  Future<bool> _persistEnabledAndRegister(String uid) async {
+    if (_userId != uid || saving) return false;
+    saving = true;
+    notifyListeners();
+    try {
+      final saved = await api.setEnabled(true);
+      if (_userId != uid) return false;
+      enabled = saved.enabled;
+      preferenceKnown = true;
+      await syncToken(_token ?? await _currentToken());
+      final session = _session;
+      if (session != null) await refreshAuthorizedCity(session);
+      await osPromptMemory.markPrompted(uid);
+      return enabled;
+    } catch (_) {
+      if (_userId == uid) {
+        statusMessage = 'Não foi possível salvar a preferência. Tente novamente.';
+      }
+      return false;
+    } finally {
+      saving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> _permissionEffectiveForPromo() async {
+    if (!await _ensureMessagingReady()) return false;
+    final permission = await messaging.currentPermission();
+    if (permission != PromoOsPermission.granted) return false;
+    return messaging.systemNotificationsEnabled();
+  }
+
+  Future<bool> _ensurePromoOsPermission({required bool requestIfNeeded}) async {
+    if (!await _ensureMessagingReady()) return false;
+    if (await _permissionEffectiveForPromo()) return true;
+
+    var permission = await messaging.currentPermission();
+    if (permission == PromoOsPermission.unavailable) {
+      statusMessage = firebaseUnavailableMessage;
+      notifyListeners();
+      return false;
+    }
+
+    if (!requestIfNeeded) return false;
+
+    if (!_permissionPromptAttempted) {
+      _permissionPromptAttempted = true;
+      permission = await messaging.requestPermission();
+    }
+
+    if (permission == PromoOsPermission.granted &&
+        await messaging.systemNotificationsEnabled()) {
+      return true;
+    }
+    return false;
+  }
+
   Future<String?> _currentToken() async {
     try {
       return await messaging.getToken();
@@ -311,47 +499,6 @@ class PromoPushCoordinator extends ChangeNotifier {
       notifyListeners();
     }
     return ready;
-  }
-
-  /// Registers FCM when the user wants promo alerts. Requests OS permission first
-  /// (Android 13+ POST_NOTIFICATIONS / iOS dialog) — same idea as location on Home.
-  Future<void> _ensureOsPermissionAndToken({bool forceRequest = false}) async {
-    if (!enabled || _userId == null) return;
-    if (!await _ensureMessagingReady()) return;
-
-    var permission = await messaging.currentPermission();
-    if (permission == PromoOsPermission.granted) {
-      await syncToken(_token ?? await _currentToken());
-      final session = _session;
-      if (session != null) await refreshAuthorizedCity(session);
-      return;
-    }
-    if (permission == PromoOsPermission.unavailable) {
-      statusMessage = firebaseUnavailableMessage;
-      notifyListeners();
-      return;
-    }
-
-    if (!forceRequest && _permissionPromptAttempted) return;
-
-    _permissionPromptAttempted = true;
-    permission = await messaging.requestPermission();
-
-    if (permission == PromoOsPermission.granted) {
-      await syncToken(await messaging.getToken());
-      if (_token == null && statusMessage == null) {
-        statusMessage =
-            'Preferência salva, mas este aparelho ainda não foi registrado.';
-      }
-      final session = _session;
-      if (session != null) await refreshAuthorizedCity(session);
-    } else if (permission == PromoOsPermission.denied) {
-      statusMessage = permissionBlockedMessage;
-      notifyListeners();
-    } else if (permission == PromoOsPermission.unavailable) {
-      statusMessage = firebaseUnavailableMessage;
-      notifyListeners();
-    }
   }
 
   Future<bool> _foregroundAlreadyGranted(DeviceLocator locator) async {

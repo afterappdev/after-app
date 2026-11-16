@@ -23,6 +23,7 @@ import 'features/notifications/notifications_controller.dart';
 import 'features/notifications/notifications_screen.dart';
 import 'features/promo_push/municipality_geocoder.dart';
 import 'features/promo_push/promo_push_api.dart';
+import 'features/promo_push/promo_onboarding_host.dart';
 import 'features/promo_push/promo_push_coordinator.dart';
 import 'features/promo_push/promo_push_message.dart';
 import 'features/promo_push/promo_push_messaging_factory.dart';
@@ -88,7 +89,9 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: notifications),
         ChangeNotifierProvider.value(value: promo),
       ],
-      child: AfterApp(auth: auth, navigatorKey: navigatorKey, promo: promo),
+      child: PromoOnboardingHost(
+        child: AfterApp(auth: auth, navigatorKey: navigatorKey, promo: promo),
+      ),
     ),
   );
 }

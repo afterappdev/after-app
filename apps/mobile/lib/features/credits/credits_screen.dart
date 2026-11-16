@@ -16,6 +16,7 @@ import 'buy_credits_screen.dart';
 import 'credits_ui.dart';
 import 'promotion_dialogs.dart';
 import 'publication_draft.dart';
+import 'publication_push_limits.dart';
 import 'vip_push_timing.dart';
 
 class CreditsScreen extends StatefulWidget {
@@ -271,6 +272,18 @@ class _CreditsScreenState extends State<CreditsScreen> {
     }
     if (description.isEmpty) {
       _snack('Informe uma breve descrição.');
+      return;
+    }
+    if (title.length > PublicationPushLimits.titleMax) {
+      _snack(
+        'O título pode ter no máximo ${PublicationPushLimits.titleMax} caracteres para o aviso push.',
+      );
+      return;
+    }
+    if (description.length > PublicationPushLimits.descriptionMax) {
+      _snack(
+        'A descrição pode ter no máximo ${PublicationPushLimits.descriptionMax} caracteres para o aviso push.',
+      );
       return;
     }
     if (_selectedDates.isEmpty) {
@@ -573,20 +586,35 @@ class _CreditsScreenState extends State<CreditsScreen> {
                                       color: kCreditsInk,
                                     ),
                                   ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'No aviso push do app consumidor: ícone After, seu título e '
+                                    'descrição completos e a logo do estabelecimento.',
+                                    style: TextStyle(
+                                      fontFamily: AppTheme.fontFamily,
+                                      fontSize: 12,
+                                      height: 1.35,
+                                      color: Color(0xFF8B8B96),
+                                    ),
+                                  ),
                                   const SizedBox(height: 10),
                                   CreditsField(
                                     label: 'Título da promoção',
                                     controller: _title,
                                     hint: 'Ex.: Chope em dobro até 20h',
-                                    maxLength: 80,
+                                    maxLength: PublicationPushLimits.titleMax,
+                                    helper:
+                                        'Máx. ${PublicationPushLimits.titleMax} caracteres no aviso.',
                                   ),
                                   const SizedBox(height: 12),
                                   CreditsField(
                                     label: 'Breve descrição',
                                     controller: _description,
                                     hint: 'Conte o que o cliente vai encontrar',
-                                    maxLength: 180,
+                                    maxLength: PublicationPushLimits.descriptionMax,
                                     maxLines: 3,
+                                    helper:
+                                        'Máx. ${PublicationPushLimits.descriptionMax} caracteres no aviso.',
                                     keyboardType: TextInputType.multiline,
                                   ),
                                   const SizedBox(height: 22),

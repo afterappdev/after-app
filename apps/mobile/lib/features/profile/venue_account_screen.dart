@@ -10,6 +10,7 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/owned_venue_summary.dart';
 import '../venue/add_venue_screen.dart';
+import '../venue/venue_profile_visibility_hint.dart';
 import 'delete_account_button.dart';
 import 'venue_active_selector.dart';
 import 'venue_archive_dialog.dart';
@@ -173,6 +174,11 @@ class _VenueAccountScreenState extends State<VenueAccountScreen> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   children: [
+                          if (_venue != null &&
+                              venueListingProfileIncomplete(_venue!))
+                            VenueProfileVisibilityHintCard(
+                              onEdit: _openEdit,
+                            ),
                           Row(
                             children: [
                               CircleAvatar(

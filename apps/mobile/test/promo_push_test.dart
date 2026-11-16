@@ -14,6 +14,7 @@ import 'package:after_app/features/promo_push/municipality_geocoder.dart';
 import 'package:after_app/features/promo_push/promo_alerts_preference.dart';
 import 'package:after_app/features/promo_push/promo_publication.dart';
 import 'package:after_app/features/promo_push/promo_push_api.dart';
+import 'package:after_app/features/promo_push/promo_offer_memory.dart';
 import 'package:after_app/features/promo_push/promo_push_coordinator.dart';
 import 'package:after_app/features/promo_push/promo_push_message.dart';
 import 'package:after_app/features/promo_push/promo_push_messaging.dart';
@@ -121,12 +122,12 @@ void main() {
     await coordinator.onAuthenticated(_user('user-a'));
     await coordinator.setEnabled(true);
 
-    expect(api.storedEnabled, isTrue);
+    expect(api.storedEnabled, isFalse);
     expect(api.registered, isEmpty);
     expect(coordinator.statusMessage, PromoPushCoordinator.firebaseUnavailableMessage);
   });
 
-  test('a denied Android permission does not turn the preference on by itself', () async {
+  test('permissão negada não liga no servidor pelo perfil', () async {
     final api = RecordingPromoApi();
     final messaging = FakePromoMessaging()
       ..permission = PromoOsPermission.denied;
@@ -134,13 +135,60 @@ void main() {
     await coordinator.onAuthenticated(_user('user-a'));
     await coordinator.setEnabled(true);
 
-    expect(api.storedEnabled, isTrue);
-    expect(coordinator.enabled, isTrue);
+    expect(api.storedEnabled, isFalse);
+    expect(coordinator.enabled, isFalse);
     expect(api.registered, isEmpty);
     expect(
       coordinator.statusMessage,
       PromoPushCoordinator.permissionBlockedMessage,
     );
+  });
+
+  test('conta antiga OFF agenda oferta única', () async {
+    final coordinator = _coordinator();
+    await coordinator.onAuthenticated(_user('legacy-off'));
+    expect(coordinator.shouldShowLegacyActivationOffer, isTrue);
+    expect(coordinator.enabled, isFalse);
+  });
+
+  test('oferta legada aceita persiste enabled e token', () async {
+    final api = RecordingPromoApi();
+    final messaging = FakePromoMessaging()
+      ..permission = PromoOsPermission.granted
+      ..token = 'fcm-legacy';
+    final coordinator = _coordinator(api: api, messaging: messaging);
+    await coordinator.onAuthenticated(_user('legacy-off'));
+    await coordinator.respondToLegacyActivationOffer(true);
+    expect(api.storedEnabled, isTrue);
+    expect(api.registered, ['fcm-legacy']);
+    expect(coordinator.enabled, isTrue);
+    expect(coordinator.shouldShowLegacyActivationOffer, isFalse);
+  });
+
+  test('oferta legada recusada mantém OFF e não repete', () async {
+    final api = RecordingPromoApi();
+    final coordinator = _coordinator(api: api);
+    await coordinator.onAuthenticated(_user('legacy-no'));
+    await coordinator.respondToLegacyActivationOffer(false);
+    expect(api.storedEnabled, isFalse);
+    await coordinator.onAuthenticated(_user('legacy-no'));
+    expect(coordinator.shouldShowLegacyActivationOffer, isFalse);
+  });
+
+  test('conta nova não repete prompt nativo na mesma instalação', () async {
+    final api = RecordingPromoApi()..storedEnabled = true;
+    final messaging = FakePromoMessaging()
+      ..permission = PromoOsPermission.denied;
+    final osPrompt = MemoryPromoOsPromptMemory();
+    final coordinator = _coordinator(
+      api: api,
+      messaging: messaging,
+      osPromptMemory: osPrompt,
+    );
+    await coordinator.onAuthenticated(_user('new-user'));
+    expect(messaging.permissionRequests, 1);
+    await coordinator.onAuthenticated(_user('new-user'));
+    expect(messaging.permissionRequests, 1);
   });
 
   test('token is registered, refreshed, and removed on logout', () async {
@@ -259,7 +307,7 @@ void main() {
 
   test('VIP parse keeps title, body and optional logo URL', () {
     final vip = PromoPushMessage.parse(
-      title: 'Bar Central publicou "Happy Hour"',
+      title: 'Happy Hour',
       body: 'Confira o que está rolando na sua cidade. Toque para ver!',
       data: {
         'type': 'PROMO_PUBLISHED',
@@ -269,13 +317,13 @@ void main() {
         'imageUrl': 'https://media.app-after.com.br/uploads/logo.jpg',
       },
     );
-    expect(vip!.title, 'Bar Central publicou "Happy Hour"');
+    expect(vip!.title, 'Happy Hour');
     expect(vip.imageUrl, 'https://media.app-after.com.br/uploads/logo.jpg');
   });
 
   test('notification text keeps the backend wording', () {
     final promotion = PromoPushMessage.parse(
-      title: 'Bar Central publicou uma promoção para hoje!',
+      title: 'Chopp em dobro',
       body: 'Confira o que está rolando na sua cidade. Toque para ver!',
       data: {
         'type': 'PROMO_PUBLISHED',
@@ -284,10 +332,10 @@ void main() {
         'venueId': 'venue-1',
       },
     );
-    expect(promotion!.title, 'Bar Central publicou uma promoção para hoje!');
+    expect(promotion!.title, 'Chopp em dobro');
 
     final neutral = PromoPushMessage.parse(
-      title: 'Bar Central publicou uma novidade para hoje!',
+      title: 'Novidade do dia',
       body: 'Confira o que está rolando na sua cidade. Toque para ver!',
       data: {
         'type': 'PROMO_PUBLISHED',
@@ -296,7 +344,7 @@ void main() {
         'venueId': 'venue-1',
       },
     );
-    expect(neutral!.title, contains('novidade'));
+    expect(neutral!.title, 'Novidade do dia');
     expect(neutral.title, isNot(contains('promoção')));
     expect(neutral.title, isNot(contains('evento')));
   });
@@ -617,6 +665,8 @@ PromoPushCoordinator _coordinator({
   PromoPushRouter? router,
   DeviceLocator? locator,
   MunicipalityGeocoder? geocoder,
+  MemoryPromoLegacyOfferMemory? legacyOfferMemory,
+  MemoryPromoOsPromptMemory? osPromptMemory,
 }) {
   final resolvedApi = api ?? RecordingPromoApi();
   final key = router?.navigatorKey ?? GlobalKey<NavigatorState>();
@@ -626,6 +676,8 @@ PromoPushCoordinator _coordinator({
     ledger: ledger ?? PromoDeliveryLedger(),
     router: router ?? PromoPushRouter(navigatorKey: key, api: resolvedApi),
     cityMemory: MemoryPromoCityMemory(),
+    legacyOfferMemory: legacyOfferMemory ?? MemoryPromoLegacyOfferMemory(),
+    osPromptMemory: osPromptMemory ?? MemoryPromoOsPromptMemory(),
     geocoder: geocoder,
     locator: locator,
   );
@@ -648,7 +700,7 @@ AuthController _auth() {
 
 PromoPushMessage _message() {
   return PromoPushMessage.parse(
-    title: 'Bar Central publicou uma promoção para hoje!',
+    title: 'Promo do dia',
     body: 'Confira o que está rolando na sua cidade. Toque para ver!',
     data: const {
       'type': 'PROMO_PUBLISHED',
@@ -735,7 +787,7 @@ class RecordingPromoApi extends PromoPushApi {
 }
 
 class FakePromoMessaging implements PromoPushMessaging {
-  PromoOsPermission permission = PromoOsPermission.denied;
+  PromoOsPermission permission = PromoOsPermission.granted;
   String? token;
   PromoPushMessage? launch;
   int permissionRequests = 0;
@@ -762,6 +814,10 @@ class FakePromoMessaging implements PromoPushMessaging {
     permissionRequests += 1;
     return permission;
   }
+
+  @override
+  Future<bool> systemNotificationsEnabled() async =>
+      permission == PromoOsPermission.granted;
 
   @override
   Future<String?> getToken() async => token;

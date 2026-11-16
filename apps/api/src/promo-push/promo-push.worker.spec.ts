@@ -251,7 +251,7 @@ describe('PromoPushWorker', () => {
     await worker.dispatchDue(now, { kind: 'public' });
     expect(messaging.calls).toHaveLength(1);
     expect(messaging.calls[0].tokens).toEqual([SECRET]);
-    expect(messaging.calls[0].title).toBe('Bar Central publicou Promo do dia');
+    expect(messaging.calls[0].title).toBe('Promo do dia');
     expect(messaging.calls[0].body).toBe(PROMO_PUSH_BODY_FALLBACK);
     expect(messaging.calls[0].imageUrl).toBe(
       'https://media.app-after.com.br/uploads/logo.jpg',
@@ -277,9 +277,7 @@ describe('PromoPushWorker', () => {
       }),
     );
     await worker.dispatchDue(now, { kind: 'public' });
-    expect(messaging.calls[0].title).toBe(
-      'Bar Central publicou Sextou com Promoção!',
-    );
+    expect(messaging.calls[0].title).toBe('Sextou com Promoção!');
     expect(messaging.calls[0].body).toBe('Caipirinha R$ 12 até meia-noite');
     expect(messaging.calls[0].imageUrl).toBe(
       'https://media.app-after.com.br/uploads/logo.jpg',
@@ -298,7 +296,7 @@ describe('PromoPushWorker', () => {
       }),
     );
     await worker.dispatchDue(now, { kind: 'public' });
-    expect(messaging.calls[0].title).toBe('Bar Central publicou Open bar VIP');
+    expect(messaging.calls[0].title).toBe('Open bar VIP');
     expect(messaging.calls[0].body).toBe('Open bar no rooftop');
   });
 

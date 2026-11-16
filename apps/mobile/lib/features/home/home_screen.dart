@@ -21,6 +21,7 @@ import '../../core/widgets/after_bottom_nav.dart';
 import '../../core/widgets/expanded_image.dart';
 import '../auth/auth_controller.dart';
 import '../venue/promo_validity.dart';
+import '../venue/venue_profile_visibility_hint.dart';
 import '../venue/venue_category_dropdown_field.dart';
 import 'home_feed_cards.dart';
 import 'home_promotions.dart';
@@ -94,6 +95,22 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedDay = DateTime(now.year, now.month, now.day);
     _bootstrapRecentCities();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeWarnVenueListingProfile();
+    });
+  }
+
+  Future<void> _maybeWarnVenueListingProfile() async {
+    final auth = context.read<AuthController>();
+    if (auth.user?.isVenue != true) return;
+    final venueId = auth.managingVenueId;
+    if (venueId == null) return;
+    try {
+      final data = await context.read<ApiClient>().get('/venues/$venueId')
+          as Map<String, dynamic>;
+      if (!mounted) return;
+      await showVenueListingProfileDialogIfNeeded(context, venue: data);
+    } catch (_) {}
   }
 
   @override
