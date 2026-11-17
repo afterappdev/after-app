@@ -136,6 +136,10 @@ function isOpenOnCalendarDay(
   return currentMinutes >= open && currentMinutes < close;
 }
 
+export function parseWallClockHm(value: string): number | null {
+  return parseHm(value);
+}
+
 function parseHm(value: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
   if (!m) return null;

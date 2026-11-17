@@ -333,6 +333,10 @@ model Venue {
   notifications       Notification[]
   blockedByUsers      UserVenueBlock[]
   moderationHiddenAt  DateTime?
+  /// Admin manual gate before the venue appears in consumer listings.
+  publicacaoAutorizada Boolean          @default(false)
+  /// When the post-signup owner e-mail was sent (idempotent).
+  avisoCadastroEnviadoAt DateTime?
   /// Owner-initiated closure; row and financial history are kept.
   ownerArchivedAt     DateTime?
   couponRedemptions   CreditCouponRedemption[]
