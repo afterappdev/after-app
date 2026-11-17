@@ -272,14 +272,17 @@ export async function listConsumerCityLocations(
 }
 
 export async function consumerTotals(prisma: PrismaService) {
-  const roleCounts = await prisma.user.groupBy({
-    by: ['role'],
-    where: { role: { in: CONSUMER_ROLES } },
-    _count: { _all: true },
-  });
+  const [roleCounts, venues] = await Promise.all([
+    prisma.user.groupBy({
+      by: ['role'],
+      where: { role: { in: CONSUMER_ROLES } },
+      _count: { _all: true },
+    }),
+    prisma.venue.count({
+      where: { owner: { role: Role.VENUE } },
+    }),
+  ]);
   const users =
     roleCounts.find((row) => row.role === Role.USER)?._count._all ?? 0;
-  const venues =
-    roleCounts.find((row) => row.role === Role.VENUE)?._count._all ?? 0;
   return { users, venues, accounts: users + venues };
 }

@@ -58,12 +58,16 @@ function createPrisma(
   sales: Sale[],
   users: Array<{ role: Role; createdAt: Date }>,
   partialAudits: PartialAudit[] = [],
+  venueCount?: number,
 ) {
   const prisma = {
     user: {
       groupBy: jest.fn(),
       count: jest.fn(),
       findMany: jest.fn(),
+    },
+    venue: {
+      count: jest.fn(),
     },
     creditPurchase: {
       groupBy: jest.fn(),
@@ -113,6 +117,11 @@ function createPrisma(
   );
 
   prisma.user.findMany.mockResolvedValue([]);
+
+  const defaultVenueCount =
+    venueCount ??
+    users.filter((user) => user.role === Role.VENUE).length;
+  prisma.venue.count.mockResolvedValue(defaultVenueCount);
 
   prisma.creditPurchase.groupBy.mockImplementation(
     (args: {
@@ -412,6 +421,18 @@ describe('AdminDashboardService metrics', () => {
     expect(august?.grossRevenueBrl).toBe(25);
   });
 
+  it('totals.venues conta registros Venue, não contas VENUE', async () => {
+    const prisma = createPrisma(
+      [],
+      [{ role: Role.VENUE, createdAt: septemberPaid }],
+      [],
+      3,
+    );
+    const service = dashboardService(prisma);
+    const result = await service.getDashboard(now);
+    expect(result.totals).toEqual({ accounts: 3, users: 0, venues: 3 });
+  });
+
   it('ADMIN não entra em totals.accounts e history tem 12 meses inclusive zerados', async () => {
     const prisma = createPrisma(
       [],
@@ -425,6 +446,9 @@ describe('AdminDashboardService metrics', () => {
     const result = await service.getDashboard(now);
 
     expect(result.totals).toEqual({ accounts: 2, users: 1, venues: 1 });
+    expect(prisma.venue.count).toHaveBeenCalledWith({
+      where: { owner: { role: Role.VENUE } },
+    });
     expect(result.month.newAccounts).toBe(2);
     expect(result.history).toHaveLength(12);
     expect(result.history[0].yearMonth).toBe('2025-10');

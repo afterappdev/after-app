@@ -14,6 +14,7 @@ import {
 } from '../finance';
 import { toMoneyNumber } from '../money';
 import {
+  consumerTotals,
   reportsCreatedInRange,
   reportsPendingCount,
   topCitiesNewAccountsInRange,
@@ -46,7 +47,7 @@ export class AdminDashboardService {
     const { start, end } = monthRangeUtc(ym);
 
     const [
-      roleCounts,
+      totals,
       newAccounts,
       monthSales,
       history,
@@ -65,11 +66,7 @@ export class AdminDashboardService {
       storeDownloads,
       siteTraffic,
     ] = await Promise.all([
-      this.prisma.user.groupBy({
-        by: ['role'],
-        where: { role: { in: CONSUMER_ROLES } },
-        _count: { _all: true },
-      }),
+      consumerTotals(this.prisma),
       this.prisma.user.count({
         where: {
           role: { in: CONSUMER_ROLES },
@@ -132,11 +129,6 @@ export class AdminDashboardService {
       this.siteTraffic.getMetric(),
     ]);
 
-    const users =
-      roleCounts.find((row) => row.role === Role.USER)?._count._all ?? 0;
-    const venues =
-      roleCounts.find((row) => row.role === Role.VENUE)?._count._all ?? 0;
-
     const warnings: AdminDashboardWarning[] = [];
     if (missingConfirmedAt > 0) {
       warnings.push({
@@ -146,11 +138,7 @@ export class AdminDashboardService {
     }
 
     return {
-      totals: {
-        accounts: users + venues,
-        users,
-        venues,
-      },
+      totals,
       month: {
         yearMonth: formatYearMonth(ym),
         newAccounts,
