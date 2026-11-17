@@ -4,10 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { geocodeCity, haversineKm, parseCoord } from '../common/utils/geo';
 import { computeIsOpen } from '../common/utils/hours';
 import { AuthUser } from '../common/decorators/current-user.decorator';
+import { blockedVenueIdsForUser } from '../common/moderation/audience';
 import {
-  blockedVenueIdsForUser,
-  publicVenueWhere,
-} from '../common/moderation/audience';
+  filterVenuesForStrangerDiscovery,
+  strangerDiscoveryVenueWhere,
+} from '../venues/venue-publication';
 import { VenuesService } from '../venues/venues.service';
 
 function sortOpenThenDistance<T extends { isOpen?: boolean | null; distanceKm?: number | null }>(
@@ -80,7 +81,7 @@ export class HomeService {
         : await geocodeCity(city);
 
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
-    const venueWhere = publicVenueWhere(blockedIds);
+    const venueWhere = strangerDiscoveryVenueWhere(blockedIds);
 
     const schedules = await this.prisma.bannerSchedule.findMany({
       where: {
@@ -151,26 +152,32 @@ export class HomeService {
 
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
 
-    const venues = await this.prisma.venue.findMany({
-      where: {
-        city: { equals: city, mode: 'insensitive' },
-        ...publicVenueWhere(blockedIds),
-      },
-      select: {
-        id: true,
-        name: true,
-        logoUrl: true,
-        coverUrl: true,
-        description: true,
-        category: true,
-        city: true,
-        state: true,
-        lat: true,
-        lng: true,
-        hoursJson: true,
-      },
-      orderBy: { name: 'asc' },
-    });
+    const venues = filterVenuesForStrangerDiscovery(
+      await this.prisma.venue.findMany({
+        where: {
+          city: { equals: city, mode: 'insensitive' },
+          ...strangerDiscoveryVenueWhere(blockedIds),
+        },
+        select: {
+          id: true,
+          ownerUserId: true,
+          moderationHiddenAt: true,
+          publicacaoAutorizada: true,
+          name: true,
+          logoUrl: true,
+          coverUrl: true,
+          description: true,
+          category: true,
+          city: true,
+          state: true,
+          lat: true,
+          lng: true,
+          hoursJson: true,
+          contacts: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    );
 
     const stats = await this.venuesService.reviewStatsForVenueIds(
       venues.map((v) => v.id),

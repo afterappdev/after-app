@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   blockedVenueIdsForUser,
   isVenuePubliclyVisible,
-  publicVenueWhere,
 } from '../common/moderation/audience';
+import { strangerDiscoveryVenueWhere } from '../venues/venue-publication';
 
 @Injectable()
 export class FavoritesService {
@@ -19,7 +19,7 @@ export class FavoritesService {
     return this.prisma.favorite.findMany({
       where: {
         userId,
-        venue: publicVenueWhere(blockedIds),
+        venue: strangerDiscoveryVenueWhere(blockedIds),
       },
       include: {
         venue: {

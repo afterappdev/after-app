@@ -25,8 +25,11 @@ import { assertUserAccountActive } from '../common/account/account-eligibility';
 import {
   blockedVenueIdsForUser,
   isVenuePubliclyVisible,
-  publicVenueWhere,
 } from '../common/moderation/audience';
+import {
+  filterVenuesForStrangerDiscovery,
+  strangerDiscoveryVenueWhere,
+} from './venue-publication';
 import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
@@ -127,13 +130,16 @@ export class VenuesService {
 
   async listByCity(city: string, user?: AuthUser | null) {
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
-    return this.prisma.venue.findMany({
+    const rows = await this.prisma.venue.findMany({
       where: {
         city: { equals: city, mode: 'insensitive' },
-        ...publicVenueWhere(blockedIds),
+        ...strangerDiscoveryVenueWhere(blockedIds),
       },
       select: {
         id: true,
+        ownerUserId: true,
+        moderationHiddenAt: true,
+        publicacaoAutorizada: true,
         name: true,
         description: true,
         category: true,
@@ -144,9 +150,11 @@ export class VenuesService {
         lat: true,
         lng: true,
         hoursJson: true,
+        contacts: true,
       },
       orderBy: { name: 'asc' },
     });
+    return filterVenuesForStrangerDiscovery(rows);
   }
 
   async geocodeLookup(input: {
@@ -194,22 +202,27 @@ export class VenuesService {
               : {}),
           }
         : {};
-    const venues = await this.prisma.venue.findMany({
-      where: { ...publicVenueWhere(blockedIds), ...cityScope },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        category: true,
-        logoUrl: true,
-        coverUrl: true,
-        city: true,
-        state: true,
-        hoursJson: true,
-        contacts: true,
-      },
-      orderBy: { name: 'asc' },
-    });
+    const venues = filterVenuesForStrangerDiscovery(
+      await this.prisma.venue.findMany({
+        where: { ...strangerDiscoveryVenueWhere(blockedIds), ...cityScope },
+        select: {
+          id: true,
+          ownerUserId: true,
+          moderationHiddenAt: true,
+          publicacaoAutorizada: true,
+          name: true,
+          description: true,
+          category: true,
+          logoUrl: true,
+          coverUrl: true,
+          city: true,
+          state: true,
+          hoursJson: true,
+          contacts: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    );
 
     let ranked = term
       ? venues
