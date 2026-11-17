@@ -45,6 +45,9 @@ export class AdminAccountsService {
 
   async list(query: AdminAccountsQueryDto) {
     const { page, limit, skip } = paginate(query.page, query.limit);
+    if (query.role === 'VENUE') {
+      return this.listVenueEstablishments(query, page, limit, skip);
+    }
     const where = this.buildWhere(query);
 
     const [total, rows] = await this.prisma.$transaction([
@@ -99,6 +102,64 @@ export class AdminAccountsService {
           contactPhone: phoneFromContacts(primary?.contacts ?? null),
         };
       }),
+      ...paginationMeta(page, limit, total),
+    };
+  }
+
+  private async listVenueEstablishments(
+    query: AdminAccountsQueryDto,
+    page: number,
+    limit: number,
+    skip: number,
+  ) {
+    const where = this.buildVenueWhere(query);
+    const [total, venues] = await this.prisma.$transaction([
+      this.prisma.venue.count({ where }),
+      this.prisma.venue.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          logoUrl: true,
+          contacts: true,
+          city: true,
+          state: true,
+          createdAt: true,
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              avatarUrl: true,
+              createdAt: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      items: venues.map((venue) => ({
+        id: venue.owner.id,
+        name: venue.owner.name,
+        email: venue.owner.email,
+        role: venue.owner.role,
+        state: venue.state,
+        city: venue.city,
+        createdAt: venue.createdAt,
+        avatarUrl: venue.owner.avatarUrl,
+        ageBand: null,
+        venueId: venue.id,
+        venueName: venue.name,
+        venueCategory: textOrNull(venue.category),
+        venueLogoUrl: venue.logoUrl,
+        contactPhone: phoneFromContacts(venue.contacts),
+      })),
       ...paginationMeta(page, limit, total),
     };
   }
@@ -238,6 +299,39 @@ export class AdminAccountsService {
       auditSource: 'admin',
     });
     return { success: true, outcome: result.outcome };
+  }
+
+  private buildVenueWhere(
+    query: AdminAccountsQueryDto,
+  ): Prisma.VenueWhereInput {
+    const where: Prisma.VenueWhereInput = {
+      owner: { role: Role.VENUE },
+    };
+    const q = query.q?.trim();
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { owner: { name: { contains: q, mode: 'insensitive' } } },
+        { owner: { email: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+    const city = query.city?.trim();
+    const state = query.state?.trim()?.toUpperCase();
+    if (city && !state) {
+      throw new BadRequestException(
+        'Informe state (UF) junto com city para filtrar contas.',
+      );
+    }
+    if (state && !city) {
+      throw new BadRequestException(
+        'Informe city junto com state para filtrar contas.',
+      );
+    }
+    if (city && state) {
+      where.city = city;
+      where.state = state;
+    }
+    return where;
   }
 
   private buildWhere(query: AdminAccountsQueryDto): Prisma.UserWhereInput {

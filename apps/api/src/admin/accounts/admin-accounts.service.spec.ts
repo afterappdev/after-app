@@ -81,6 +81,68 @@ describe('AdminAccountsService.list', () => {
       }),
     );
   });
+  it('com role VENUE lista um item por estabelecimento', async () => {
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
+    const venueFindMany = jest.fn().mockResolvedValue([
+      {
+        id: 'v1',
+        name: 'Bar Central',
+        category: 'Bares',
+        logoUrl: null,
+        contacts: null,
+        city: 'São Paulo',
+        state: 'SP',
+        createdAt,
+        owner: {
+          id: 'u-venue',
+          name: 'Dono',
+          email: 'bar@after.local',
+          role: Role.VENUE,
+          avatarUrl: null,
+          createdAt,
+        },
+      },
+      {
+        id: 'v2',
+        name: 'Picanha na Chapa',
+        category: 'Churrascarias',
+        logoUrl: null,
+        contacts: null,
+        city: 'Ribeirão Preto',
+        state: 'SP',
+        createdAt,
+        owner: {
+          id: 'u-venue',
+          name: 'Dono',
+          email: 'bar@after.local',
+          role: Role.VENUE,
+          avatarUrl: null,
+          createdAt,
+        },
+      },
+    ]);
+    const prisma = {
+      user: { count: jest.fn(), findMany: jest.fn() },
+      venue: {
+        count: jest.fn().mockResolvedValue(2),
+        findMany: venueFindMany,
+      },
+      $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
+    };
+    const service = new AdminAccountsService(prisma as never, {} as never);
+
+    const result = await service.list({ role: 'VENUE' });
+
+    expect(result.total).toBe(2);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.venueName)).toEqual([
+      'Bar Central',
+      'Picanha na Chapa',
+    ]);
+    expect(result.items.every((item) => item.id === 'u-venue')).toBe(true);
+    expect(prisma.user.findMany).not.toHaveBeenCalled();
+    expect(venueFindMany).toHaveBeenCalled();
+  });
 });
 
 describe('AdminAccountsService.remove', () => {
