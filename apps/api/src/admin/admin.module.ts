@@ -21,6 +21,8 @@ import { AdminSalesService } from './sales/admin-sales.service';
 import { AdminStoreMetricsModule } from './store-metrics/admin-store-metrics.module';
 import { AdminFinanceController } from './finance-ledger/admin-finance.controller';
 import { AdminFinanceService } from './finance-ledger/admin-finance.service';
+import { AdminEventoController } from './evento/admin-evento.controller';
+import { AdminEventoService } from './evento/admin-evento.service';
 
 @Module({
   imports: [
@@ -41,6 +43,7 @@ import { AdminFinanceService } from './finance-ledger/admin-finance.service';
     AdminPushTokensController,
     AdminReportsController,
     AdminFinanceController,
+    AdminEventoController,
   ],
   providers: [
     RolesGuard,
@@ -50,6 +53,7 @@ import { AdminFinanceService } from './finance-ledger/admin-finance.service';
     AdminSalesService,
     AdminReportsService,
     AdminFinanceService,
+    AdminEventoService,
   ],
 })
 export class AdminModule {}

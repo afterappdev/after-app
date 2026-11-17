@@ -155,6 +155,7 @@ model User {
   /// Bumped when global session invalidation occurs; normal JWTs carry claim sv.
   sessionVersion            Int                      @default(0)
   adminFinanceEntriesCreated AdminFinanceEntry[]
+  eventoCheck                EventoUserCheck?
 
   @@index([role, createdAt])
   @@index([ibgeCityId])
@@ -937,4 +938,12 @@ model AppStoreReviewWorkerLock {
   id          Int      @id @default(1)
   lockedUntil DateTime
   lockedBy    String
+}
+
+/// Controle de presença/checklist da página /evento (app usuário USER).
+model EventoUserCheck {
+  userId    String   @id
+  checked   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
