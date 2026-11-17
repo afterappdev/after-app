@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AppStoreReviewModule } from './app-store-reviews/app-store-review.module';
 import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { BannersModule } from './banners/banners.module';
@@ -26,6 +27,7 @@ import { VenuesModule } from './venues/venues.module';
           : undefined,
     }),
     PrismaModule,
+    AppStoreReviewModule,
     PromoPushModule,
     AuthModule,
     AdminModule,

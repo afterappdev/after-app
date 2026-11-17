@@ -890,3 +890,51 @@ model UserVenueBlock {
   @@unique([userId, venueId])
   @@index([venueId])
 }
+
+enum AppStoreReviewEmailStatus {
+  BASELINE
+  PENDING
+  SENT
+  FAILED
+}
+
+/// One row per App Store customer review (ASC id). BASELINE = known before e-mail alerts.
+model AppStoreReviewNotification {
+  reviewId          String                    @id
+  appAppleId        String
+  rating            Int
+  title             String                    @default("")
+  body              String                    @default("")
+  reviewerNickname  String?
+  territory         String?
+  reviewCreatedAt   DateTime
+  status            AppStoreReviewEmailStatus @default(PENDING)
+  emailAttempts     Int                       @default(0)
+  emailSentAt       DateTime?
+  lastEmailError    String?
+  firstSeenAt       DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([status, reviewCreatedAt])
+  @@index([appAppleId, reviewCreatedAt])
+}
+
+/// Singleton sync cursor and poll metadata for App Store review e-mails.
+model AppStoreReviewSyncState {
+  id                    Int       @id @default(1)
+  appAppleId            String
+  baselineCompletedAt   DateTime?
+  lastPollStartedAt     DateTime?
+  lastPollFinishedAt    DateTime?
+  lastError             String?
+  lastSuccessAt         DateTime?
+  nextScheduledPollAt   DateTime?
+  updatedAt             DateTime  @updatedAt
+}
+
+/// Lease so only one API instance polls App Store reviews at a time.
+model AppStoreReviewWorkerLock {
+  id          Int      @id @default(1)
+  lockedUntil DateTime
+  lockedBy    String
+}
