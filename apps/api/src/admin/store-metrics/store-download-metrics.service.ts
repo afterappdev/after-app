@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { fetchGooglePlayInstallAggregate } from './google-play-install-stats';
-import { fetchAppleAppTotalDownloads } from './apple-app-download-stats';
+import { fetchAppleAppInstallAggregate } from './apple-app-download-stats';
 
 export type StoreDownloadMetric = {
   total: number | null;
@@ -26,6 +26,7 @@ export class StoreDownloadMetricsService {
   private cacheUntil = 0;
   private refresh: Promise<void> | null = null;
   private lastGoodGoogle: StoreDownloadMetric | null = null;
+  private lastGoodApple: StoreDownloadMetric | null = null;
 
   async getMetrics(): Promise<StoreDownloadMetrics> {
     const now = Date.now();
@@ -100,15 +101,33 @@ export class StoreDownloadMetricsService {
 
   private async safeApple(): Promise<StoreDownloadMetric> {
     try {
-      const total = await fetchAppleAppTotalDownloads();
-      return {
-        total,
-        lastDataDate: null,
-        available: total != null,
-        source: 'app_store',
-        fetchedAt: new Date().toISOString(),
-      };
+      const agg = await fetchAppleAppInstallAggregate();
+      if (agg != null) {
+        const metric: StoreDownloadMetric = {
+          total: agg.total,
+          lastDataDate: agg.lastDataDate,
+          available: true,
+          source: 'app_store',
+          fetchedAt: new Date().toISOString(),
+        };
+        this.lastGoodApple = metric;
+        return metric;
+      }
+      if (this.lastGoodApple) {
+        return {
+          ...this.lastGoodApple,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+      return emptyMetric('app_store');
     } catch (err) {
+      if (this.lastGoodApple) {
+        return {
+          ...this.lastGoodApple,
+          fetchedAt: new Date().toISOString(),
+          error: String(err),
+        };
+      }
       return {
         ...emptyMetric('app_store'),
         error: String(err),

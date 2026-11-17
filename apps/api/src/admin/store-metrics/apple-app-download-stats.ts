@@ -1,13 +1,24 @@
 import { gunzipSync } from 'zlib';
 import { Logger } from '@nestjs/common';
 import { createAppStoreConnectJwt } from './app-store-connect-jwt';
+import {
+  aggregateFromDateMap,
+  ingestFirstTimeDownloadsByDate,
+  isAppStoreDownloadsStandardReport,
+} from './apple-download-tsv';
 
 const logger = new Logger('AppleAppDownloadStats');
 const API = 'https://api.appstoreconnect.apple.com/v1';
 
 type AscList<T> = { data: T[] };
 
-export async function fetchAppleAppTotalDownloads(): Promise<number | null> {
+export type AppleInstallAggregate = {
+  total: number;
+  lastDataDate: string;
+  firstDataDate: string;
+};
+
+export async function fetchAppleAppInstallAggregate(): Promise<AppleInstallAggregate | null> {
   const appId = process.env.APPLE_APP_APPLE_ID?.trim();
   if (!appId) {
     logger.warn('APPLE_APP_APPLE_ID ausente — downloads App Store indisponíveis.');
@@ -22,70 +33,66 @@ export async function fetchAppleAppTotalDownloads(): Promise<number | null> {
   }
 
   const headers = { Authorization: `Bearer ${jwt}`, Accept: 'application/json' };
-  const requestId = await ensureOngoingReportRequest(appId, headers);
-  if (!requestId) return null;
+  const requests = await listAnalyticsReportRequests(appId, headers);
+  if (!requests) return null;
 
-  const reportId = await findAppDownloadsReportId(requestId, headers);
-  if (!reportId) return null;
+  const orderedRequestIds = [
+    requests.snapshotId,
+    requests.ongoingId,
+  ].filter((id): id is string => Boolean(id));
 
-  const instanceId = await latestDailyInstanceId(reportId, headers);
-  if (!instanceId) return null;
-
-  const segmentUrl = await latestSegmentUrl(instanceId, headers);
-  if (!segmentUrl) return null;
-
-  const gzRes = await fetch(segmentUrl, { headers: { Authorization: `Bearer ${jwt}` } });
-  if (!gzRes.ok) {
-    logger.warn(`Download segmento Analytics falhou (${gzRes.status}).`);
+  if (orderedRequestIds.length === 0) {
+    logger.warn(
+      'Nenhuma solicitação ONGOING ou ONE_TIME_SNAPSHOT no App Store Connect.',
+    );
     return null;
   }
-  const buf = Buffer.from(await gzRes.arrayBuffer());
-  const text = gunzipSync(buf).toString('utf8');
-  return sumFirstTimeAndRedownloads(text);
+
+  const byDate = new Map<string, number>();
+  for (const requestId of orderedRequestIds) {
+    const reportId = await findAppDownloadsStandardReportId(requestId, headers);
+    if (!reportId) continue;
+    await ingestAllDailyInstances(reportId, jwt, headers, byDate);
+  }
+
+  return aggregateFromDateMap(byDate);
+}
+
+/** @deprecated use fetchAppleAppInstallAggregate */
+export async function fetchAppleAppTotalDownloads(): Promise<number | null> {
+  const agg = await fetchAppleAppInstallAggregate();
+  return agg?.total ?? null;
 }
 
 async function ascFetch<T>(url: string, headers: Record<string, string>): Promise<T | null> {
   const res = await fetch(url, { headers });
   if (!res.ok) {
-    logger.warn(`App Store Connect ${res.status}: ${url}`);
+    logger.warn(`App Store Connect ${res.status}`);
     return null;
   }
   return (await res.json()) as T;
 }
 
-async function ensureOngoingReportRequest(
+async function listAnalyticsReportRequests(
   appId: string,
   headers: Record<string, string>,
-): Promise<string | null> {
-  const list = await ascFetch<AscList<{ id: string; attributes?: { accessType?: string } }>>(
-    `${API}/apps/${appId}/analyticsReportRequests?limit=20`,
-    headers,
+): Promise<{ ongoingId: string | null; snapshotId: string | null } | null> {
+  const list = await ascFetch<
+    AscList<{ id: string; attributes?: { accessType?: string } }>
+  >(`${API}/apps/${appId}/analyticsReportRequests?limit=50`, headers);
+  if (!list) return null;
+  const rows = list.data ?? [];
+  const ongoing = rows.find((r) => r.attributes?.accessType === 'ONGOING');
+  const snapshot = rows.find(
+    (r) => r.attributes?.accessType === 'ONE_TIME_SNAPSHOT',
   );
-  const ongoing = list?.data?.find((r) => r.attributes?.accessType === 'ONGOING');
-  if (ongoing?.id) return ongoing.id;
-
-  const res = await fetch(`${API}/analyticsReportRequests`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      data: {
-        type: 'analyticsReportRequests',
-        attributes: { accessType: 'ONGOING' },
-        relationships: {
-          app: { data: { type: 'apps', id: appId } },
-        },
-      },
-    }),
-  });
-  if (!res.ok) {
-    logger.warn(`Criar analyticsReportRequest falhou (${res.status}).`);
-    return null;
-  }
-  const body = (await res.json()) as AscList<{ id: string }>;
-  return body.data?.[0]?.id ?? null;
+  return {
+    ongoingId: ongoing?.id ?? null,
+    snapshotId: snapshot?.id ?? null,
+  };
 }
 
-async function findAppDownloadsReportId(
+async function findAppDownloadsStandardReportId(
   requestId: string,
   headers: Record<string, string>,
 ): Promise<string | null> {
@@ -93,68 +100,54 @@ async function findAppDownloadsReportId(
     `${API}/analyticsReportRequests/${requestId}/reports?limit=200`,
     headers,
   );
-  const match = list?.data?.find((r) => {
-    const name = (r.attributes?.name ?? '').toLowerCase();
-    return name.includes('app store download') || name === 'app downloads';
-  });
-  return match?.id ?? list?.data?.[0]?.id ?? null;
+  if (!list) return null;
+  const match = list.data?.find((r) =>
+    isAppStoreDownloadsStandardReport(r.attributes?.name),
+  );
+  return match?.id ?? null;
 }
 
-async function latestDailyInstanceId(
+async function ingestAllDailyInstances(
   reportId: string,
+  jwt: string,
   headers: Record<string, string>,
-): Promise<string | null> {
-  const list = await ascFetch<AscList<{ id: string; attributes?: { processingDate?: string } }>>(
-    `${API}/analyticsReports/${reportId}/instances?filter[granularity]=DAILY&limit=50`,
-    headers,
-  );
-  const rows = list?.data ?? [];
-  if (rows.length === 0) return null;
-  rows.sort((a, b) =>
-    (b.attributes?.processingDate ?? '').localeCompare(
-      a.attributes?.processingDate ?? '',
-    ),
-  );
-  return rows[0]?.id ?? null;
-}
+  byDate: Map<string, number>,
+): Promise<void> {
+  let nextUrl: string | null =
+    `${API}/analyticsReports/${reportId}/instances?filter[granularity]=DAILY&limit=200`;
 
-async function latestSegmentUrl(
-  instanceId: string,
-  headers: Record<string, string>,
-): Promise<string | null> {
-  const list = await ascFetch<
-    AscList<{ id: string; attributes?: { url?: string; sizeInBytes?: number } }>
-  >(`${API}/analyticsReportInstances/${instanceId}/segments`, headers);
-  const seg = list?.data?.[0];
-  return seg?.attributes?.url ?? null;
-}
-
-/** Sums Counts for first-time downloads and redownloads (excludes updates). */
-function sumFirstTimeAndRedownloads(tsv: string): number | null {
-  const lines = tsv.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return null;
-  const headers = lines[0]!.split('\t').map((h) => h.trim());
-  const typeIdx = headers.findIndex((h) => h.toLowerCase() === 'download type');
-  const countsIdx = headers.findIndex((h) => h.toLowerCase() === 'counts');
-  if (countsIdx < 0) return null;
-
-  const includeTypes = new Set([
-    'first-time download',
-    'redownload',
-    'first time download',
-  ]);
-  let total = 0;
-  let any = false;
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i]!.split('\t');
-    if (typeIdx >= 0) {
-      const kind = (cols[typeIdx] ?? '').trim().toLowerCase();
-      if (!includeTypes.has(kind)) continue;
+  while (nextUrl) {
+    const page = await ascFetch<
+      AscList<{ id: string }> & { links?: { next?: string } }
+    >(nextUrl, headers);
+    if (!page) break;
+    for (const row of page.data ?? []) {
+      await ingestInstanceSegments(row.id, jwt, headers, byDate);
     }
-    const n = Number.parseInt((cols[countsIdx] ?? '').trim(), 10);
-    if (!Number.isFinite(n)) continue;
-    total += n;
-    any = true;
+    nextUrl = page.links?.next ?? null;
   }
-  return any ? total : null;
+}
+
+async function ingestInstanceSegments(
+  instanceId: string,
+  jwt: string,
+  headers: Record<string, string>,
+  byDate: Map<string, number>,
+): Promise<void> {
+  const list = await ascFetch<
+    AscList<{ attributes?: { url?: string } }>
+  >(`${API}/analyticsReportInstances/${instanceId}/segments`, headers);
+  const segUrl = list?.data?.[0]?.attributes?.url;
+  if (!segUrl) return;
+
+  const gzRes = await fetch(segUrl, {
+    headers: { Authorization: `Bearer ${jwt}` },
+  });
+  if (!gzRes.ok) {
+    logger.warn(`Download segmento Analytics falhou (${gzRes.status}).`);
+    return;
+  }
+  const buf = Buffer.from(await gzRes.arrayBuffer());
+  const text = gunzipSync(buf).toString('utf8');
+  ingestFirstTimeDownloadsByDate(text, byDate);
 }
