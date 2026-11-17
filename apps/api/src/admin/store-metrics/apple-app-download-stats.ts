@@ -10,7 +10,13 @@ import {
 const logger = new Logger('AppleAppDownloadStats');
 const API = 'https://api.appstoreconnect.apple.com/v1';
 
-type AscList<T> = { data: T[] };
+type AscList<T> = { data?: T[] };
+
+type AscPaginationLinks = { next?: string | null };
+
+type AscPaginatedList<T> = AscList<T> & { links?: AscPaginationLinks };
+
+type AscDailyInstancesPage = AscPaginatedList<{ id: string }>;
 
 export type AppleInstallAggregate = {
   total: number;
@@ -117,14 +123,14 @@ async function ingestAllDailyInstances(
     `${API}/analyticsReports/${reportId}/instances?filter[granularity]=DAILY&limit=200`;
 
   while (nextUrl) {
-    const page = await ascFetch<
-      AscList<{ id: string }> & { links?: { next?: string } }
-    >(nextUrl, headers);
+    const page: AscDailyInstancesPage | null =
+      await ascFetch<AscDailyInstancesPage>(nextUrl, headers);
     if (!page) break;
     for (const row of page.data ?? []) {
       await ingestInstanceSegments(row.id, jwt, headers, byDate);
     }
-    nextUrl = page.links?.next ?? null;
+    const following = page.links?.next?.trim();
+    nextUrl = following ? following : null;
   }
 }
 
