@@ -1,5 +1,11 @@
-import { createAppStoreConnectJwt } from '../admin/store-metrics/app-store-connect-jwt';
-import { appStoreReviewAscListUrl } from './app-store-review.config';
+import { appStoreReviewAscStartUrlCandidates } from './app-store-review.config';
+import { createAppStoreReviewConnectJwt } from './app-store-review-connect-jwt';
+import {
+  ascResponseRequestId,
+  fetchAscJsonWithBackoff,
+  formatAscAppleErrors,
+  sleep,
+} from './asc-http.util';
 
 export type AscCustomerReview = {
   id: string;
@@ -14,10 +20,20 @@ export type AscCustomerReview = {
 export type AscReviewsFetchResult =
   | { ok: true; reviews: AscCustomerReview[] }
   | { ok: false; code: 'ASC_CONFIG'; message: string }
-  | { ok: false; code: 'ASC_AUTH'; message: string; httpStatus: number }
-  | { ok: false; code: 'ASC_FORBIDDEN'; message: string; httpStatus: number }
-  | { ok: false; code: 'ASC_HTTP'; message: string; httpStatus: number }
+  | { ok: false; code: 'ASC_AUTH'; message: string; httpStatus: number; requestId?: string | null }
+  | { ok: false; code: 'ASC_FORBIDDEN'; message: string; httpStatus: number; requestId?: string | null }
+  | { ok: false; code: 'ASC_HTTP'; message: string; httpStatus: number; requestId?: string | null }
   | { ok: false; code: 'ASC_NETWORK'; message: string };
+
+export type AscCustomerReviewsPageDiag = {
+  url: string;
+  httpStatus: number;
+  requestId: string | null;
+  attempts: number;
+  reviewCount: number;
+  appleErrors: ReturnType<typeof formatAscAppleErrors>;
+  hasNext: boolean;
+};
 
 type AscReviewResource = {
   type?: string;
@@ -36,16 +52,6 @@ type AscReviewsPage = {
   data?: AscReviewResource[];
   links?: { next?: string | null };
 };
-
-function pickAppleErrors(body: unknown): string {
-  const errors = (body as { errors?: { title?: string; detail?: string; code?: string }[] })
-    ?.errors;
-  if (!Array.isArray(errors) || errors.length === 0) return '';
-  return errors
-    .map((e) => [e.title, e.detail, e.code].filter(Boolean).join(': '))
-    .join('; ')
-    .slice(0, 400);
-}
 
 function mapReview(row: AscReviewResource): AscCustomerReview | null {
   const id = row.id?.trim();
@@ -69,36 +75,105 @@ function mapReview(row: AscReviewResource): AscCustomerReview | null {
 export type AscFetchDeps = {
   fetchFn?: typeof fetch;
   jwtFactory?: () => string | null;
+  env?: NodeJS.ProcessEnv;
 };
+
+function failureFromResponse(
+  res: Response,
+  body: unknown,
+  code: 'ASC_AUTH' | 'ASC_FORBIDDEN' | 'ASC_HTTP',
+  baseMessage: string,
+): AscReviewsFetchResult {
+  const detail = formatAscAppleErrors(body);
+  const suffix = detail ? ` Detalhe: ${detail}` : '';
+  const requestId = ascResponseRequestId(res);
+  const permissionHint =
+    res.status === 500
+      ? ' Confirme permissão Customer Reviews na chave ASC; HTTP 500 também ocorre sem escopo.'
+      : '';
+  return {
+    ok: false,
+    code,
+    httpStatus: res.status,
+    requestId,
+    message: `${baseMessage}${suffix}${permissionHint}`,
+  };
+}
+
+export async function fetchAscCustomerReviewsPageDiag(
+  url: string,
+  deps: AscFetchDeps = {},
+): Promise<AscCustomerReviewsPageDiag | { ok: false; message: string }> {
+  const jwt = (deps.jwtFactory ?? createAppStoreReviewConnectJwt)();
+  if (!jwt) {
+    return {
+      ok: false,
+      message:
+        'Credenciais ASC ausentes (APP_STORE_REVIEW_CONNECT_* ou APP_STORE_CONNECT_*).',
+    };
+  }
+  const fetchFn = deps.fetchFn ?? fetch;
+  try {
+    const { res, body, attempts } = await fetchAscJsonWithBackoff(url, jwt, fetchFn);
+    const page = body as AscReviewsPage;
+    return {
+      url,
+      httpStatus: res.status,
+      requestId: ascResponseRequestId(res),
+      attempts,
+      reviewCount: Array.isArray(page.data) ? page.data.length : 0,
+      appleErrors: formatAscAppleErrors(body),
+      hasNext: Boolean(page.links?.next),
+    };
+  } catch {
+    return { ok: false, message: 'Falha de rede ao consultar customerReviews.' };
+  }
+}
 
 export async function fetchAllAppStoreCustomerReviews(
   appAppleId: string,
   deps: AscFetchDeps = {},
 ): Promise<AscReviewsFetchResult> {
+  const env = deps.env ?? process.env;
   const fetchFn = deps.fetchFn ?? fetch;
-  const jwt = (deps.jwtFactory ?? createAppStoreConnectJwt)();
+  const jwt = (deps.jwtFactory ?? (() => createAppStoreReviewConnectJwt(env)))();
   if (!jwt) {
     return {
       ok: false,
       code: 'ASC_CONFIG',
       message:
-        'Variáveis APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_ID e APP_STORE_CONNECT_PRIVATE_KEY são obrigatórias para customerReviews.',
+        'Variáveis APP_STORE_REVIEW_CONNECT_* ou APP_STORE_CONNECT_ISSUER_ID / KEY_ID / PRIVATE_KEY são obrigatórias para customerReviews.',
     };
   }
 
   const reviews: AscCustomerReview[] = [];
-  let url: string | null = appStoreReviewAscListUrl(appAppleId);
+  const startUrls = appStoreReviewAscStartUrlCandidates(appAppleId, env);
+  let url: string | null = startUrls[0] ?? null;
+  let firstPageResolved = false;
+  let lastHttpFail: AscReviewsFetchResult | null = null;
+
+  const ingestPage = (page: AscReviewsPage) => {
+    for (const row of page.data ?? []) {
+      const mapped = mapReview(row);
+      if (mapped) reviews.push(mapped);
+    }
+  };
+
+  if (!url) {
+    return {
+      ok: false,
+      code: 'ASC_CONFIG',
+      message: 'URL inicial customerReviews indisponível.',
+    };
+  }
 
   while (url) {
     let res: Response;
+    let body: unknown;
     try {
-      res = await fetchFn(url, {
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(60_000),
-      });
+      const fetched = await fetchAscJsonWithBackoff(url, jwt, fetchFn);
+      res = fetched.res;
+      body = fetched.body;
     } catch {
       return {
         ok: false,
@@ -107,52 +182,48 @@ export async function fetchAllAppStoreCustomerReviews(
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as AscReviewsPage & {
-      errors?: unknown;
-    };
-
-    if (res.status === 401 || res.status === 403) {
-      const detail = pickAppleErrors(body);
-      const suffix = detail ? ` Detalhe: ${detail}` : '';
-      if (res.status === 403) {
-        return {
-          ok: false,
-          code: 'ASC_FORBIDDEN',
-          httpStatus: 403,
-          message:
-            'Chave App Store Connect sem permissão para GET /v1/apps/{id}/customerReviews (role precisa incluir Customer Reviews ou Admin).' +
-            suffix,
-        };
-      }
-      return {
-        ok: false,
-        code: 'ASC_AUTH',
-        httpStatus: 401,
-        message: 'Token App Store Connect rejeitado ao consultar customerReviews.' + suffix,
-      };
+    if (res.status === 401) {
+      return failureFromResponse(
+        res,
+        body,
+        'ASC_AUTH',
+        'Token App Store Connect rejeitado ao consultar customerReviews.',
+      );
+    }
+    if (res.status === 403) {
+      return failureFromResponse(
+        res,
+        body,
+        'ASC_FORBIDDEN',
+        'Chave App Store Connect sem permissão para GET /v1/apps/{id}/customerReviews (Customer Reviews ou Admin).',
+      );
     }
 
     if (!res.ok) {
-      const detail = pickAppleErrors(body);
-      const permissionHint =
-        res.status === 500
-          ? ' Confirme na chave ASC (Users and Access) permissão Customer Reviews; HTTP 500 também ocorre sem escopo.'
-          : '';
-      return {
-        ok: false,
-        code: 'ASC_HTTP',
-        httpStatus: res.status,
-        message: `App Store Connect customerReviews HTTP ${res.status}.${detail ? ` ${detail}` : ''}${permissionHint}`,
-      };
+      const base = `App Store Connect customerReviews HTTP ${res.status}`;
+      const fail = failureFromResponse(res, body, 'ASC_HTTP', base);
+      lastHttpFail = fail;
+      if (!firstPageResolved) {
+        const idx = startUrls.indexOf(url);
+        const nextStart = idx >= 0 ? startUrls[idx + 1] : undefined;
+        if (nextStart) {
+          await sleep(1_500);
+          url = nextStart;
+          continue;
+        }
+      }
+      return fail;
     }
 
-    for (const row of body.data ?? []) {
-      const mapped = mapReview(row);
-      if (mapped) reviews.push(mapped);
-    }
-
-    const next = body.links?.next;
+    firstPageResolved = true;
+    const page = body as AscReviewsPage;
+    ingestPage(page);
+    const next = page.links?.next;
     url = typeof next === 'string' && next.trim() ? next.trim() : null;
+  }
+
+  if (reviews.length === 0 && lastHttpFail) {
+    return lastHttpFail;
   }
 
   return { ok: true, reviews };
@@ -162,55 +233,5 @@ export async function probeAppStoreCustomerReviewsAccess(
   appAppleId: string,
   deps: AscFetchDeps = {},
 ): Promise<AscReviewsFetchResult> {
-  const fetchFn = deps.fetchFn ?? fetch;
-  const jwt = (deps.jwtFactory ?? createAppStoreConnectJwt)();
-  if (!jwt) {
-    return {
-      ok: false,
-      code: 'ASC_CONFIG',
-      message:
-        'Variáveis APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY_ID e APP_STORE_CONNECT_PRIVATE_KEY são obrigatórias.',
-    };
-  }
-
-  const url = `${appStoreReviewAscListUrl(appAppleId).split('?')[0]}?limit=1&sort=-createdDate`;
-  try {
-    const res = await fetchFn(url, {
-      headers: { Authorization: `Bearer ${jwt}`, Accept: 'application/json' },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (res.ok) {
-      return { ok: true, reviews: [] };
-    }
-    if (res.status === 403) {
-      return {
-        ok: false,
-        code: 'ASC_FORBIDDEN',
-        httpStatus: 403,
-        message:
-          'Sem permissão para customerReviews. Gere chave ASC com acesso a Customer Reviews.',
-      };
-    }
-    if (res.status === 401) {
-      return {
-        ok: false,
-        code: 'ASC_AUTH',
-        httpStatus: 401,
-        message: 'Token App Store Connect inválido.',
-      };
-    }
-    return {
-      ok: false,
-      code: 'ASC_HTTP',
-      httpStatus: res.status,
-      message: `Probe customerReviews HTTP ${res.status}. ${pickAppleErrors(body)}`,
-    };
-  } catch {
-    return {
-      ok: false,
-      code: 'ASC_NETWORK',
-      message: 'Rede indisponível no probe customerReviews.',
-    };
-  }
+  return fetchAllAppStoreCustomerReviews(appAppleId, deps);
 }

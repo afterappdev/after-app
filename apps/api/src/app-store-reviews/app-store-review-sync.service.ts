@@ -6,6 +6,7 @@ import {
   appStoreReviewPollMs,
   type AppStoreReviewEnv,
 } from './app-store-review.config';
+import { createAppStoreReviewConnectJwt, appStoreReviewAscCredentialSource } from './app-store-review-connect-jwt';
 import {
   fetchAllAppStoreCustomerReviews,
   type AscCustomerReview,
@@ -47,10 +48,17 @@ export class AppStoreReviewSyncService {
     await this.store.ensureSyncState(appAppleId);
     await this.store.markPollStart(now);
 
-    const asc = await fetchAllAppStoreCustomerReviews(appAppleId);
+    const credSource = appStoreReviewAscCredentialSource(this.env);
+    const asc = await fetchAllAppStoreCustomerReviews(appAppleId, {
+      env: this.env,
+      jwtFactory: () => createAppStoreReviewConnectJwt(this.env),
+    });
     if (!asc.ok) {
       await this.store.markPollError(asc.message);
-      this.logger.warn(`app-store-reviews asc error code=${asc.code} ${asc.message}`);
+      const req = 'requestId' in asc && asc.requestId ? ` requestId=${asc.requestId}` : '';
+      this.logger.warn(
+        `app-store-reviews asc error cred=${credSource} code=${asc.code}${req} ${asc.message}`,
+      );
       return { error: asc.message };
     }
 
@@ -61,6 +69,7 @@ export class AppStoreReviewSyncService {
     let newQueued = 0;
     let baselineRegistered = 0;
 
+    // Baseline só após paginação completa sem erro (fetchAll ok).
     if (inBaseline) {
       baselineRegistered = await this.store.upsertBaselineBatch(
         appAppleId,
@@ -158,6 +167,9 @@ export class AppStoreReviewSyncService {
 
   async probeAsc(): Promise<AscReviewsFetchResult> {
     const appAppleId = appStoreReviewAppleAppId(this.env);
-    return fetchAllAppStoreCustomerReviews(appAppleId);
+    return fetchAllAppStoreCustomerReviews(appAppleId, {
+      env: this.env,
+      jwtFactory: () => createAppStoreReviewConnectJwt(this.env),
+    });
   }
 }

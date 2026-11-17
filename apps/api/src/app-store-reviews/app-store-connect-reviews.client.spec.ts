@@ -7,24 +7,27 @@ function reviewPage(
   reviews: AscCustomerReview[],
   next: string | null,
 ): Response {
+  const payload = {
+    data: reviews.map((r) => ({
+      type: 'customerReviews',
+      id: r.id,
+      attributes: {
+        rating: r.rating,
+        title: r.title,
+        body: r.body,
+        reviewerNickname: r.reviewerNickname,
+        territory: r.territory,
+        createdDate: r.createdAt.toISOString(),
+      },
+    })),
+    links: { next },
+  };
   return {
     ok: true,
     status: 200,
-    json: async () => ({
-      data: reviews.map((r) => ({
-        type: 'customerReviews',
-        id: r.id,
-        attributes: {
-          rating: r.rating,
-          title: r.title,
-          body: r.body,
-          reviewerNickname: r.reviewerNickname,
-          territory: r.territory,
-          createdDate: r.createdAt.toISOString(),
-        },
-      })),
-      links: { next },
-    }),
+    headers: { get: () => null },
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
   } as Response;
 }
 
