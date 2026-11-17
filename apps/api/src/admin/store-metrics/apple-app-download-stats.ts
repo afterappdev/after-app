@@ -16,7 +16,7 @@ export async function fetchAppleAppTotalDownloads(): Promise<number | null> {
   const jwt = createAppStoreConnectJwt();
   if (!jwt) {
     logger.warn(
-      'APP_STORE_CONNECT_ISSUER_ID / APPLE_KEY_ID / APPLE_PRIVATE_KEY incompletos.',
+      'APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_KEY_ID / APP_STORE_CONNECT_PRIVATE_KEY incompletos.',
     );
     return null;
   }

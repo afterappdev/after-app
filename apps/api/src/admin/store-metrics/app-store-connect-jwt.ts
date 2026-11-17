@@ -3,8 +3,10 @@ import { normalizeApplePrivateKey } from '../../auth/apple-web.util';
 
 export function createAppStoreConnectJwt(): string | null {
   const issuerId = process.env.APP_STORE_CONNECT_ISSUER_ID?.trim();
-  const keyId = process.env.APPLE_KEY_ID?.trim();
-  const privateKey = normalizeApplePrivateKey(process.env.APPLE_PRIVATE_KEY);
+  const keyId = process.env.APP_STORE_CONNECT_KEY_ID?.trim();
+  const privateKey = normalizeApplePrivateKey(
+    process.env.APP_STORE_CONNECT_PRIVATE_KEY,
+  );
   if (!issuerId || !keyId || !privateKey) return null;
 
   const now = Math.floor(Date.now() / 1000);
