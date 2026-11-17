@@ -6,7 +6,6 @@ import {
 const baseVenue = {
   ownerUserId: 'o1',
   moderationHiddenAt: null,
-  publicacaoAutorizada: true,
   name: 'Mineiro Bar e Grill',
   logoUrl: null,
   coverUrl: null,
@@ -15,14 +14,14 @@ const baseVenue = {
 };
 
 describe('venueVisibleToStrangerDiscovery', () => {
-  it('oculta sem logo e capa mesmo com publicacaoAutorizada', () => {
+  it('oculta sem logo e capa', () => {
     expect(venueVisibleToStrangerDiscovery(baseVenue)).toBe(false);
     const gaps = listVenuePublicationProfileGaps(baseVenue);
     expect(gaps).toContain('logo cadastrada');
     expect(gaps).toContain('foto de capa cadastrada');
   });
 
-  it('exibe com perfil completo e autorização', () => {
+  it('exibe com perfil completo', () => {
     expect(
       venueVisibleToStrangerDiscovery({
         ...baseVenue,
@@ -32,11 +31,11 @@ describe('venueVisibleToStrangerDiscovery', () => {
     ).toBe(true);
   });
 
-  it('oculta sem publicacaoAutorizada', () => {
+  it('oculta quando moderado', () => {
     expect(
       venueVisibleToStrangerDiscovery({
         ...baseVenue,
-        publicacaoAutorizada: false,
+        moderationHiddenAt: new Date(),
         logoUrl: 'https://cdn/logo.png',
         coverUrl: 'https://cdn/cover.png',
       }),

@@ -7,7 +7,6 @@ import { publicVenueWhere } from '../common/moderation/audience';
 export type VenuePublicationFields = {
   ownerUserId: string;
   moderationHiddenAt: Date | null;
-  publicacaoAutorizada: boolean;
   name: string;
   logoUrl: string | null;
   coverUrl?: string | null;
@@ -15,14 +14,11 @@ export type VenuePublicationFields = {
   hoursJson: unknown;
 };
 
-/** Prisma filter for guest discovery lists (moderation + publication flag). */
+/** Prisma filter for guest discovery lists (moderation). Profile checklist runs in app code. */
 export function strangerDiscoveryVenueWhere(
   blockedIds: string[] = [],
 ): Prisma.VenueWhereInput {
-  return {
-    ...publicVenueWhere(blockedIds),
-    publicacaoAutorizada: true,
-  };
+  return publicVenueWhere(blockedIds);
 }
 
 export function filterVenuesForStrangerDiscovery<
@@ -110,7 +106,6 @@ export function listVenuePublicationProfileGaps(
 /** Full stranger-visible rule: not moderated away, flag on, profile complete. */
 export function venueVisibleToStrangerDiscovery(venue: VenuePublicationFields): boolean {
   if (venue.moderationHiddenAt) return false;
-  if (!venue.publicacaoAutorizada) return false;
   return listVenuePublicationProfileGaps(venue).length === 0;
 }
 

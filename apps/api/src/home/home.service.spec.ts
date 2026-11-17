@@ -26,7 +26,6 @@ function venueRow(overrides: Record<string, unknown> = {}) {
     id: 'venue-1',
     ownerUserId: 'owner-1',
     moderationHiddenAt: null,
-    publicacaoAutorizada: true,
     name: 'Bar Central',
     logoUrl: 'https://cdn.example/logo.png',
     coverUrl: 'https://cdn.example/cover.png',
@@ -159,7 +158,6 @@ describe('HomeService geolocation', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           moderationHiddenAt: null,
-          publicacaoAutorizada: true,
           owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
           id: { notIn: ['blocked-1'] },
         }),
@@ -177,7 +175,6 @@ describe('HomeService geolocation', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           moderationHiddenAt: null,
-          publicacaoAutorizada: true,
           owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
         }),
       }),
@@ -209,7 +206,6 @@ describe('HomeService geolocation', () => {
             status: 'ACTIVE',
             venue: expect.objectContaining({
               moderationHiddenAt: null,
-              publicacaoAutorizada: true,
               owner: { accountStatus: AccountLifecycleStatus.ACTIVE },
               id: { notIn: ['blocked-1'] },
             }),

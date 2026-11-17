@@ -162,7 +162,6 @@ export class HomeService {
           id: true,
           ownerUserId: true,
           moderationHiddenAt: true,
-          publicacaoAutorizada: true,
           name: true,
           logoUrl: true,
           coverUrl: true,
