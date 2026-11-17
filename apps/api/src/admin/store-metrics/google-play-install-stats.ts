@@ -7,8 +7,13 @@ const GCS_SCOPE = 'https://www.googleapis.com/auth/devstorage.read_only';
 
 type StorageObject = { name?: string; updated?: string };
 
-/** Reads latest Play Console installs overview CSV from the linked GCS bucket. */
-export async function fetchGooglePlayTotalInstalls(): Promise<number | null> {
+export type GooglePlayInstallAggregate = {
+  total: number;
+  lastDataDate: string;
+};
+
+/** Sums Daily User Installs from all monthly overview CSVs in the Play GCS bucket. */
+export async function fetchGooglePlayInstallAggregate(): Promise<GooglePlayInstallAggregate | null> {
   const bucket = process.env.GOOGLE_PLAY_STATS_BUCKET?.trim();
   const packageName =
     process.env.GOOGLE_PLAY_PACKAGE_NAME?.trim() ?? 'com.r2p.after.after_app';
@@ -26,7 +31,7 @@ export async function fetchGooglePlayTotalInstalls(): Promise<number | null> {
   const prefix = `stats/installs/installs_${packageName}_`;
   const listUrl =
     `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}` +
-    `/o?prefix=${encodeURIComponent(prefix)}&fields=items(name,updated)`;
+    `/o?prefix=${encodeURIComponent(prefix)}&fields=items(name)`;
 
   const listRes = await fetch(listUrl, {
     headers: { Authorization: `Bearer ${token}` },
@@ -36,53 +41,91 @@ export async function fetchGooglePlayTotalInstalls(): Promise<number | null> {
     return null;
   }
   const listJson = (await listRes.json()) as { items?: StorageObject[] };
-  const objects = (listJson.items ?? []).filter((o) =>
-    o.name?.endsWith('_overview.csv'),
-  );
-  if (objects.length === 0) {
+  const objectNames = (listJson.items ?? [])
+    .map((o) => o.name)
+    .filter((name): name is string =>
+      Boolean(name?.endsWith('_overview.csv')),
+    )
+    .sort();
+
+  if (objectNames.length === 0) {
     logger.warn('Nenhum CSV overview de installs encontrado no bucket Play.');
     return null;
   }
-  objects.sort((a, b) => (b.updated ?? '').localeCompare(a.updated ?? ''));
-  const objectName = objects[0].name!;
-  const mediaUrl =
-    `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}` +
-    `/o/${encodeURIComponent(objectName)}?alt=media`;
 
-  const fileRes = await fetch(mediaUrl, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!fileRes.ok) {
-    logger.warn(`Download GCS falhou (${fileRes.status}) para ${objectName}.`);
-    return null;
+  const byDate = new Map<string, number>();
+  let lastDataDate = '';
+
+  for (const objectName of objectNames) {
+    const mediaUrl =
+      `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}` +
+      `/o/${encodeURIComponent(objectName)}?alt=media`;
+
+    const fileRes = await fetch(mediaUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!fileRes.ok) {
+      logger.warn(`Download GCS falhou (${fileRes.status}) para ${objectName}.`);
+      return null;
+    }
+    const csv = decodeCsvBytes(await fileRes.arrayBuffer());
+    ingestDailyUserInstalls(csv, byDate);
   }
-  const text = await fileRes.text();
-  return parseTotalUserInstalls(text);
+
+  if (byDate.size === 0) return null;
+  for (const date of byDate.keys()) {
+    if (date.localeCompare(lastDataDate) > 0) lastDataDate = date;
+  }
+  if (!lastDataDate) return null;
+
+  let total = 0;
+  for (const n of byDate.values()) total += n;
+  return { total, lastDataDate };
 }
 
-function parseTotalUserInstalls(csv: string): number | null {
-  const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  if (lines.length < 2) return null;
-  const headers = splitCsvLine(lines[0]);
-  const totalIdx = headers.findIndex(
-    (h) => h.trim().toLowerCase() === 'total user installs',
-  );
-  if (totalIdx < 0) return null;
+/** @deprecated use fetchGooglePlayInstallAggregate */
+export async function fetchGooglePlayTotalInstalls(): Promise<number | null> {
+  const agg = await fetchGooglePlayInstallAggregate();
+  return agg?.total ?? null;
+}
 
-  let bestDate = '';
-  let bestTotal: number | null = null;
+export function decodeCsvBytes(buf: ArrayBuffer): string {
+  const buffer = Buffer.from(buf);
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return buffer.toString('utf16le').replace(/^\ufeff/, '');
+  }
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xef &&
+    buffer[1] === 0xbb &&
+    buffer[2] === 0xbf
+  ) {
+    return buffer.toString('utf8').slice(1);
+  }
+  return buffer.toString('utf8');
+}
+
+export function ingestDailyUserInstalls(
+  csv: string,
+  byDate: Map<string, number>,
+): void {
+  const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return;
+  const headers = splitCsvLine(lines[0]);
+  const dailyIdx = headers.findIndex(
+    (h) => h.trim().toLowerCase() === 'daily user installs',
+  );
+  if (dailyIdx < 0) return;
+
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCsvLine(lines[i]);
-    if (cols.length <= totalIdx) continue;
+    if (cols.length <= dailyIdx) continue;
     const date = cols[0]?.trim() ?? '';
-    const n = Number.parseInt(cols[totalIdx]!.replace(/[^\d-]/g, ''), 10);
+    if (!date) continue;
+    const n = Number.parseInt(cols[dailyIdx]!.replace(/[^\d-]/g, ''), 10);
     if (!Number.isFinite(n)) continue;
-    if (date.localeCompare(bestDate) >= 0) {
-      bestDate = date;
-      bestTotal = n;
-    }
+    byDate.set(date, n);
   }
-  return bestTotal;
 }
 
 function splitCsvLine(line: string): string[] {
