@@ -3,6 +3,86 @@ import { Role } from '@prisma/client';
 import { UsersService } from '../../users/users.service';
 import { AdminAccountsService } from './admin-accounts.service';
 
+describe('AdminAccountsService.list', () => {
+  it('devolve foto, faixa etária e categoria do local', async () => {
+    const createdAt = new Date('2026-09-01T12:00:00.000Z');
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'u1',
+        name: 'Ana',
+        email: 'ana@after.local',
+        role: Role.USER,
+        state: 'SP',
+        city: 'Campinas',
+        createdAt,
+        avatarUrl: 'https://cdn.example/ana.jpg',
+        ageBand: 'AGE_19_35',
+        ownedVenues: [],
+      },
+      {
+        id: 'u2',
+        name: 'Dono',
+        email: 'bar@after.local',
+        role: Role.VENUE,
+        state: 'PR',
+        city: 'Curitiba',
+        createdAt,
+        avatarUrl: null,
+        ageBand: null,
+        ownedVenues: [
+          {
+            id: 'v1',
+            name: 'Bar Central',
+            category: '  🍻 Bares e Botecos  ',
+            logoUrl: 'https://cdn.example/logo.jpg',
+            contacts: { phone: ' 41999990000 ' },
+          },
+        ],
+      },
+    ]);
+    const prisma = {
+      user: { count: jest.fn().mockResolvedValue(2), findMany },
+      $transaction: (ops: Promise<unknown>[]) => Promise.all(ops),
+    };
+    const service = new AdminAccountsService(prisma as never, {} as never);
+
+    const result = await service.list({});
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'u1',
+        avatarUrl: 'https://cdn.example/ana.jpg',
+        ageBand: 'AGE_19_35',
+        venueCategory: null,
+        venueLogoUrl: null,
+        contactPhone: null,
+      }),
+      expect.objectContaining({
+        id: 'u2',
+        venueName: 'Bar Central',
+        venueCategory: '🍻 Bares e Botecos',
+        venueLogoUrl: 'https://cdn.example/logo.jpg',
+        contactPhone: '41999990000',
+      }),
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          avatarUrl: true,
+          ageBand: true,
+          ownedVenues: expect.objectContaining({
+            select: expect.objectContaining({
+              category: true,
+              logoUrl: true,
+              contacts: true,
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+});
+
 describe('AdminAccountsService.remove', () => {
   const prisma = {
     user: { findUnique: jest.fn() },

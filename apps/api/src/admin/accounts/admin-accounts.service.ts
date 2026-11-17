@@ -19,6 +19,19 @@ import { AdminAccountsStatsQueryDto } from './admin-accounts.stats.query';
 
 const CONSUMER_ROLES: Role[] = [Role.USER, Role.VENUE];
 
+function textOrNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function phoneFromContacts(contacts: Prisma.JsonValue | null): string | null {
+  if (!contacts || typeof contacts !== 'object' || Array.isArray(contacts)) {
+    return null;
+  }
+  const phone = (contacts as { phone?: unknown }).phone;
+  return typeof phone === 'string' ? textOrNull(phone) : null;
+}
+
 @Injectable()
 export class AdminAccountsService {
   constructor(
@@ -49,10 +62,18 @@ export class AdminAccountsService {
           state: true,
           city: true,
           createdAt: true,
+          avatarUrl: true,
+          ageBand: true,
           ownedVenues: {
             orderBy: { createdAt: 'asc' },
             take: 1,
-            select: { id: true, name: true },
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              logoUrl: true,
+              contacts: true,
+            },
           },
         },
       }),
@@ -69,8 +90,13 @@ export class AdminAccountsService {
           state: user.state,
           city: user.city,
           createdAt: user.createdAt,
+          avatarUrl: user.avatarUrl,
+          ageBand: user.ageBand,
           venueId: primary?.id ?? null,
           venueName: primary?.name ?? null,
+          venueCategory: textOrNull(primary?.category),
+          venueLogoUrl: primary?.logoUrl ?? null,
+          contactPhone: phoneFromContacts(primary?.contacts ?? null),
         };
       }),
       ...paginationMeta(page, limit, total),
