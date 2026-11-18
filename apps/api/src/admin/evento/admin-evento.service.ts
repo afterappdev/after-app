@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountLifecycleStatus, Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  EVENTO_SECTIONS,
+  normalizeEventoSectionKey,
+} from './admin-evento.config';
 
 const LIST_CAP = 10_000;
 
@@ -17,6 +21,10 @@ const userSelect = {
 export class AdminEventoService {
   constructor(private readonly prisma: PrismaService) {}
 
+  listSections() {
+    return { items: EVENTO_SECTIONS };
+  }
+
   private activeUserWhere(since?: Date) {
     return {
       role: Role.USER,
@@ -25,7 +33,8 @@ export class AdminEventoService {
     };
   }
 
-  async snapshot() {
+  async snapshot(sectionRaw?: string) {
+    const sectionKey = normalizeEventoSectionKey(sectionRaw);
     const where = {
       role: Role.USER,
       accountStatus: AccountLifecycleStatus.ACTIVE,
@@ -40,6 +49,7 @@ export class AdminEventoService {
         select: userSelect,
       }),
       this.prisma.eventoUserCheck.findMany({
+        where: { sectionKey },
         select: { userId: true, checked: true, updatedAt: true },
       }),
     ]);
@@ -54,6 +64,7 @@ export class AdminEventoService {
     }
 
     return {
+      sectionKey,
       total,
       items: users.map((u) => ({
         ...u,
@@ -65,7 +76,8 @@ export class AdminEventoService {
     };
   }
 
-  async feed(sinceRaw: string) {
+  async feed(sinceRaw: string, sectionRaw?: string) {
+    const sectionKey = normalizeEventoSectionKey(sectionRaw);
     const since = this.parseSince(sinceRaw);
     const users = await this.prisma.user.findMany({
       where: this.activeUserWhere(since),
@@ -76,7 +88,10 @@ export class AdminEventoService {
     const checkRows =
       users.length > 0
         ? await this.prisma.eventoUserCheck.findMany({
-            where: { userId: { in: users.map((u) => u.id) } },
+            where: {
+              sectionKey,
+              userId: { in: users.map((u) => u.id) },
+            },
             select: { userId: true, checked: true, updatedAt: true },
           })
         : [];
@@ -89,6 +104,7 @@ export class AdminEventoService {
       };
     }
     return {
+      sectionKey,
       items: users.map((u) => ({
         ...u,
         createdAt: u.createdAt.toISOString(),
@@ -98,7 +114,8 @@ export class AdminEventoService {
     };
   }
 
-  async setChecked(userId: string, checked: boolean) {
+  async setChecked(userId: string, checked: boolean, sectionRaw?: string) {
+    const sectionKey = normalizeEventoSectionKey(sectionRaw);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, role: true, accountStatus: true },
@@ -110,13 +127,14 @@ export class AdminEventoService {
       throw new BadRequestException('Conta não está ativa');
     }
     const row = await this.prisma.eventoUserCheck.upsert({
-      where: { userId },
-      create: { userId, checked },
+      where: { sectionKey_userId: { sectionKey, userId } },
+      create: { sectionKey, userId, checked },
       update: { checked },
-      select: { userId: true, checked: true, updatedAt: true },
+      select: { userId: true, sectionKey: true, checked: true, updatedAt: true },
     });
     return {
       userId: row.userId,
+      sectionKey: row.sectionKey,
       checked: row.checked,
       updatedAt: row.updatedAt.toISOString(),
     };

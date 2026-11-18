@@ -155,7 +155,7 @@ model User {
   /// Bumped when global session invalidation occurs; normal JWTs carry claim sv.
   sessionVersion            Int                      @default(0)
   adminFinanceEntriesCreated AdminFinanceEntry[]
-  eventoCheck                EventoUserCheck?
+  eventoChecks               EventoUserCheck[]
 
   @@index([role, createdAt])
   @@index([ibgeCityId])
@@ -940,10 +940,14 @@ model AppStoreReviewWorkerLock {
   lockedBy    String
 }
 
-/// Controle de presença/checklist da página /evento (app usuário USER).
+/// Controle de presença por seção (ex. After Day 1#) no admin.
 model EventoUserCheck {
-  userId    String   @id
-  checked   Boolean  @default(false)
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sectionKey String
+  userId     String
+  checked    Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sectionKey, userId])
+  @@index([sectionKey, updatedAt])
 }

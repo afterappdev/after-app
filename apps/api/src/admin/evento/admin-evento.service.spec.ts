@@ -52,10 +52,11 @@ describe('AdminEventoService', () => {
     });
     prisma.eventoUserCheck.upsert.mockResolvedValue({
       userId: 'u1',
+      sectionKey: 'after-day-1',
       checked: true,
       updatedAt: new Date('2026-11-03T00:00:00.000Z'),
     });
-    const out = await service.setChecked('u1', true);
+    const out = await service.setChecked('u1', true, 'after-day-1');
     expect(out.checked).toBe(true);
     expect(prisma.eventoUserCheck.upsert).toHaveBeenCalled();
   });
