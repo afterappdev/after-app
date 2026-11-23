@@ -349,6 +349,7 @@ class HomePromoCard extends StatelessWidget {
       tone: HomeAccentTone.promotion,
       onTap: onTap,
       imageUrl: imageUrl,
+      imageFit: HomeVisual.promoImageFit,
       onImageTap: onImageTap,
       offerMark: showOffer,
       vipFrame: featured,
@@ -429,6 +430,7 @@ class HomeVenueCard extends StatelessWidget {
       tone: HomeAccentTone.venue,
       onTap: onTap,
       imageUrl: imageUrl,
+      imageFit: HomeVisual.venueLogoImageFit,
       bodyHeight: HomeVisual.venueCardBodyHeight,
       textHeight: HomeVisual.venueCardTextHeight,
       emptyIcon: Icons.storefront_outlined,
@@ -830,11 +832,13 @@ class _FeedCard extends StatelessWidget {
     this.textHeight = HomeVisual.feedCardTextHeight,
     this.imageWidth = HomeVisual.imageWidth,
     this.imageHeight = HomeVisual.imageHeight,
+    this.imageFit = HomeVisual.promoImageFit,
   });
 
   final HomeAccentTone tone;
   final VoidCallback onTap;
   final String imageUrl;
+  final BoxFit imageFit;
   final IconData emptyIcon;
   final List<Widget> children;
   final VoidCallback? onImageTap;
@@ -902,6 +906,7 @@ class _FeedCard extends StatelessWidget {
                     onTap: onImageTap ?? onTap,
                     width: imageWidth,
                     height: imageHeight,
+                    fit: imageFit,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -939,6 +944,7 @@ class _CardImage extends StatelessWidget {
     required this.offerMark,
     required this.width,
     required this.height,
+    this.fit = HomeVisual.promoImageFit,
     this.onTap,
   });
 
@@ -948,6 +954,7 @@ class _CardImage extends StatelessWidget {
   final bool offerMark;
   final double width;
   final double height;
+  final BoxFit fit;
   final VoidCallback? onTap;
 
   @override
@@ -964,15 +971,19 @@ class _CardImage extends StatelessWidget {
             if (imageUrl.isEmpty)
               Center(child: Icon(emptyIcon, color: iconColor))
             else
-              Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.medium,
-                errorBuilder: (_, _, _) => const ColoredBox(
-                  color: Color(0xFFEEF3F1),
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: HomeVisual.muted,
+              Center(
+                child: Image.network(
+                  imageUrl,
+                  width: width,
+                  height: height,
+                  fit: fit,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (_, _, _) => const ColoredBox(
+                    color: Color(0xFFEEF3F1),
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: HomeVisual.muted,
+                    ),
                   ),
                 ),
               ),

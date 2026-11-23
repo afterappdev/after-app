@@ -173,6 +173,32 @@ void main() {
     expect(find.text('São José do Rio Preto'), findsOneWidget);
   });
 
+  testWidgets('logo do local no card usa contain no quadrado fixo', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HomeVenueCard(
+            imageUrl: 'https://example.com/logo.png',
+            venueName: 'Bar',
+            isOpen: true,
+            hasOpenInfo: true,
+            category: 'Bares',
+            city: 'SP',
+            description: 'Teste',
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect(image.fit, HomeVisual.venueLogoImageFit);
+    expect(image.width, HomeVisual.imageWidth);
+    expect(image.height, HomeVisual.imageHeight);
+  });
+
   testWidgets('card de local tem altura rente à logo; promo usa altura do miolo', (
       tester) async {
     await tester.pumpWidget(

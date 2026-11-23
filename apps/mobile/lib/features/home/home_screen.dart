@@ -1248,7 +1248,9 @@ class _VenueSearchField extends StatelessWidget {
                               )
                             : Image.network(
                                 imageUrl,
-                                fit: BoxFit.cover,
+                                width: 40,
+                                height: 40,
+                                fit: HomeVisual.venueLogoImageFit,
                                 errorBuilder: (_, _, _) => const ColoredBox(
                                   color: Color(0xFFEEF3F1),
                                   child: Icon(

@@ -35,6 +35,10 @@ class HomeVisual {
   static const imageWidth = 108.0;
   static const imageHeight = 108.0;
 
+  /// Logo no feed: inteira dentro do quadrado. Arte de promoção: preenche o frame.
+  static const venueLogoImageFit = BoxFit.contain;
+  static const promoImageFit = BoxFit.cover;
+
   /// Corpo fixo do card de promoção (barra + imagem + texto).
   /// Miolo do card de promoção: 2 linhas na descrição (sem avaliações).
   static const feedCardTextHeight = 127.0;
