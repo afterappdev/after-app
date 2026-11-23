@@ -11,7 +11,7 @@ const expectedCategories = [
   '🍺 Cervejarias e Choperias',
   '🥩 Churrascarias e Steakhouses',
   '🍣 Culinária Asiática',
-  '🎭 Entretenimento e Eventos',
+  '🎭 Divulgador de Eventos',
   '🍢 Espetaria',
   '⚽ Esportes, Lazer e Jogos',
   '🍴 Food Park',
@@ -57,7 +57,7 @@ void main() {
         'Cervejarias e Choperias',
         'Churrascarias e Steakhouses',
         'Culinária Asiática',
-        'Entretenimento e Eventos',
+        'Divulgador de Eventos',
         'Espetaria',
         'Esportes, Lazer e Jogos',
         'Food Park',
@@ -102,6 +102,10 @@ void main() {
     expect(VenueCategories.present('🎡 Food Park'), '🍴 Food Park');
     expect(VenueCategories.present('🎶 Karaokê'), '🎤 Karaokê');
     expect(VenueCategories.present('🍨 Sorveterias e Açaí'), '🍦 Sorveterias e Açaí');
+    expect(
+      VenueCategories.present('🎭 Entretenimento e Eventos'),
+      '🎭 Divulgador de Eventos',
+    );
     expect(VenueCategories.present('🍢 Espetaria'), '🍢 Espetaria');
     expect(VenueCategories.resolve('🍣 Culinária Internacional'), '🍣 Culinária Asiática');
     expect(

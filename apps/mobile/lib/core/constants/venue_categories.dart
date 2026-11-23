@@ -18,6 +18,8 @@ class VenueCategories {
     'Karaokê': '🎤 Karaokê',
     '🍨 Sorveterias e Açaí': '🍦 Sorveterias e Açaí',
     'Sorveterias e Açaí': '🍦 Sorveterias e Açaí',
+    '🎭 Entretenimento e Eventos': '🎭 Divulgador de Eventos',
+    'Entretenimento e Eventos': '🎭 Divulgador de Eventos',
   };
 
   static const _catalog = [
@@ -29,7 +31,7 @@ class VenueCategories {
     '🍺 Cervejarias e Choperias',
     '🥩 Churrascarias e Steakhouses',
     '🍣 Culinária Asiática',
-    '🎭 Entretenimento e Eventos',
+    '🎭 Divulgador de Eventos',
     '🍢 Espetaria',
     '⚽ Esportes, Lazer e Jogos',
     '🍴 Food Park',
