@@ -10,6 +10,7 @@ import {
   strangerDiscoveryVenueWhere,
 } from '../venues/venue-publication';
 import { VenuesService } from '../venues/venues.service';
+import { isEventPromoterCategory } from '../venues/venue-categories';
 
 function sortOpenThenDistance<T extends { isOpen?: boolean | null; distanceKm?: number | null }>(
   items: T[],
@@ -176,7 +177,7 @@ export class HomeService {
         },
         orderBy: { name: 'asc' },
       }),
-    );
+    ).filter((venue) => !isEventPromoterCategory(venue.category));
 
     const stats = await this.venuesService.reviewStatsForVenueIds(
       venues.map((v) => v.id),

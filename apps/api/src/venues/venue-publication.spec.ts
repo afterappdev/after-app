@@ -41,4 +41,20 @@ describe('venueVisibleToStrangerDiscovery', () => {
       }),
     ).toBe(false);
   });
+
+  it('Divulgador de Eventos ignora checklist de perfil', () => {
+    expect(
+      venueVisibleToStrangerDiscovery({
+        ...baseVenue,
+        category: '🎭 Entretenimento e Eventos',
+      }),
+    ).toBe(true);
+    expect(
+      venueVisibleToStrangerDiscovery({
+        ...baseVenue,
+        category: '🎭 Divulgador de Eventos',
+        moderationHiddenAt: new Date(),
+      }),
+    ).toBe(false);
+  });
 });

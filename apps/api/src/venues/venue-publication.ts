@@ -3,10 +3,12 @@ import { contactsStreetAddress } from '../common/utils/geo';
 import { DAY_KEYS, parseWallClockHm } from '../common/utils/hours';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { publicVenueWhere } from '../common/moderation/audience';
+import { isEventPromoterCategory } from './venue-categories';
 
 export type VenuePublicationFields = {
   ownerUserId: string;
   moderationHiddenAt: Date | null;
+  category?: string | null;
   name: string;
   logoUrl: string | null;
   coverUrl?: string | null;
@@ -106,6 +108,7 @@ export function listVenuePublicationProfileGaps(
 /** Full stranger-visible rule: not moderated away, flag on, profile complete. */
 export function venueVisibleToStrangerDiscovery(venue: VenuePublicationFields): boolean {
   if (venue.moderationHiddenAt) return false;
+  if (isEventPromoterCategory(venue.category)) return true;
   return listVenuePublicationProfileGaps(venue).length === 0;
 }
 

@@ -72,7 +72,19 @@ export const VENUE_CATEGORY_RENAMES: ReadonlyArray<{
       '🍦 Sorveterias e Açaí',
     ],
   },
+  {
+    stored: '🎭 Entretenimento e Eventos',
+    display: '🎭 Divulgador de Eventos',
+    from: [
+      '🎭 Entretenimento e Eventos',
+      'Entretenimento e Eventos',
+      '🎭 Divulgador de Eventos',
+      'Divulgador de Eventos',
+    ],
+  },
 ];
+
+export const EVENT_PROMOTER_CATEGORY_STORED = '🎭 Entretenimento e Eventos';
 
 /** Labels shown by the next app, alphabetical by name, ignoring the emoji. */
 const CURRENT_CATEGORIES = [
@@ -84,7 +96,7 @@ const CURRENT_CATEGORIES = [
   '🍺 Cervejarias e Choperias',
   '🥩 Churrascarias e Steakhouses',
   '🍣 Culinária Asiática',
-  '🎭 Entretenimento e Eventos',
+  '🎭 Divulgador de Eventos',
   '🍢 Espetaria',
   '⚽ Esportes, Lazer e Jogos',
   '🍴 Food Park',
@@ -142,6 +154,13 @@ export function categoryMatches(
 ): boolean {
   if (!stored) return false;
   return storedCategory(stored) === storedCategory(filter);
+}
+
+export function isEventPromoterCategory(
+  value: string | null | undefined,
+): boolean {
+  if (!value) return false;
+  return storedCategory(value.trim()) === EVENT_PROMOTER_CATEGORY_STORED;
 }
 
 /** Keeps catalog categories when an older client would otherwise blank them. */

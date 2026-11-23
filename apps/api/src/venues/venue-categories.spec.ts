@@ -6,8 +6,10 @@ import { ACCOUNT_PENDING_OPERATION_MESSAGE } from '../common/account/account-eli
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
 import {
+  EVENT_PROMOTER_CATEGORY_STORED,
   LEGACY_LIVE_MUSIC_CATEGORY,
   categoryMatches,
+  isEventPromoterCategory,
   storedCategory,
 } from './venue-categories';
 
@@ -87,6 +89,17 @@ describe('venue categories', () => {
     expect(categoryMatches(LEGACY_LIVE_MUSIC_CATEGORY, '🎤 Karaokê')).toBe(
       false,
     );
+    expect(storedCategory('🎭 Divulgador de Eventos')).toBe(
+      EVENT_PROMOTER_CATEGORY_STORED,
+    );
+    expect(
+      categoryMatches(
+        EVENT_PROMOTER_CATEGORY_STORED,
+        '🎭 Divulgador de Eventos',
+      ),
+    ).toBe(true);
+    expect(isEventPromoterCategory('🎭 Divulgador de Eventos')).toBe(true);
+    expect(isEventPromoterCategory('🍻 Bares e Botecos')).toBe(false);
   });
 });
 

@@ -269,4 +269,19 @@ describe('HomeService geolocation', () => {
     expect(result[0].avgRating).toBe(4.5);
     expect(result[0].reviewCount).toBe(3);
   });
+
+  it('venues omite Divulgador de Eventos em locais próximos', async () => {
+    prisma.venue.findMany.mockResolvedValue([
+      venueRow({ id: 'venue-bar', category: '🍻 Bares e Botecos' }),
+      venueRow({
+        id: 'venue-event',
+        name: 'Agenda Shows',
+        category: '🎭 Entretenimento e Eventos',
+      }),
+    ]);
+
+    const result = await service.venues('São Paulo');
+
+    expect(result.map((item) => item.id)).toEqual(['venue-bar']);
+  });
 });
