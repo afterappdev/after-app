@@ -120,3 +120,21 @@ export async function geocodeVenueProfile(input: {
   if (!query) return null;
   return geocodePlace(query);
 }
+
+/** Stored coordinates, or geocode from profile address when missing. */
+export async function resolveVenueMapPoint(venue: {
+  lat?: number | null;
+  lng?: number | null;
+  contacts: unknown;
+  city: string | null;
+  state: string | null;
+}): Promise<GeoPoint | null> {
+  if (isValidLatLng(venue)) {
+    return { lat: venue.lat, lng: venue.lng };
+  }
+  return geocodeVenueProfile({
+    address: contactsStreetAddress(venue.contacts),
+    city: venue.city,
+    state: venue.state,
+  });
+}

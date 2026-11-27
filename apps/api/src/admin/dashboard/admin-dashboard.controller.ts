@@ -19,6 +19,8 @@ export class AdminDashboardController {
         throw new BadRequestException('yearMonth inválido. Use YYYY-MM.');
       }
     }
-    return this.dashboard.getDashboard(new Date(), selected);
+    return this.dashboard.getDashboard(new Date(), selected, {
+      refreshMetrics: query.refreshMetrics === true,
+    });
   }
 }

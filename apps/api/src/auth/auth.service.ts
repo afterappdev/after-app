@@ -30,6 +30,7 @@ import {
   VENUE_DOCUMENT_TAKEN,
   isVenueDocumentConflict,
 } from '../venues/venue-document';
+import { assertVenueRegistrationAllowed } from '../venues/venue-registration-dedupe';
 import {
   assertEnrichedRegistrationComplete,
   resolveRegistrationProfile,
@@ -105,6 +106,7 @@ type AuthUserRecord = AuthUserVenueRow & {
   city: string;
   avatarUrl: string | null;
   sessionVersion: number;
+  systemAccount?: boolean;
   accountStatus?: AccountLifecycleStatus;
   deletionRequestedAt?: Date | null;
   permanentDeletionAt?: Date | null;
@@ -216,6 +218,13 @@ export class AuthService {
       requestOrigin,
       allowedWebOrigins,
     );
+    if (dto.role === Role.VENUE) {
+      await assertVenueRegistrationAllowed(this.prisma, {
+        name: dto.name,
+        city: dto.city,
+        state: dto.state,
+      });
+    }
     const welcomeSecret =
       VENUE_SIGNUP_BONUS_CREDITS > 0 &&
       profile.mode === 'enriched' &&
@@ -286,6 +295,10 @@ export class AuthService {
     }
 
     if (user.role === Role.ADMIN) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
+
+    if (user.systemAccount) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 
@@ -362,6 +375,13 @@ export class AuthService {
       requestOrigin,
       allowedWebOrigins,
     );
+    if (role === Role.VENUE) {
+      await assertVenueRegistrationAllowed(this.prisma, {
+        name: dto.name.trim(),
+        city: dto.city,
+        state: dto.state,
+      });
+    }
     const welcomeSecret =
       VENUE_SIGNUP_BONUS_CREDITS > 0 &&
       profile.mode === 'enriched' &&
@@ -784,8 +804,21 @@ export class AuthService {
   }
 
   private defaultAppRedirect() {
+    const explicit = this.config.get<string>('PUBLIC_APP_URL')?.trim();
+    if (explicit) {
+      try {
+        const url = new URL(explicit);
+        if (isAllowedOAuthRedirect(url.href, this.oauthAllowedOrigins(), {
+          production: isProduction(),
+        })) {
+          return url.href.endsWith('/') ? url.href : `${url.href}/`;
+        }
+      } catch {
+        // falls through
+      }
+    }
     const origins = this.oauthAllowedOrigins();
-    return origins[0] ? `${origins[0]}/` : 'http://localhost:8080/';
+    return origins[0] ? `${origins[0]}/app/` : 'http://localhost:8080/app/';
   }
 
   private async verifyAppleIdToken(
@@ -1410,6 +1443,9 @@ export class AuthService {
   ):
     | ReturnType<AuthService['buildAuthResponse']>
     | AccountRecoveryLoginResult {
+    if (user.systemAccount) {
+      throw new UnauthorizedException('Credenciais inválidas');
+    }
     if (user.accountStatus === AccountLifecycleStatus.PENDING_DELETION) {
       return this.buildAccountRecoveryLoginResponse(user);
     }

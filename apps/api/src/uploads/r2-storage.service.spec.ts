@@ -1,6 +1,7 @@
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import {
+  isAllowedUpload,
   objectExtension,
   R2StorageService,
 } from './r2-storage.service';
@@ -183,6 +184,24 @@ describe('R2StorageService delete', () => {
       service.deleteByUrl('https://media.app-after.com.br/uploads/abc.jpg'),
     ).rejects.toThrow('R2 down');
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isAllowedUpload', () => {
+  it('aceita imagem e vídeo pelo mimetype', () => {
+    expect(isAllowedUpload('image/jpeg', 'foto.jpg')).toBe(true);
+    expect(isAllowedUpload('video/mp4', 'clip.mp4')).toBe(true);
+  });
+
+  it('aceita octet-stream quando a extensão é de imagem ou vídeo', () => {
+    expect(isAllowedUpload('application/octet-stream', 'Capa.PNG')).toBe(true);
+    expect(isAllowedUpload('', 'logo.webp')).toBe(true);
+    expect(isAllowedUpload('application/octet-stream', 'clipe.mp4')).toBe(true);
+  });
+
+  it('recusa octet-stream sem extensão permitida', () => {
+    expect(isAllowedUpload('application/octet-stream', 'virus.exe')).toBe(false);
+    expect(isAllowedUpload('text/plain', 'nota.jpg')).toBe(false);
   });
 });
 

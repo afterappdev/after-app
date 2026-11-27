@@ -9,7 +9,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { R2StorageService } from './r2-storage.service';
+import { isAllowedUpload, R2StorageService } from './r2-storage.service';
 
 @Controller('uploads')
 @UseGuards(JwtAuthGuard)
@@ -22,9 +22,7 @@ export class UploadsController {
       storage: memoryStorage(),
       limits: { fileSize: 80 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        const ok =
-          file.mimetype.startsWith('image/') ||
-          file.mimetype.startsWith('video/');
+        const ok = isAllowedUpload(file.mimetype, file.originalname);
         if (!ok) {
           cb(
             new BadRequestException(

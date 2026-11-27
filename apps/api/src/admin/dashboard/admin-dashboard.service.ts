@@ -42,7 +42,11 @@ export class AdminDashboardService {
     private readonly siteTraffic: SiteTrafficMetricsService,
   ) {}
 
-  async getDashboard(now = new Date(), selected?: YearMonth) {
+  async getDashboard(
+    now = new Date(),
+    selected?: YearMonth,
+    options?: { refreshMetrics?: boolean },
+  ) {
     const ym = selected ?? currentYearMonth(now);
     const { start, end } = monthRangeUtc(ym);
 
@@ -125,8 +129,12 @@ export class AdminDashboardService {
       reportsPendingCount(this.prisma),
       topCitiesRegistered(this.prisma),
       topVenueCategoriesRegistered(this.prisma),
-      this.storeDownloads.getMetrics(),
-      this.siteTraffic.getMetric(),
+      this.storeDownloads.getMetrics({
+        forceRefresh: options?.refreshMetrics === true,
+      }),
+      this.siteTraffic.getMetric({
+        forceRefresh: options?.refreshMetrics === true,
+      }),
     ]);
 
     const warnings: AdminDashboardWarning[] = [];

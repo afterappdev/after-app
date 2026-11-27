@@ -10,8 +10,12 @@ export class AuthUser {
 }
 
 export const CurrentUser = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): AuthUser => {
+  (
+    data: keyof AuthUser | undefined,
+    ctx: ExecutionContext,
+  ): AuthUser | AuthUser[keyof AuthUser] => {
     const request = ctx.switchToHttp().getRequest<{ user: AuthUser }>();
-    return request.user;
+    const user = request.user;
+    return data != null ? user[data] : user;
   },
 );

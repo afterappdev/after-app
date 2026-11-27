@@ -1,13 +1,10 @@
 import { createPrivateKey, sign as cryptoSign } from 'crypto';
-import { normalizeApplePrivateKey } from '../../auth/apple-web.util';
+import { resolveAscCredentials } from './asc-credentials';
 
 export function createAppStoreConnectJwt(): string | null {
-  const issuerId = process.env.APP_STORE_CONNECT_ISSUER_ID?.trim();
-  const keyId = process.env.APP_STORE_CONNECT_KEY_ID?.trim();
-  const privateKey = normalizeApplePrivateKey(
-    process.env.APP_STORE_CONNECT_PRIVATE_KEY,
-  );
-  if (!issuerId || !keyId || !privateKey) return null;
+  const creds = resolveAscCredentials();
+  if (!creds) return null;
+  const { issuerId, keyId, privateKey } = creds;
 
   const now = Math.floor(Date.now() / 1000);
   const header = base64Url(JSON.stringify({ alg: 'ES256', kid: keyId, typ: 'JWT' }));
@@ -15,7 +12,7 @@ export function createAppStoreConnectJwt(): string | null {
     JSON.stringify({
       iss: issuerId,
       iat: now,
-      exp: now + 1200,
+      exp: now + 300,
       aud: 'appstoreconnect-v1',
     }),
   );

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { fetchGooglePlayInstallAggregate } from './google-play-install-stats';
-import { fetchAppleAppInstallAggregate } from './apple-app-download-stats';
+import {
+  AscHttpError,
+  fetchAppleAppInstallAggregate,
+} from './apple-app-download-stats';
+import { playInstallCountsStale } from './play-install-freshness';
 
 export type StoreDownloadMetric = {
   total: number | null;
@@ -17,6 +21,7 @@ export type StoreDownloadMetrics = {
 };
 
 const CACHE_MS_OK = 6 * 60 * 60 * 1000;
+const CACHE_MS_PLAY_STALE = 15 * 60 * 1000;
 const CACHE_MS_FAIL = 60 * 1000;
 
 @Injectable()
@@ -28,9 +33,18 @@ export class StoreDownloadMetricsService {
   private lastGoodGoogle: StoreDownloadMetric | null = null;
   private lastGoodApple: StoreDownloadMetric | null = null;
 
-  async getMetrics(): Promise<StoreDownloadMetrics> {
+  invalidateCache(): void {
+    this.cache = null;
+    this.cacheUntil = 0;
+  }
+
+  async getMetrics(options?: { forceRefresh?: boolean }): Promise<StoreDownloadMetrics> {
+    const forceRefresh = options?.forceRefresh === true;
+    if (forceRefresh) this.invalidateCache();
+
     const now = Date.now();
-    if (this.cache && now < this.cacheUntil) return this.cache;
+    const playStale = playInstallCountsStale(this.cache?.googlePlay.lastDataDate);
+    if (this.cache && now < this.cacheUntil && !playStale) return this.cache;
     if (!this.refresh) {
       this.refresh = this.refreshMetrics()
         .catch((err) => {
@@ -60,7 +74,13 @@ export class StoreDownloadMetricsService {
     ]);
     this.cache = { googlePlay: play, appStore: apple };
     const ok = play.available || apple.available;
-    this.cacheUntil = Date.now() + (ok ? CACHE_MS_OK : CACHE_MS_FAIL);
+    const playStale = playInstallCountsStale(play.lastDataDate);
+    const ttl = !ok
+      ? CACHE_MS_FAIL
+      : playStale
+        ? CACHE_MS_PLAY_STALE
+        : CACHE_MS_OK;
+    this.cacheUntil = Date.now() + ttl;
   }
 
   private async safeGoogle(): Promise<StoreDownloadMetric> {
@@ -121,16 +141,20 @@ export class StoreDownloadMetricsService {
       }
       return emptyMetric('app_store');
     } catch (err) {
+      const ascAuth =
+        err instanceof AscHttpError
+          ? `App Store Connect recusou o token (HTTP ${err.status}). Confira APP_STORE_CONNECT_ISSUER_ID, KEY_ID e o .p8 pareado no Railway.`
+          : undefined;
       if (this.lastGoodApple) {
         return {
           ...this.lastGoodApple,
           fetchedAt: new Date().toISOString(),
-          error: String(err),
+          error: ascAuth ?? String(err),
         };
       }
       return {
         ...emptyMetric('app_store'),
-        error: String(err),
+        error: ascAuth ?? String(err),
       };
     }
   }

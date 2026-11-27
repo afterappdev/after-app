@@ -9,7 +9,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MediaType, PhotoKind, Prisma, Role } from '@prisma/client';
+import {
+  MediaType,
+  PhotoKind,
+  Prisma,
+  Role,
+  VenueProfileKind,
+} from '@prisma/client';
 import { computeIsOpen } from '../common/utils/hours';
 import {
   contactsStreetAddress,
@@ -30,6 +36,10 @@ import {
   filterVenuesForStrangerDiscovery,
   strangerDiscoveryVenueWhere,
 } from './venue-publication';
+import {
+  isPublishedStandardVenue,
+  isStandardVenue,
+} from './venue-standard-profile';
 import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
@@ -47,13 +57,17 @@ import {
 } from './venue-document';
 import {
   categoryMatches,
+  isEventPromoterCategory,
   isLegacyLiveMusicCategory,
   LEGACY_LIVE_MUSIC_CATEGORY,
   shouldPreserveCategory,
   storedCategory,
 } from './venue-categories';
+import { storedMusicStyle } from './venue-music-styles';
+import { venueMatchesSearchWords } from './venue-search-keywords';
 import { assertVenueDocumentAvailableForOwner } from './venue-document-policy';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { assertVenueRegistrationAllowed } from './venue-registration-dedupe';
 
 export const AMENITY_BOOL_KEYS = [
   'acceptsMealVoucher',
@@ -76,6 +90,22 @@ export const AMENITY_BOOL_KEYS = [
   'hasVegetarianOptions',
   'hasVeganOptions',
 ] as const;
+
+export type PublicVenueProfilePatch = {
+  name?: string;
+  description?: string;
+  category?: string;
+  musicStyle?: string | null;
+  logoUrl?: string;
+  coverUrl?: string;
+  city?: string;
+  state?: string;
+  lat?: number;
+  lng?: number;
+  contacts?: Prisma.InputJsonValue | object;
+  hoursJson?: Prisma.InputJsonValue | object;
+  menuUrl?: string | null;
+};
 
 type AmenityBoolKey = (typeof AMENITY_BOOL_KEYS)[number];
 
@@ -119,6 +149,15 @@ function normalize(value: string) {
     .trim();
 }
 
+/** Browse and partial search hide event promoters. Exact name still finds them. */
+function visibleInVenueNameSearch(
+  venue: { name: string; category: string | null },
+  term: string,
+): boolean {
+  if (!isEventPromoterCategory(venue.category)) return true;
+  return term.length > 0 && normalize(venue.name) === term;
+}
+
 @Injectable()
 export class VenuesService {
   constructor(
@@ -139,9 +178,13 @@ export class VenuesService {
         id: true,
         ownerUserId: true,
         moderationHiddenAt: true,
+        profileKind: true,
+        standardProfileStatus: true,
+        publicacaoAutorizada: true,
         name: true,
         description: true,
         category: true,
+        musicStyle: true,
         logoUrl: true,
         coverUrl: true,
         city: true,
@@ -187,9 +230,11 @@ export class VenuesService {
       minRating?: number;
     } & Partial<Record<AmenityBoolKey, boolean>> = {},
     user?: AuthUser | null,
+    options?: { keywords?: boolean },
   ) {
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
     const term = normalize(query);
+    const keywords = options?.keywords === true;
     const scopeCity = filters.city?.trim();
     const scopeState = filters.state?.trim();
     const cityScope =
@@ -208,9 +253,13 @@ export class VenuesService {
           id: true,
           ownerUserId: true,
           moderationHiddenAt: true,
+          profileKind: true,
+          standardProfileStatus: true,
+          publicacaoAutorizada: true,
           name: true,
           description: true,
           category: true,
+          musicStyle: true,
           logoUrl: true,
           coverUrl: true,
           city: true,
@@ -230,6 +279,7 @@ export class VenuesService {
             if (name === term) score = 3;
             else if (name.startsWith(term)) score = 2;
             else if (name.includes(term)) score = 1;
+            else if (keywords && venueMatchesSearchWords(venue, query)) score = 1;
             return { venue, score };
           })
           .filter((item) => item.score > 0)
@@ -240,6 +290,8 @@ export class VenuesService {
           )
           .map((item) => item.venue)
       : venues;
+
+    ranked = ranked.filter((venue) => visibleInVenueNameSearch(venue, term));
 
     const category = filters.category?.trim();
     if (category) {
@@ -268,8 +320,31 @@ export class VenuesService {
         isOpen: computeIsOpen(hoursJson),
         avgRating: review?.avgRating ?? null,
         reviewCount: review?.reviewCount ?? 0,
+        isStandardProfile: isStandardVenue(venue),
       };
     });
+  }
+
+  /** Cadastro de estabelecimento: locais públicos com nome parecido (perfil padrão reivindicável). */
+  async searchForRegistration(
+    query: string,
+    filters: { city?: string; state?: string } = {},
+  ) {
+    const q = query.trim();
+    if (q.length < 2) return [];
+    const hits = await this.searchByName(q, filters, null);
+    return hits.slice(0, 12).map((venue) => ({
+      id: venue.id,
+      name: venue.name,
+      city: venue.city,
+      state: venue.state,
+      logoUrl: venue.logoUrl,
+      claimable: isPublishedStandardVenue(venue),
+      managed:
+        !isStandardVenue(venue) &&
+        (venue.profileKind ?? VenueProfileKind.COMPLETE) ===
+          VenueProfileKind.COMPLETE,
+    }));
   }
 
   async getPublic(
@@ -295,6 +370,12 @@ export class VenuesService {
     if (!venue || !isVenuePubliclyVisible(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
+    if (
+      isStandardVenue(venue) &&
+      !isPublishedStandardVenue(venue)
+    ) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
     if (blockedIds.includes(id)) {
       throw new NotFoundException('Estabelecimento não encontrado');
@@ -307,18 +388,61 @@ export class VenuesService {
         ? { lat: userLat, lng: userLng }
         : await geocodeCity((city ?? venue.city).trim());
 
-    const reviewStats = await this.reviewStats(id);
+    const standard = isStandardVenue(venue);
+    const reviewStats = standard
+      ? { avgRating: null, reviewCount: 0, reviews: [] as never[] }
+      : await this.reviewStats(id);
     const visible = omitVenueDocument(venue);
+    const webBase =
+      this.config?.get<string>('WEB_PUBLIC_BASE_URL')?.trim().replace(/\/$/, '') ??
+      'https://app-after.com.br';
+
+    let mapPoint: { lat: number; lng: number } | null = isValidLatLng(venue)
+      ? { lat: venue.lat, lng: venue.lng }
+      : null;
+    const street = contactsStreetAddress(venue.contacts);
+    if (standard && street) {
+      const fromAddress = await geocodeVenueProfile({
+        address: street,
+        city: venue.city,
+        state: venue.state,
+      });
+      if (fromAddress) {
+        mapPoint = fromAddress;
+      }
+    } else if (!mapPoint && street) {
+      const fromAddress = await geocodeVenueProfile({
+        address: street,
+        city: venue.city,
+        state: venue.state,
+      });
+      if (fromAddress) {
+        mapPoint = fromAddress;
+      }
+    }
+
+    const distanceKm =
+      origin && mapPoint ? haversineKm(origin, mapPoint) : null;
 
     return {
       ...visible,
-      photos: venue.photos,
-      banners: venue.banners,
+      lat: mapPoint?.lat ?? visible.lat,
+      lng: mapPoint?.lng ?? visible.lng,
+      profileKind: venue.profileKind,
+      isStandardProfile: standard,
+      claimProfileUrl: standard
+        ? `${webBase}/app/#/reivindicar?venueId=${encodeURIComponent(venue.id)}`
+        : null,
+      photos: standard ? [] : venue.photos,
+      banners: standard ? [] : venue.banners,
+      coverUrl: standard ? null : visible.coverUrl,
+      menuUrl: standard ? null : visible.menuUrl,
+      description: standard ? null : visible.description,
       isOpen: computeIsOpen(venue.hoursJson),
       isOwner: Boolean(
         user && user.role === 'VENUE' && user.userId === venue.ownerUserId,
       ),
-      distanceKm: origin ? haversineKm(origin, venue) : null,
+      distanceKm,
       ...reviewStats,
     };
   }
@@ -329,10 +453,15 @@ export class VenuesService {
       select: {
         id: true,
         moderationHiddenAt: true,
+        profileKind: true,
+        standardProfileStatus: true,
         owner: { select: { accountStatus: true } },
       },
     });
     if (!venue || !isVenuePubliclyVisible(venue)) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    if (isStandardVenue(venue) && !isPublishedStandardVenue(venue)) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
@@ -509,20 +638,7 @@ export class VenuesService {
   async updateOwned(
     userId: string,
     venueId: string,
-    data: {
-      name?: string;
-      description?: string;
-      category?: string;
-      logoUrl?: string;
-      coverUrl?: string;
-      city?: string;
-      state?: string;
-      lat?: number;
-      lng?: number;
-      contacts?: Prisma.InputJsonValue | object;
-      hoursJson?: Prisma.InputJsonValue | object;
-      menuUrl?: string | null;
-    },
+    data: PublicVenueProfilePatch,
   ) {
     await assertUserAccountActive(this.prisma, userId);
     const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
@@ -532,7 +648,22 @@ export class VenuesService {
     if (venue.ownerUserId !== userId) {
       throw new ForbiddenException('Sem permissão para editar este local');
     }
+    return this.persistPublicProfile(venue, data);
+  }
 
+  async persistPublicProfile(
+    venue: {
+      id: string;
+      category: string | null;
+      city: string;
+      state: string;
+      contacts: Prisma.JsonValue;
+      logoUrl: string | null;
+      coverUrl: string | null;
+    },
+    data: PublicVenueProfilePatch,
+  ) {
+    const venueId = venue.id;
     const previousLogo = venue.logoUrl;
     const previousCover = venue.coverUrl;
     const { lat: requestedLat, lng: requestedLng, menuUrl, ...rest } = data;
@@ -552,6 +683,15 @@ export class VenuesService {
       } else {
         rest.category = storedCategory(trimmed);
       }
+    }
+    if (rest.musicStyle !== undefined) {
+      const stored = storedMusicStyle(rest.musicStyle);
+      if (stored === undefined) {
+        throw new BadRequestException(
+          'Selecione um estilo musical da lista.',
+        );
+      }
+      rest.musicStyle = stored;
     }
     if (rest.contacts !== undefined) {
       rest.contacts = mergeVenueContacts(venue.contacts, rest.contacts);
@@ -656,6 +796,12 @@ export class VenuesService {
     if (!owner || owner.role !== Role.VENUE) {
       throw new ForbiddenException('Conta não é de estabelecimento');
     }
+
+    await assertVenueRegistrationAllowed(this.prisma, {
+      name: dto.name,
+      city: dto.city,
+      state: dto.state,
+    });
 
     let document: ReturnType<typeof resolveVenueDocument> | null = null;
     if (dto.documentType && dto.documentNumber) {
@@ -782,7 +928,28 @@ export class VenuesService {
     if (venue.ownerUserId !== userId) {
       throw new ForbiddenException('Sem permissão');
     }
+    return this.insertVenuePhoto(venueId, url, kind, mediaType);
+  }
 
+  async addPhotoForAdmin(
+    venueId: string,
+    url: string,
+    kind: PhotoKind = PhotoKind.GALLERY,
+    mediaType?: MediaType,
+  ) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    return this.insertVenuePhoto(venueId, url, kind, mediaType);
+  }
+
+  private insertVenuePhoto(
+    venueId: string,
+    url: string,
+    kind: PhotoKind,
+    mediaType?: MediaType,
+  ) {
     return this.prisma.venuePhoto.create({
       data: {
         venueId,
@@ -801,6 +968,22 @@ export class VenuesService {
     if (venue.ownerUserId !== userId) {
       throw new ForbiddenException('Sem permissão');
     }
+    return this.deleteVenuePhoto(venue, photoId);
+  }
+
+  async removePhotoForAdmin(venueId: string, photoId: string) {
+    const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
+    if (!venue) {
+      throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    return this.deleteVenuePhoto(venue, photoId);
+  }
+
+  private async deleteVenuePhoto(
+    venue: { id: string; logoUrl: string | null; coverUrl: string | null },
+    photoId: string,
+  ) {
+    const venueId = venue.id;
     const photo = await this.prisma.venuePhoto.findFirst({
       where: { id: photoId, venueId },
     });

@@ -24,6 +24,14 @@ export type AppleInstallAggregate = {
   firstDataDate: string;
 };
 
+/** Autenticação ASC rejeitada (token/chave/issuer). */
+export class AscHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`ASC_HTTP_${status}`);
+    this.name = 'AscHttpError';
+  }
+}
+
 export async function fetchAppleAppInstallAggregate(): Promise<AppleInstallAggregate | null> {
   const appId = process.env.APPLE_APP_APPLE_ID?.trim();
   if (!appId) {
@@ -39,8 +47,16 @@ export async function fetchAppleAppInstallAggregate(): Promise<AppleInstallAggre
   }
 
   const headers = { Authorization: `Bearer ${jwt}`, Accept: 'application/json' };
-  const requests = await listAnalyticsReportRequests(appId, headers);
+  let requests = await listAnalyticsReportRequests(appId, headers);
   if (!requests) return null;
+
+  if (!requests.ongoingId && !requests.snapshotId) {
+    const created = await ensureOngoingAnalyticsReportRequest(appId, headers);
+    if (created) {
+      requests = await listAnalyticsReportRequests(appId, headers);
+      if (!requests) return null;
+    }
+  }
 
   const orderedRequestIds = [
     requests.snapshotId,
@@ -49,7 +65,7 @@ export async function fetchAppleAppInstallAggregate(): Promise<AppleInstallAggre
 
   if (orderedRequestIds.length === 0) {
     logger.warn(
-      'Nenhuma solicitação ONGOING ou ONE_TIME_SNAPSHOT no App Store Connect.',
+      'Nenhuma solicitação ONGOING ou ONE_TIME_SNAPSHOT no App Store Connect (relatório pode levar 24–48 h).',
     );
     return null;
   }
@@ -72,11 +88,51 @@ export async function fetchAppleAppTotalDownloads(): Promise<number | null> {
 
 async function ascFetch<T>(url: string, headers: Record<string, string>): Promise<T | null> {
   const res = await fetch(url, { headers });
+  if (res.status === 401 || res.status === 403) {
+    logger.warn(`App Store Connect ${res.status} — confira Issuer ID, Key ID e .p8 no Railway.`);
+    throw new AscHttpError(res.status);
+  }
   if (!res.ok) {
     logger.warn(`App Store Connect ${res.status}`);
     return null;
   }
   return (await res.json()) as T;
+}
+
+async function ascPost(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+): Promise<boolean> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401 || res.status === 403) {
+    throw new AscHttpError(res.status);
+  }
+  if (!res.ok) {
+    logger.warn(`App Store Connect POST ${res.status}`);
+    return false;
+  }
+  return true;
+}
+
+async function ensureOngoingAnalyticsReportRequest(
+  appId: string,
+  headers: Record<string, string>,
+): Promise<boolean> {
+  logger.log('Criando analyticsReportRequest ONGOING no App Store Connect.');
+  return ascPost(`${API}/analyticsReportRequests`, headers, {
+    data: {
+      type: 'analyticsReportRequests',
+      attributes: { accessType: 'ONGOING' },
+      relationships: {
+        app: { data: { type: 'apps', id: appId } },
+      },
+    },
+  });
 }
 
 async function listAnalyticsReportRequests(
@@ -146,9 +202,13 @@ async function ingestInstanceSegments(
   const segUrl = list?.data?.[0]?.attributes?.url;
   if (!segUrl) return;
 
-  const gzRes = await fetch(segUrl, {
-    headers: { Authorization: `Bearer ${jwt}` },
-  });
+  // URLs de segmento são pré-assinadas; Bearer no GET costuma devolver 400.
+  let gzRes = await fetch(segUrl);
+  if (!gzRes.ok && (gzRes.status === 401 || gzRes.status === 403)) {
+    gzRes = await fetch(segUrl, {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+  }
   if (!gzRes.ok) {
     logger.warn(`Download segmento Analytics falhou (${gzRes.status}).`);
     return;

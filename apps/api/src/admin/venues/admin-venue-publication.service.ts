@@ -4,10 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import {
   listVenuePublicationProfileGaps,
   venueVisibleToStrangerDiscovery,
 } from '../../venues/venue-publication';
+import {
+  isStandardVenue,
+  listStandardProfilePublicationGaps,
+} from '../../venues/venue-standard-profile';
 
 const STATUS_SELECT = {
   id: true,
@@ -15,11 +20,26 @@ const STATUS_SELECT = {
   ownerUserId: true,
   moderationHiddenAt: true,
   publicacaoAutorizada: true,
+  profileKind: true,
+  standardProfileStatus: true,
+  category: true,
+  city: true,
+  state: true,
   logoUrl: true,
   coverUrl: true,
   contacts: true,
   hoursJson: true,
 } as const;
+
+type VenuePublicationStatus = Prisma.VenueGetPayload<{
+  select: typeof STATUS_SELECT;
+}>;
+
+function missingPublicationGaps(venue: VenuePublicationStatus) {
+  return isStandardVenue(venue)
+    ? listStandardProfilePublicationGaps(venue)
+    : listVenuePublicationProfileGaps(venue);
+}
 
 @Injectable()
 export class AdminVenuePublicationService {
@@ -33,11 +53,13 @@ export class AdminVenuePublicationService {
     if (!venue) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
-    const gaps = listVenuePublicationProfileGaps(venue);
+    const gaps = missingPublicationGaps(venue);
     return {
       venueId: venue.id,
       name: venue.name,
       publicacaoAutorizada: venue.publicacaoAutorizada,
+      profileKind: venue.profileKind,
+      standardProfileStatus: venue.standardProfileStatus,
       visibleToPublicGuest: venueVisibleToStrangerDiscovery(venue),
       missingForProfile: gaps,
     };
@@ -51,7 +73,12 @@ export class AdminVenuePublicationService {
     if (!venue) {
       throw new NotFoundException('Estabelecimento não encontrado');
     }
-    const gaps = listVenuePublicationProfileGaps(venue);
+    if (isStandardVenue(venue)) {
+      throw new BadRequestException(
+        'Perfis padrão usam publicar/retirar em Estabelecimentos → Perfis padrão.',
+      );
+    }
+    const gaps = missingPublicationGaps(venue);
     if (gaps.length > 0) {
       throw new BadRequestException({
         message: 'Perfil incompleto para autorizar publicação.',
@@ -77,10 +104,15 @@ export class AdminVenuePublicationService {
   async revoke(venueId: string) {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
-      select: { id: true },
+      select: { id: true, profileKind: true },
     });
     if (!venue) {
       throw new NotFoundException('Estabelecimento não encontrado');
+    }
+    if (isStandardVenue(venue)) {
+      throw new BadRequestException(
+        'Perfis padrão usam publicar/retirar em Estabelecimentos → Perfis padrão.',
+      );
     }
     await this.prisma.venue.update({
       where: { id: venueId },

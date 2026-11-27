@@ -92,10 +92,11 @@ describe('HomeService geolocation', () => {
     expect(result[0].distanceKm).not.toBeNull();
   });
 
-  it('venues without lat/lng leaves distanceKm null and does not geocode the venue', async () => {
+  it('venues without lat/lng geocodes address and returns distanceKm', async () => {
     prisma.venue.findMany.mockResolvedValue([
       venueRow({ lat: null, lng: null }),
     ]);
+    geocodeVenueProfileMock.mockResolvedValue({ lat: -20.81, lng: -49.37 });
 
     const result = await service.venues(
       'São Paulo',
@@ -103,11 +104,16 @@ describe('HomeService geolocation', () => {
       String(USER_LNG),
     );
 
-    expect(geocodeVenueProfileMock).not.toHaveBeenCalled();
+    expect(geocodeVenueProfileMock).toHaveBeenCalledWith({
+      address: 'Av. Paulista 1000',
+      city: 'São Paulo',
+      state: 'SP',
+    });
     expect(prisma.venue.update).not.toHaveBeenCalled();
-    expect(result[0].lat).toBeNull();
-    expect(result[0].lng).toBeNull();
-    expect(result[0].distanceKm).toBeNull();
+    expect(result[0].lat).toBe(-20.81);
+    expect(result[0].lng).toBe(-49.37);
+    expect(result[0].distanceKm).toEqual(expect.any(Number));
+    expect(result[0].distanceKm).not.toBeNull();
   });
 
   it('promotions with saved lat/lng does not geocode or update coordinates', async () => {

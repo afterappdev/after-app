@@ -104,6 +104,7 @@ const CURRENT_CATEGORIES = [
   '🎤 Karaokê',
   '🍸 Lounges e Rooftops',
   '🥟 Pastelaria',
+  '🎣 Pesqueiro',
   '🍕 Pizzarias',
   '🎸 Pubs',
   '🍽️ Restaurantes',
@@ -111,6 +112,17 @@ const CURRENT_CATEGORIES = [
   '🎉 Serv-Festas',
   '🍦 Sorveterias e Açaí',
 ] as const;
+
+/** Categorias oferecidas em cadastros (rótulo exibido e gravado no catálogo atual). */
+export function listVenuePickerCategories(): string[] {
+  return [...CURRENT_CATEGORIES].sort((a, b) => {
+    const label = (value: string) => {
+      const space = value.indexOf(' ');
+      return space < 0 ? value : value.slice(space + 1);
+    };
+    return label(a).localeCompare(label(b), 'pt-BR');
+  });
+}
 
 const PROTECTED_CATEGORIES = new Set<string>([
   ...CURRENT_CATEGORIES,

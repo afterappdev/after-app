@@ -4,7 +4,17 @@ const logger = new Logger('CloudflareWebAnalyticsVisits');
 
 const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 
+/** Janela padrão antiga (diag / testes). Card do dashboard usa `sinceLaunch`. */
 const DASHBOARD_PERIOD_DAYS = 30;
+
+/** Cloudflare Web Analytics retém meses, não anos; pedimos desde o início conhecido do site. */
+const DEFAULT_ANALYTICS_SINCE = '2020-01-01';
+
+/** Limite GraphQL CF (~13w2d); pedimos abaixo para margem. */
+const CF_MAX_CHUNK_DAYS = 92;
+
+/** CF não serve dados mais antigos que ~26w2d na conta. */
+const CF_MAX_HISTORY_DAYS = 182;
 
 const VISITS_QUERY = `
 query WebAnalyticsVisits($accountTag: String!, $filter: AccountRumPageloadEventsAdaptiveGroupsFilter_InputObject!) {
@@ -21,10 +31,48 @@ query WebAnalyticsVisits($accountTag: String!, $filter: AccountRumPageloadEvents
 
 export type CloudflareWebAnalyticsRange =
   | { kind: 'lastDays'; days: number }
-  | { kind: 'lastHours'; hours: number };
+  | { kind: 'lastHours'; hours: number }
+  | { kind: 'sinceLaunch' };
+
+export function readWebAnalyticsSinceDate(): string {
+  const configured = process.env.CLOUDFLARE_WEB_ANALYTICS_SINCE?.trim();
+  if (configured && /^\d{4}-\d{2}-\d{2}$/.test(configured)) {
+    return configured;
+  }
+  return DEFAULT_ANALYTICS_SINCE;
+}
+
+/** Início real da série: config, limitado ao que o CF ainda expõe. */
+export function effectiveWebAnalyticsSinceDate(now = new Date()): string {
+  const configured = readWebAnalyticsSinceDate();
+  const retentionFloor = addDaysYmd(
+    isoDateUtc(now),
+    -(CF_MAX_HISTORY_DAYS - 1),
+  );
+  return maxYmd(configured, retentionFloor);
+}
+
+export const dashboardSiteTrafficRange: CloudflareWebAnalyticsRange = {
+  kind: 'sinceLaunch',
+};
 
 function isoDateUtc(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map((part) => Number(part));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return isoDateUtc(dt);
+}
+
+function maxYmd(a: string, b: string): string {
+  return a >= b ? a : b;
+}
+
+function minYmd(a: string, b: string): string {
+  return a <= b ? a : b;
 }
 
 function readConfig():
@@ -55,15 +103,20 @@ export function buildWebAnalyticsVisitsFilter(
           ).toISOString(),
           datetime_leq: new Date().toISOString(),
         }
-      : (() => {
-          const end = new Date();
-          const start = new Date(end);
-          start.setUTCDate(start.getUTCDate() - (range.days - 1));
-          return {
-            date_geq: isoDateUtc(start),
-            date_leq: isoDateUtc(end),
-          };
-        })();
+      : range.kind === 'sinceLaunch'
+        ? {
+            date_geq: readWebAnalyticsSinceDate(),
+            date_leq: isoDateUtc(new Date()),
+          }
+        : (() => {
+            const end = new Date();
+            const start = new Date(end);
+            start.setUTCDate(start.getUTCDate() - (range.days - 1));
+            return {
+              date_geq: isoDateUtc(start),
+              date_leq: isoDateUtc(end),
+            };
+          })();
 
   return {
     siteTag,
@@ -76,17 +129,38 @@ export function buildWebAnalyticsVisitsFilter(
   };
 }
 
-export async function fetchCloudflareWebAnalyticsVisits(
-  range: CloudflareWebAnalyticsRange = {
-    kind: 'lastDays',
-    days: DASHBOARD_PERIOD_DAYS,
-  },
-): Promise<{ total: number; periodDays: number | null; periodHours: number | null } | null> {
-  const cfg = readConfig();
-  if (!cfg) return null;
+export function buildWebAnalyticsVisitsFilterForDates(
+  siteTag: string,
+  dateGeg: string,
+  dateLeq: string,
+): Record<string, unknown> {
+  return {
+    siteTag,
+    bot: 0,
+    date_geq: dateGeg,
+    date_leq: dateLeq,
+    AND: [
+      { requestPath_neq: '/admin' },
+      { requestPath_notlike: '/admin/%' },
+    ],
+  };
+}
 
-  const filter = buildWebAnalyticsVisitsFilter(cfg.siteTag, range);
+type VisitsGraphResponse = {
+  errors?: { message?: string }[];
+  data?: {
+    viewer?: {
+      accounts?: {
+        total?: { sum?: { visits?: number } }[];
+      }[];
+    };
+  };
+};
 
+async function fetchVisitsSumForFilter(
+  cfg: { accountId: string; siteTag: string; token: string },
+  filter: Record<string, unknown>,
+): Promise<number | null> {
   const res = await fetch(GRAPHQL_URL, {
     method: 'POST',
     headers: {
@@ -104,16 +178,7 @@ export async function fetchCloudflareWebAnalyticsVisits(
     return null;
   }
 
-  const json = (await res.json()) as {
-    errors?: { message?: string }[];
-    data?: {
-      viewer?: {
-        accounts?: {
-          total?: { sum?: { visits?: number } }[];
-        }[];
-      };
-    };
-  };
+  const json = (await res.json()) as VisitsGraphResponse;
 
   if (json.errors?.length) {
     logger.warn(
@@ -123,15 +188,79 @@ export async function fetchCloudflareWebAnalyticsVisits(
   }
 
   const visits = json.data?.viewer?.accounts?.[0]?.total?.[0]?.sum?.visits;
-  if (typeof visits !== 'number' || !Number.isFinite(visits)) {
-    logger.warn('Cloudflare Web Analytics GraphQL sem sum.visits na resposta.');
-    return null;
+  if (typeof visits === 'number' && Number.isFinite(visits)) {
+    return Math.trunc(visits);
+  }
+  return 0;
+}
+
+async function fetchSinceLaunchVisits(
+  cfg: { accountId: string; siteTag: string; token: string },
+): Promise<{ total: number; periodSince: string } | null> {
+  const since = effectiveWebAnalyticsSinceDate();
+  const end = isoDateUtc(new Date());
+  let cursor = since;
+  let total = 0;
+
+  while (cursor <= end) {
+    const chunkEnd = minYmd(addDaysYmd(cursor, CF_MAX_CHUNK_DAYS - 1), end);
+    const filter = buildWebAnalyticsVisitsFilterForDates(
+      cfg.siteTag,
+      cursor,
+      chunkEnd,
+    );
+    const visits = await fetchVisitsSumForFilter(cfg, filter);
+    if (visits === null) return null;
+    total += visits;
+    if (chunkEnd >= end) break;
+    cursor = addDaysYmd(chunkEnd, 1);
   }
 
+  return { total, periodSince: since };
+}
+
+export async function fetchCloudflareWebAnalyticsVisits(
+  range: CloudflareWebAnalyticsRange = {
+    kind: 'lastDays',
+    days: DASHBOARD_PERIOD_DAYS,
+  },
+): Promise<{
+  total: number;
+  periodDays: number | null;
+  periodHours: number | null;
+  periodSince: string | null;
+  periodScope: 'lastDays' | 'lastHours' | 'sinceLaunch';
+} | null> {
+  const cfg = readConfig();
+  if (!cfg) return null;
+
+  if (range.kind === 'sinceLaunch') {
+    const aggregate = await fetchSinceLaunchVisits(cfg);
+    if (aggregate === null) return null;
+    return {
+      total: aggregate.total,
+      periodDays: null,
+      periodHours: null,
+      periodSince: aggregate.periodSince,
+      periodScope: 'sinceLaunch',
+    };
+  }
+
+  const filter = buildWebAnalyticsVisitsFilter(cfg.siteTag, range);
+  const visits = await fetchVisitsSumForFilter(cfg, filter);
+  if (visits === null) return null;
+
+  const periodSince =
+    range.kind === 'lastDays'
+      ? (buildWebAnalyticsVisitsFilter(cfg.siteTag, range).date_geq as string)
+      : null;
+
   return {
-    total: Math.trunc(visits),
+    total: visits,
     periodDays: range.kind === 'lastDays' ? range.days : null,
     periodHours: range.kind === 'lastHours' ? range.hours : null,
+    periodSince,
+    periodScope: range.kind,
   };
 }
 

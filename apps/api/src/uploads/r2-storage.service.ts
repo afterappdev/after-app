@@ -36,6 +36,17 @@ export type StoredUpload = {
   url: string;
 };
 
+/**
+ * Browsers (and the admin web build) often send `application/octet-stream`
+ * for a real image. Accept that when the filename extension is one we store.
+ */
+export function isAllowedUpload(mimetype: string, originalname: string): boolean {
+  const type = mimetype.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (type.startsWith('image/') || type.startsWith('video/')) return true;
+  if (type !== '' && type !== 'application/octet-stream') return false;
+  return ALLOWED_EXT.has(extname(originalname).toLowerCase());
+}
+
 export function objectExtension(
   originalname: string,
   mimetype: string,

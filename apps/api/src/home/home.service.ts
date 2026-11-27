@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { BUSINESS_TIME_ZONE } from '../common/constants/timezone';
 import { PrismaService } from '../prisma/prisma.service';
-import { geocodeCity, haversineKm, parseCoord } from '../common/utils/geo';
+import {
+  contactsStreetAddress,
+  geocodeCity,
+  geocodeVenueProfile,
+  haversineKm,
+  isValidLatLng,
+  parseCoord,
+} from '../common/utils/geo';
 import { computeIsOpen } from '../common/utils/hours';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { blockedVenueIdsForUser } from '../common/moderation/audience';
 import {
-  filterVenuesForStrangerDiscovery,
+  filterVenuesForNearbyDiscovery,
   strangerDiscoveryVenueWhere,
 } from '../venues/venue-publication';
 import { VenuesService } from '../venues/venues.service';
@@ -104,6 +111,7 @@ export class HomeService {
                 coverUrl: true,
                 description: true,
                 category: true,
+                musicStyle: true,
                 city: true,
                 state: true,
                 lat: true,
@@ -153,7 +161,7 @@ export class HomeService {
 
     const blockedIds = await blockedVenueIdsForUser(this.prisma, user);
 
-    const venues = filterVenuesForStrangerDiscovery(
+    const venues = filterVenuesForNearbyDiscovery(
       await this.prisma.venue.findMany({
         where: {
           city: { equals: city, mode: 'insensitive' },
@@ -163,11 +171,15 @@ export class HomeService {
           id: true,
           ownerUserId: true,
           moderationHiddenAt: true,
+          profileKind: true,
+          standardProfileStatus: true,
+          publicacaoAutorizada: true,
           name: true,
           logoUrl: true,
           coverUrl: true,
           description: true,
           category: true,
+          musicStyle: true,
           city: true,
           state: true,
           lat: true,
@@ -183,12 +195,27 @@ export class HomeService {
       venues.map((v) => v.id),
     );
 
-    return sortOpenThenDistance(
-      venues.map((v) => ({
-        ...withReviewStats(v, stats),
-        isOpen: computeIsOpen(v.hoursJson),
-        distanceKm: origin ? haversineKm(origin, v) : null,
-      })),
+    const rows = await Promise.all(
+      venues.map(async (v) => {
+        const mapPoint = isValidLatLng(v)
+          ? { lat: v.lat, lng: v.lng }
+          : await geocodeVenueProfile({
+              address: contactsStreetAddress(v.contacts),
+              city: v.city,
+              state: v.state,
+            });
+        const distanceKm =
+          origin && mapPoint ? haversineKm(origin, mapPoint) : null;
+        return {
+          ...withReviewStats(v, stats),
+          lat: mapPoint?.lat ?? v.lat,
+          lng: mapPoint?.lng ?? v.lng,
+          isOpen: computeIsOpen(v.hoursJson),
+          distanceKm,
+        };
+      }),
     );
+
+    return sortOpenThenDistance(rows);
   }
 }

@@ -37,6 +37,25 @@ enum VenueDocumentType {
   CNPJ
 }
 
+/// Complete profiles belong to venue owners. Standard profiles are seeded by Admin.
+enum VenueProfileKind {
+  COMPLETE
+  STANDARD
+}
+
+enum StandardProfileStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum VenueClaimStatus {
+  RECEIVED
+  REJECTED
+  INVITE_SENT
+  INVITE_EXPIRED
+  COMPLETED
+}
+
 /// SIGNUP is a new grant of 1 common credit.
 /// HISTORICAL records a welcome purchase that already happened, often 2 credits,
 /// and does not move any balance.
@@ -156,6 +175,9 @@ model User {
   sessionVersion            Int                      @default(0)
   adminFinanceEntriesCreated AdminFinanceEntry[]
   eventoChecks               EventoUserCheck[]
+  /// True for the internal holder of standard (unclaimed) venue profiles.
+  systemAccount              Boolean                  @default(false)
+  venueClaimsReviewed        VenueClaim[]             @relation("VenueClaimReviewer")
 
   @@index([role, createdAt])
   @@index([ibgeCityId])
@@ -305,6 +327,8 @@ model Venue {
   name          String
   description   String?
   category      String?
+  /// Popular music style from the venue catalog. Null until the owner picks one.
+  musicStyle    String?
   logoUrl       String?
   coverUrl      String?
   city          String
@@ -340,6 +364,11 @@ model Venue {
   avisoCadastroEnviadoAt DateTime?
   /// Owner-initiated closure; row and financial history are kept.
   ownerArchivedAt     DateTime?
+  profileKind         VenueProfileKind           @default(COMPLETE)
+  standardProfileStatus StandardProfileStatus?
+  standardPublishedAt   DateTime?
+  standardUnpublishedAt DateTime?
+  venueClaims         VenueClaim[]
   couponRedemptions   CreditCouponRedemption[]
   creditObligations   CreditObligation[]
   creditLedgerEntries CreditLedgerEntry[]
@@ -351,6 +380,35 @@ model Venue {
   @@index([moderationHiddenAt])
   @@index([ownerArchivedAt])
   @@index([ibgeCityId])
+  @@index([profileKind, standardProfileStatus])
+}
+
+model VenueClaim {
+  id              String           @id @default(cuid())
+  venueId         String
+  venue           Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  protocol        String           @unique
+  requesterName   String
+  requesterRole   String?
+  email           String
+  whatsapp        String?
+  status          VenueClaimStatus @default(RECEIVED)
+  reviewerAdminId String?
+  reviewer        User?            @relation("VenueClaimReviewer", fields: [reviewerAdminId], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  inviteTokenHash String?
+  inviteExpiresAt DateTime?
+  approvedEmail   String?
+  emailConfirmCodeHash    String?
+  emailConfirmCodeExpiresAt DateTime?
+  emailConfirmAttempts    Int              @default(0)
+  emailVerifiedAt         DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([venueId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model VenuePhoto {

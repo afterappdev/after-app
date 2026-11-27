@@ -1,4 +1,6 @@
+import { StandardProfileStatus, VenueProfileKind } from '@prisma/client';
 import {
+  filterVenuesForNearbyDiscovery,
   listVenuePublicationProfileGaps,
   venueVisibleToStrangerDiscovery,
 } from './venue-publication';
@@ -25,10 +27,38 @@ describe('venueVisibleToStrangerDiscovery', () => {
     expect(
       venueVisibleToStrangerDiscovery({
         ...baseVenue,
+        publicacaoAutorizada: true,
         logoUrl: 'https://cdn/logo.png',
         coverUrl: 'https://cdn/cover.png',
       }),
     ).toBe(true);
+  });
+
+  it('perfil padrão publicado aparece sem capa nem logo', () => {
+    const standard = {
+      ...baseVenue,
+      profileKind: VenueProfileKind.STANDARD,
+      standardProfileStatus: StandardProfileStatus.PUBLISHED,
+      category: 'Bar',
+      city: 'Goiânia',
+      state: 'GO',
+      publicacaoAutorizada: false,
+    };
+    expect(venueVisibleToStrangerDiscovery(standard)).toBe(true);
+    expect(listVenuePublicationProfileGaps(standard).length).toBeGreaterThan(0);
+  });
+
+  it('perfil padrão em rascunho fica oculto', () => {
+    expect(
+      venueVisibleToStrangerDiscovery({
+        ...baseVenue,
+        profileKind: VenueProfileKind.STANDARD,
+        standardProfileStatus: StandardProfileStatus.DRAFT,
+        category: 'Bar',
+        city: 'Goiânia',
+        state: 'GO',
+      }),
+    ).toBe(false);
   });
 
   it('oculta quando moderado', () => {
@@ -40,6 +70,35 @@ describe('venueVisibleToStrangerDiscovery', () => {
         coverUrl: 'https://cdn/cover.png',
       }),
     ).toBe(false);
+  });
+
+  it('filterVenuesForNearbyDiscovery inclui padrão publicado e exclui rascunho', () => {
+    const publishedStandard = {
+      ...baseVenue,
+      profileKind: VenueProfileKind.STANDARD,
+      standardProfileStatus: StandardProfileStatus.PUBLISHED,
+      category: 'Bar',
+      city: 'Goiânia',
+      state: 'GO',
+      publicacaoAutorizada: false,
+    };
+    const draftStandard = {
+      ...publishedStandard,
+      standardProfileStatus: StandardProfileStatus.DRAFT,
+    };
+    const complete = {
+      ...baseVenue,
+      publicacaoAutorizada: true,
+      logoUrl: 'https://cdn/logo.png',
+      coverUrl: 'https://cdn/cover.png',
+    };
+    expect(
+      filterVenuesForNearbyDiscovery([
+        publishedStandard,
+        draftStandard,
+        complete,
+      ]),
+    ).toEqual([publishedStandard, complete]);
   });
 
   it('Divulgador de Eventos ignora checklist de perfil', () => {

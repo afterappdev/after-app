@@ -1,14 +1,20 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, StandardProfileStatus, VenueProfileKind } from '@prisma/client';
 import { contactsStreetAddress } from '../common/utils/geo';
 import { DAY_KEYS, parseWallClockHm } from '../common/utils/hours';
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { publicVenueWhere } from '../common/moderation/audience';
 import { isEventPromoterCategory } from './venue-categories';
+import { venueVisibleInConsumerDiscovery } from './venue-standard-profile';
 
 export type VenuePublicationFields = {
   ownerUserId: string;
   moderationHiddenAt: Date | null;
+  profileKind?: VenueProfileKind;
+  standardProfileStatus?: StandardProfileStatus | null;
+  publicacaoAutorizada?: boolean;
   category?: string | null;
+  city?: string | null;
+  state?: string | null;
   name: string;
   logoUrl: string | null;
   coverUrl?: string | null;
@@ -24,6 +30,13 @@ export function strangerDiscoveryVenueWhere(
 }
 
 export function filterVenuesForStrangerDiscovery<
+  T extends VenuePublicationFields,
+>(venues: T[]): T[] {
+  return venues.filter((venue) => venueVisibleToStrangerDiscovery(venue));
+}
+
+/** Home "Locais próximos": complete + published standard profiles. */
+export function filterVenuesForNearbyDiscovery<
   T extends VenuePublicationFields,
 >(venues: T[]): T[] {
   return venues.filter((venue) => venueVisibleToStrangerDiscovery(venue));
@@ -105,10 +118,19 @@ export function listVenuePublicationProfileGaps(
   return gaps;
 }
 
-/** Full stranger-visible rule: not moderated away, flag on, profile complete. */
+/** Full stranger-visible rule: not moderated away; standard vs complete checklists. */
 export function venueVisibleToStrangerDiscovery(venue: VenuePublicationFields): boolean {
   if (venue.moderationHiddenAt) return false;
+  const kind = venue.profileKind ?? VenueProfileKind.COMPLETE;
+  if (kind === VenueProfileKind.STANDARD) {
+    return venueVisibleInConsumerDiscovery({
+      ...venue,
+      profileKind: kind,
+      standardProfileStatus: venue.standardProfileStatus ?? null,
+    });
+  }
   if (isEventPromoterCategory(venue.category)) return true;
+  if (venue.publicacaoAutorizada === false) return false;
   return listVenuePublicationProfileGaps(venue).length === 0;
 }
 

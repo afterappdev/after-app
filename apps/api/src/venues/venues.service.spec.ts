@@ -1,7 +1,7 @@
 import { geocodeCity, geocodeVenueProfile } from '../common/utils/geo';
 import { MediaCleanupService } from '../uploads/media-cleanup.service';
 import { VenuesService } from './venues.service';
-import { AccountLifecycleStatus } from '@prisma/client';
+import { AccountLifecycleStatus, VenueProfileKind } from '@prisma/client';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 jest.mock('../common/utils/geo', () => {
@@ -140,6 +140,33 @@ describe('VenuesService geolocation', () => {
 
       expect(result.isOwner).toBe(true);
     });
+
+    it('perfil padrão geocodifica pelo endereço e calcula distância', async () => {
+      const geocoded = { lat: -20.81, lng: -49.37 };
+      geocodeVenueProfileMock.mockResolvedValue(geocoded);
+      prisma.venue.findUnique.mockResolvedValue(
+        venueRecord({
+          profileKind: VenueProfileKind.STANDARD,
+          standardProfileStatus: 'PUBLISHED',
+          lat: 0,
+          lng: 0,
+          contacts: { address: 'Rua Mário Andreazza, 201' },
+          city: 'São José do Rio Preto',
+          state: 'SP',
+        }),
+      );
+
+      const result = await service.getPublic(VENUE_ID, '-20.82', '-49.38');
+
+      expect(geocodeVenueProfileMock).toHaveBeenCalledWith({
+        address: 'Rua Mário Andreazza, 201',
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      });
+      expect(result.lat).toBe(geocoded.lat);
+      expect(result.lng).toBe(geocoded.lng);
+      expect(result.distanceKm).toEqual(expect.any(Number));
+    });
   });
 
   describe('getPublic block and moderation hide', () => {
@@ -246,6 +273,23 @@ describe('VenuesService geolocation', () => {
   describe('updateOwned', () => {
     beforeEach(() => {
       prisma.venue.findUnique.mockResolvedValue(venueRecord());
+    });
+
+    it('persists a catalog music style and clears a blank one', async () => {
+      await service.updateOwned(OWNER_ID, VENUE_ID, { musicStyle: ' Sertanejo ' });
+      expect(prisma.venue.update.mock.calls[0][0].data.musicStyle).toBe(
+        'Sertanejo',
+      );
+
+      await service.updateOwned(OWNER_ID, VENUE_ID, { musicStyle: '  ' });
+      expect(prisma.venue.update.mock.calls[1][0].data.musicStyle).toBeNull();
+    });
+
+    it('rejects a music style outside the catalog', async () => {
+      await expect(
+        service.updateOwned(OWNER_ID, VENUE_ID, { musicStyle: 'Ópera' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.venue.update).not.toHaveBeenCalled();
     });
 
     it('does not geocode when only hours change and preserves lat/lng', async () => {

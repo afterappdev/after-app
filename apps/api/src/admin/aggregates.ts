@@ -275,11 +275,11 @@ export async function consumerTotals(prisma: PrismaService) {
   const [roleCounts, venues] = await Promise.all([
     prisma.user.groupBy({
       by: ['role'],
-      where: { role: { in: CONSUMER_ROLES } },
+      where: { role: { in: CONSUMER_ROLES }, systemAccount: false },
       _count: { _all: true },
     }),
     prisma.venue.count({
-      where: { owner: { role: Role.VENUE } },
+      where: { owner: { role: Role.VENUE, systemAccount: false } },
     }),
   ]);
   const users =

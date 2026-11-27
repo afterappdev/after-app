@@ -46,7 +46,8 @@ export async function fetchGooglePlayInstallAggregate(): Promise<GooglePlayInsta
     .filter((name): name is string =>
       Boolean(name?.endsWith('_overview.csv')),
     )
-    .sort();
+    .sort()
+    .reverse();
 
   if (objectNames.length === 0) {
     logger.warn('Nenhum CSV overview de installs encontrado no bucket Play.');

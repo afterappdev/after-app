@@ -16,6 +16,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { VenuesModule } from './venues/venues.module';
+import { VenueClaimsModule } from './venue-claims/venue-claims.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { VenuesModule } from './venues/venues.module';
     AdminModule,
     UsersModule,
     VenuesModule,
+    VenueClaimsModule,
     HomeModule,
     FavoritesModule,
     CreditsModule,

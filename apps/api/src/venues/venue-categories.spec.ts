@@ -10,10 +10,20 @@ import {
   LEGACY_LIVE_MUSIC_CATEGORY,
   categoryMatches,
   isEventPromoterCategory,
+  listVenuePickerCategories,
   storedCategory,
 } from './venue-categories';
 
 describe('venue categories', () => {
+  it('listVenuePickerCategories retorna catálogo ordenado por nome', () => {
+    const list = listVenuePickerCategories();
+    expect(list.length).toBeGreaterThan(10);
+    expect(list).toContain('🍻 Bares e Botecos');
+    const labels = list.map((item) => item.slice(item.indexOf(' ') + 1));
+    const sorted = [...labels].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    expect(labels).toEqual(sorted);
+  });
+
   const migration = readFileSync(
     join(
       __dirname,
@@ -141,33 +151,41 @@ describe('VenuesService search amenities and categories', () => {
     return { prisma, service };
   }
 
+  function listed(
+    venue: Record<string, unknown> & { contacts?: Record<string, unknown> },
+  ) {
+    return {
+      ownerUserId: 'owner',
+      moderationHiddenAt: null,
+      logoUrl: 'https://cdn.example/logo.png',
+      coverUrl: 'https://cdn.example/cover.png',
+      hoursJson: { mon: { open: '18:00', close: '23:00' } },
+      ...venue,
+      contacts: { address: 'Rua A, 10', ...venue.contacts },
+    };
+  }
+
   it('filtra categoria nova e comodidade nova sem tratar entrada como amenidade de lista', async () => {
     const { prisma, service } = setup();
     prisma.venue.findMany.mockResolvedValue([
-      {
+      listed({
         id: 'a',
         name: 'Açaí da Praça',
         description: null,
         category: '🍨 Sorveterias e Açaí',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
         contacts: { hasWifi: true, hasCoverCharge: true, coverCharge: '20,00' },
-      },
-      {
+      }),
+      listed({
         id: 'b',
         name: 'Bar Antigo',
         description: null,
         category: '🎵 Música ao Vivo',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
         contacts: { hasLiveMusic: true },
-      },
+      }),
     ]);
 
     const wifi = await service.searchByName('', { hasWifi: true });
@@ -182,18 +200,14 @@ describe('VenuesService search amenities and categories', () => {
     expect(asian).toEqual([]);
 
     prisma.venue.findMany.mockResolvedValue([
-      {
+      listed({
         id: 'c',
         name: 'Sushi',
         description: null,
         category: '🍣 Culinária Internacional',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
-        contacts: {},
-      },
+      }),
     ]);
     const legacy = await service.searchByName('', {
       category: '🍣 Culinária Asiática',
@@ -201,42 +215,30 @@ describe('VenuesService search amenities and categories', () => {
     expect(legacy.map((item) => item.id)).toEqual(['c']);
 
     prisma.venue.findMany.mockResolvedValue([
-      {
+      listed({
         id: 'd',
         name: 'Quadra',
         description: null,
         category: '🎯 Lazer e Diversão',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
-        contacts: {},
-      },
-      {
+      }),
+      listed({
         id: 'e',
         name: 'Lanche',
         description: null,
         category: '🍔 Hamburguerias',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
-        contacts: {},
-      },
-      {
+      }),
+      listed({
         id: 'f',
         name: 'Espeto',
         description: null,
         category: '🍢 Espetaria',
-        logoUrl: null,
-        coverUrl: null,
         city: 'São Paulo',
         state: 'SP',
-        hoursJson: null,
-        contacts: {},
-      },
+      }),
     ]);
 
     const sports = await service.searchByName('', {
@@ -251,6 +253,103 @@ describe('VenuesService search amenities and categories', () => {
       category: '🍢 Espetaria',
     });
     expect(skewers.map((item) => item.id)).toEqual(['f']);
+  });
+
+  it('Divulgador de Eventos fica fora da lista inicial e entra só no nome exato', async () => {
+    const { prisma, service } = setup();
+    prisma.venue.findMany.mockResolvedValue([
+      listed({
+        id: 'bar',
+        name: 'Mineiro Bar e Grill',
+        description: null,
+        category: '🍻 Bares e Botecos',
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      }),
+      listed({
+        id: 'equipe',
+        name: 'Equipe After',
+        description: null,
+        category: '🎭 Entretenimento e Eventos',
+        city: 'São José do Rio Preto',
+        state: 'SP',
+      }),
+    ]);
+
+    const initial = await service.searchByName('', {
+      city: 'São José do Rio Preto',
+      state: 'SP',
+    });
+    expect(initial.map((item) => item.id)).toEqual(['bar']);
+
+    const partial = await service.searchByName('equipe');
+    expect(partial.map((item) => item.id)).toEqual([]);
+
+    const exact = await service.searchByName('equipe after');
+    expect(exact.map((item) => item.id)).toEqual(['equipe']);
+
+    const byWord = await service.searchByName('eventos', {}, null, {
+      keywords: true,
+    });
+    expect(byWord.map((item) => item.id)).toEqual([]);
+  });
+
+  it('busca por palavra casa sushi, pagode e área kids', async () => {
+    const { prisma, service } = setup();
+    prisma.venue.findMany.mockResolvedValue([
+      listed({
+        id: 'sushi',
+        name: 'Izakaya',
+        description: null,
+        category: '🍣 Culinária Asiática',
+        city: 'São Paulo',
+        state: 'SP',
+      }),
+      listed({
+        id: 'pagode',
+        name: 'Boteco',
+        description: null,
+        category: '🍻 Bares e Botecos',
+        musicStyle: 'Pagode',
+        city: 'São Paulo',
+        state: 'SP',
+      }),
+      listed({
+        id: 'kids',
+        name: 'Cantina',
+        description: null,
+        category: '🍽️ Restaurantes',
+        city: 'São Paulo',
+        state: 'SP',
+        contacts: { hasKidsSpace: true },
+      }),
+      listed({
+        id: 'padaria',
+        name: 'Padaria',
+        description: null,
+        category: '☕ Cafeterias e Padarias',
+        city: 'São Paulo',
+        state: 'SP',
+      }),
+    ]);
+
+    const sushi = await service.searchByName('sushi', {}, null, {
+      keywords: true,
+    });
+    expect(sushi.map((item) => item.id)).toEqual(['sushi']);
+
+    const pagode = await service.searchByName('pagode', {}, null, {
+      keywords: true,
+    });
+    expect(pagode.map((item) => item.id)).toEqual(['pagode']);
+
+    const kids = await service.searchByName('area kids', {}, null, {
+      keywords: true,
+    });
+    expect(kids.map((item) => item.id)).toEqual(['kids']);
+
+    const nameOnly = await service.searchByName('pagode');
+    expect(nameOnly).toEqual([]);
   });
 
   it('não apaga categoria de catálogo quando o cliente envia string vazia', async () => {

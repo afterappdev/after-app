@@ -33,6 +33,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { VenuesService } from './venues.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
+import { listVenuePickerCategories } from './venue-categories';
 
 class VenueFiscalDocumentDto {
   @IsIn(['CPF', 'CNPJ'])
@@ -55,6 +56,11 @@ class UpdateVenueDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  musicStyle?: string;
 
   @IsOptional()
   @IsString()
@@ -161,6 +167,23 @@ export class VenuesController {
     return this.venuesService.listByCity(city ?? '', user);
   }
 
+  @Get('catalog/categories')
+  catalogCategories() {
+    return listVenuePickerCategories();
+  }
+
+  @Get('registration-matches')
+  registrationMatches(
+    @Query('q') q?: string,
+    @Query('city') city?: string,
+    @Query('state') state?: string,
+  ) {
+    return this.venuesService.searchForRegistration(q ?? '', {
+      city: city?.trim() || undefined,
+      state: state?.trim() || undefined,
+    });
+  }
+
   @Get('search')
   @UseGuards(OptionalJwtAuthGuard)
   search(
@@ -219,6 +242,7 @@ export class VenuesController {
         hasVeganOptions: hasVeganOptions === 'true',
       },
       user,
+      { keywords: true },
     );
   }
 

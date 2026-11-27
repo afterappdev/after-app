@@ -23,6 +23,11 @@ import { AdminFinanceController } from './finance-ledger/admin-finance.controlle
 import { AdminFinanceService } from './finance-ledger/admin-finance.service';
 import { AdminEventoController } from './evento/admin-evento.controller';
 import { AdminEventoService } from './evento/admin-evento.service';
+import { AdminVenueProfileController } from './venues/admin-venue-profile.controller';
+import { AdminVenueProfileService } from './venues/admin-venue-profile.service';
+import { AdminStandardVenueController } from './venues/admin-standard-venue.controller';
+import { AdminStandardVenueService } from './venues/admin-standard-venue.service';
+import { VenuesModule } from '../venues/venues.module';
 
 @Module({
   imports: [
@@ -32,6 +37,7 @@ import { AdminEventoService } from './evento/admin-evento.service';
     UploadsModule,
     CouponsModule,
     AdminStoreMetricsModule,
+    VenuesModule,
   ],
   controllers: [
     AdminAuthController,
@@ -44,6 +50,8 @@ import { AdminEventoService } from './evento/admin-evento.service';
     AdminReportsController,
     AdminFinanceController,
     AdminEventoController,
+    AdminVenueProfileController,
+    AdminStandardVenueController,
   ],
   providers: [
     RolesGuard,
@@ -54,6 +62,8 @@ import { AdminEventoService } from './evento/admin-evento.service';
     AdminReportsService,
     AdminFinanceService,
     AdminEventoService,
+    AdminVenueProfileService,
+    AdminStandardVenueService,
   ],
 })
 export class AdminModule {}
