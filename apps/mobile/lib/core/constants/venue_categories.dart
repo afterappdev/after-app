@@ -39,6 +39,7 @@ class VenueCategories {
     '🎤 Karaokê',
     '🍸 Lounges e Rooftops',
     '🥟 Pastelaria',
+    '🎣 Pesqueiro',
     '🍕 Pizzarias',
     '🎸 Pubs',
     '🍽️ Restaurantes',

@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/location/open_url.dart';
 import '../../core/router/app_router.dart';
+import '../../core/web/web_spa_urls.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/after_logo.dart';
 
@@ -11,6 +14,10 @@ void goToPublicHome(BuildContext context) {
 }
 
 void goToLogin(BuildContext context) {
+  if (kIsWeb) {
+    openExternalUrl(webSpaHashRoute('/login'));
+    return;
+  }
   Navigator.of(context).pushNamed(AppRoutes.login);
 }
 

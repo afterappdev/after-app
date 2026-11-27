@@ -64,7 +64,7 @@ void main() {
         isWeb: true,
         pageUri: Uri.parse('https://app-after.com.br/#/login'),
       ),
-      'https://app-after.com.br/',
+      'https://app-after.com.br/app/',
     );
     expect(
       oauthBrowserRedirect(

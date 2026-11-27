@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/constants/venue_categories.dart';
+import '../../core/constants/venue_music_styles.dart';
 import 'promo_validity.dart';
 import 'venue_hours.dart';
 import 'venue_public_amenities.dart';
@@ -21,6 +22,7 @@ import '../auth/auth_controller.dart';
 import '../auth/models/user_session.dart';
 import '../moderation/report_reasons.dart';
 import '../moderation/report_sheet.dart';
+import 'venue_standard_public_view.dart';
 
 class VenuePublicScreen extends StatefulWidget {
   const VenuePublicScreen({
@@ -374,16 +376,31 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isUser = context.watch<AuthController>().user?.isVenue != true;
     final session = context.watch<AuthController>().user;
-    final canReview = session != null && session.isVenue != true;
     final isOwnVenue = _ownsVenue(session);
-    final canReply = isOwnVenue;
     final showSafetyMenu = !isOwnVenue && _venue != null && _error == null;
+
+    if (!_loading && _error == null && _venue?['isStandardProfile'] == true) {
+      return VenueStandardPublicView(
+        venue: _venue!,
+        venueId: widget.venueId,
+        navIndex: widget.navIndex,
+        onBack: () => Navigator.of(context).maybePop(),
+        onNavTap: _onNavTap,
+        onOpenMap: _openMap,
+        onSafetyMenu: showSafetyMenu ? _openSafetyMenu : null,
+      );
+    }
+    final isUser = session?.isVenue != true;
+    final canReview = session != null && session.isVenue != true;
+    final canReply = isOwnVenue;
     final cover = ApiConfig.resolveMediaUrl(_venue?['coverUrl']?.toString());
     final logo = ApiConfig.resolveMediaUrl(_venue?['logoUrl']?.toString());
     final name = _venue?['name']?.toString() ?? 'Local';
     final category = VenueCategories.present(_venue?['category']?.toString());
+    final musicStyle = VenueMusicStyles.present(
+      _venue?['musicStyle']?.toString(),
+    );
     final description = _venue?['description']?.toString() ?? '';
     final city = _venue?['city']?.toString() ?? '';
     final state = _venue?['state']?.toString() ?? '';
@@ -430,6 +447,7 @@ class _VenuePublicScreenState extends State<VenuePublicScreen> {
                                           logo: logo,
                                           name: name,
                                           category: category,
+                                          musicStyle: musicStyle,
                                           isOpen: isOpen,
                                           hasOpenInfo: hasOpenInfo,
                                           distanceLabel: _distanceLabel,
@@ -585,6 +603,7 @@ class _Header extends StatelessWidget {
     required this.logo,
     required this.name,
     required this.category,
+    required this.musicStyle,
     required this.isOpen,
     required this.hasOpenInfo,
     required this.distanceLabel,
@@ -602,6 +621,7 @@ class _Header extends StatelessWidget {
   final String logo;
   final String name;
   final String category;
+  final String musicStyle;
   final bool isOpen;
   final bool hasOpenInfo;
   final String? distanceLabel;
@@ -769,6 +789,19 @@ class _Header extends StatelessWidget {
                 const SizedBox(height: 1),
                 Text(
                   category,
+                  textAlign: TextAlign.left,
+                  style: const TextStyle(
+                    fontFamily: AppTheme.fontFamily,
+                    fontSize: 12,
+                    height: 1.1,
+                    color: Color(0xFF8B8B96),
+                  ),
+                ),
+              ],
+              if (musicStyle.isNotEmpty) ...[
+                const SizedBox(height: 1),
+                Text(
+                  musicStyle,
                   textAlign: TextAlign.left,
                   style: const TextStyle(
                     fontFamily: AppTheme.fontFamily,

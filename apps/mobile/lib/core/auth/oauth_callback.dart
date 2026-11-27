@@ -1,9 +1,8 @@
+import '../web/web_spa_urls.dart';
+
 String oauthBrowserRedirect({required bool isWeb, required Uri pageUri}) {
   if (!isWeb) return 'after://auth/callback';
-  if (pageUri.scheme == 'http' || pageUri.scheme == 'https') {
-    return '${pageUri.origin}/';
-  }
-  return 'https://app-after.com.br/';
+  return webSpaOAuthRedirect(pageUri: pageUri);
 }
 
 String? _oauthQueryValue(Uri uri, String key) {

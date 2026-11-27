@@ -6,6 +6,8 @@ import 'package:provider/provider.dart';
 
 import 'core/auth/auth_storage.dart';
 import 'core/auth/oauth_callback.dart';
+import 'core/location/open_url.dart';
+import 'core/web/web_spa_urls.dart';
 import 'core/location/device_locator.dart';
 import 'core/location/origin_cache.dart';
 import 'core/network/api_client.dart';
@@ -37,6 +39,8 @@ import 'features/public/account_deletion_uri.dart';
 import 'features/public/legal_pages.dart';
 import 'features/public/privacy_policy_page.dart';
 import 'features/public/terms_of_use_page.dart';
+import 'features/public/venue_claim_request_screen.dart';
+import 'features/public/venue_claim_uri.dart';
 import 'features/public/web_root.dart';
 import 'features/venue/venue_edit_screen.dart';
 import 'features/venue/venue_public_screen.dart';
@@ -101,15 +105,23 @@ Future<void> _consumePendingOAuthToken(AuthController auth) async {
     if (kIsWeb) {
       if (isAccountDeletionConfirmUri(Uri.base) ||
           isPasswordResetUri(Uri.base) ||
-          isAppleWebCallbackUri(Uri.base)) {
+          isAppleWebCallbackUri(Uri.base) ||
+          isVenueClaimUri(Uri.base)) {
         return;
       }
       final onboarding = oauthOnboardingFromUri(Uri.base);
+      final token = oauthTokenFromUri(Uri.base);
+      final onRootShell = !Uri.base.path.startsWith('/app');
+      if (onRootShell && (onboarding != null || token != null)) {
+        final frag = Uri.base.fragment.trim();
+        final suffix = frag.isEmpty ? '' : '#$frag';
+        openExternalUrl('${Uri.base.origin}$kWebSpaBasePath$suffix');
+        return;
+      }
       if (onboarding != null) {
         auth.beginSocialOnboardingFromToken(onboarding);
         return;
       }
-      final token = oauthTokenFromUri(Uri.base);
       if (token != null) {
         await auth.loginWithAccessToken(token);
       }
@@ -162,6 +174,15 @@ class _AfterAppState extends State<AfterApp> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.promo?.consumeLaunchMessage();
+      if (kIsWeb && isVenueClaimUri(Uri.base)) {
+        final venueId = venueIdFromClaimUri(Uri.base);
+        if (venueId != null && venueId.isNotEmpty) {
+          widget.navigatorKey?.currentState?.pushNamed(
+            AppRoutes.claimProfile,
+            arguments: venueId,
+          );
+        }
+      }
     });
     if (!kIsWeb) {
       AppLinks().uriLinkStream.listen((uri) async {
@@ -239,6 +260,21 @@ class _AfterAppState extends State<AfterApp> {
             builder: (_) => ConfirmAccountDeletionPage(
               token: deletionConfirmTokenFromRouteName(settings.name) ?? '',
             ),
+            settings: settings,
+          );
+        }
+        final claimPath = claimProfilePath(settings.name);
+        if (claimPath == AppRoutes.claimProfile ||
+            (settings.name ?? '').contains('reivindicar')) {
+          var venueId = settings.arguments is String
+              ? settings.arguments as String
+              : null;
+          venueId ??= venueIdFromClaimUri(
+            Uri.parse('https://after.local${settings.name ?? ''}'),
+          );
+          venueId ??= venueIdFromClaimUri(Uri.base);
+          return MaterialPageRoute(
+            builder: (_) => VenueClaimRequestScreen(venueId: venueId ?? ''),
             settings: settings,
           );
         }

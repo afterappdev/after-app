@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/location/open_url.dart';
 import '../../core/router/app_router.dart';
+import '../../core/web/web_spa_urls.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../auth/account_recovery_screen.dart';
@@ -10,18 +13,28 @@ import '../auth/register_screen.dart';
 import '../home/home_screen.dart';
 import 'landing_page.dart';
 
-/// Web `/`: landing pública se não houver sessão; HOME se já autenticado.
-/// Não substitui o intro nativo (Android/iOS).
+/// Web `/`: só landing institucional. Login/sessão ficam em `/app/` (React).
+/// Nativo: intro + Home Flutter como antes.
 class WebRoot extends StatelessWidget {
   const WebRoot({super.key});
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      final auth = context.watch<AuthController>();
+      if (auth.bootstrapping) {
+        return const ColoredBox(color: AppTheme.canvas);
+      }
+      // Raiz web = landing institucional sempre; app React fica em `/app/`.
+      return const LandingPage();
+    }
     final auth = context.watch<AuthController>();
     if (auth.bootstrapping) {
       return const ColoredBox(color: AppTheme.canvas);
     }
-    if (auth.user != null) return const HomeScreen();
+    if (auth.user != null) {
+      return const HomeScreen();
+    }
     if (auth.pendingAccountRecovery != null) {
       return const AccountRecoveryScreen();
     }
@@ -43,6 +56,12 @@ class LoginScreenRoute extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthController>();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        openExternalUrl(webSpaHashRoute('/login'));
+      });
+      return const ColoredBox(color: AppTheme.canvas);
+    }
     if (auth.pendingAccountRecovery != null) {
       return const AccountRecoveryScreen();
     }

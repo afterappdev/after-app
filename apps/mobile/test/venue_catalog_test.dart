@@ -19,6 +19,7 @@ const expectedCategories = [
   '🎤 Karaokê',
   '🍸 Lounges e Rooftops',
   '🥟 Pastelaria',
+  '🎣 Pesqueiro',
   '🍕 Pizzarias',
   '🎸 Pubs',
   '🍽️ Restaurantes',
@@ -28,7 +29,7 @@ const expectedCategories = [
 ];
 
 void main() {
-  test('catálogo tem exatamente as 22 categorias, em ordem alfabética pelo nome', () {
+  test('catálogo tem exatamente as 23 categorias, em ordem alfabética pelo nome', () {
     expect(VenueCategories.all, expectedCategories);
     expect(VenueCategories.all, contains('🍢 Espetaria'));
     expect(VenueCategories.all, contains('🥟 Salgaderia'));
@@ -65,6 +66,7 @@ void main() {
         'Karaokê',
         'Lounges e Rooftops',
         'Pastelaria',
+        'Pesqueiro',
         'Pizzarias',
         'Pubs',
         'Restaurantes',

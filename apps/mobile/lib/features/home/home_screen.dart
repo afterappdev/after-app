@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/constants/venue_amenities.dart';
-import '../../core/constants/venue_categories.dart';
+import '../../core/constants/venue_music_styles.dart';
 import '../../core/location/device_locator.dart';
 import '../../core/location/geo_math.dart';
 import '../../core/location/geo_origin.dart';
@@ -463,8 +463,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final api = context.read<ApiClient>();
       final user = context.read<AuthController>().user;
       final trimmed = query.trim();
-      final profileCity = user?.city?.trim() ?? '';
-      final profileUf = user?.state?.trim() ?? '';
+      final profileCity = user?.city.trim() ?? '';
+      final profileUf = user?.state.trim() ?? '';
       final data = await api.get(
         '/venues/search',
         query: {
@@ -651,8 +651,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _resetToProfileCityIfNeeded() {
     final user = context.read<AuthController>().user;
-    final profileCity = user?.city?.trim() ?? '';
-    final profileUf = user?.state?.trim() ?? '';
+    final profileCity = user?.city.trim() ?? '';
+    final profileUf = user?.state.trim() ?? '';
     final matches = homeFeedMatchesProfileCity(
       displayedCity: _selectedCity,
       displayedUf: _selectedUf,
@@ -1139,7 +1139,7 @@ class _VenueSearchField extends StatelessWidget {
                     ),
                     decoration: const InputDecoration(
                       isDense: true,
-                      hintText: 'Buscar local',
+                      hintText: 'Busque por locais ou palavras',
                       hintStyle: TextStyle(
                         fontFamily: AppTheme.fontFamily,
                         fontWeight: FontWeight.w400,
@@ -1213,8 +1213,9 @@ class _VenueSearchField extends StatelessWidget {
                     if (city.isNotEmpty) city,
                     if (uf.isNotEmpty) uf,
                   ].join(', ');
-                  final category = VenueCategories.present(
+                  final category = venueCategoryWithStyle(
                     item['category']?.toString(),
+                    item['musicStyle']?.toString(),
                   );
                   final avg = (item['avgRating'] as num?)?.toDouble();
                   final reviewCount =
@@ -1341,7 +1342,10 @@ class _PromotionCards extends StatelessWidget {
             isOpen: item['isOpen'] == true,
             hasOpenInfo: item['isOpen'] != null,
             distanceLabel: _formatDistanceKm(item['distanceKm']),
-            category: VenueCategories.present(venue['category']?.toString()),
+            category: venueCategoryWithStyle(
+              venue['category']?.toString(),
+              venue['musicStyle']?.toString(),
+            ),
             dealTitle: item['title']?.toString().trim().isNotEmpty == true
                 ? item['title'].toString()
                 : 'Promoção do dia',
@@ -1408,7 +1412,10 @@ class _VenueCards extends StatelessWidget {
             isOpen: venue['isOpen'] == true,
             hasOpenInfo: venue['isOpen'] != null,
             distanceLabel: _formatDistanceKm(venue['distanceKm']),
-            category: VenueCategories.present(venue['category']?.toString()),
+            category: venueCategoryWithStyle(
+              venue['category']?.toString(),
+              venue['musicStyle']?.toString(),
+            ),
             city: venue['city']?.toString() ?? '',
             description: venue['description']?.toString() ?? '',
             onTap: () {

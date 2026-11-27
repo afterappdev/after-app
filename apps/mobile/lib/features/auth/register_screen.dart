@@ -12,6 +12,7 @@ import '../credits/fiscal_invoice_controller.dart';
 import '../profile/age_band.dart';
 import '../../core/widgets/after_logo.dart';
 import '../public/public_chrome.dart';
+import '../../core/router/app_router.dart';
 import 'auth_controller.dart';
 import 'models/social_onboarding.dart';
 
@@ -66,6 +67,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Timer? _cityDebounce;
   int _citySearchGen = 0;
 
+  List<Map<String, dynamic>> _venueResults = [];
+  Timer? _venueDebounce;
+  int _venueSearchGen = 0;
+  bool _searchingVenues = false;
+
   @override
   void initState() {
     super.initState();
@@ -111,6 +117,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ..removeListener(_onFormChanged)
       ..dispose();
     _cityDebounce?.cancel();
+    _venueDebounce?.cancel();
     _cityQuery.dispose();
     super.dispose();
   }
@@ -149,6 +156,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _selectRole(String role) {
+    if (role != 'VENUE') {
+      _venueDebounce?.cancel();
+      _venueSearchGen++;
+      _venueResults = [];
+      _searchingVenues = false;
+    }
     if (role != 'USER' && role != 'VENUE') return;
     setState(() => _role = role);
   }
@@ -220,6 +233,74 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  Future<void> _searchVenueMatches(String query) async {
+    final gen = ++_venueSearchGen;
+    if (query.trim().length < 2) {
+      if (!mounted || gen != _venueSearchGen) return;
+      setState(() {
+        _venueResults = [];
+        _searchingVenues = false;
+      });
+      return;
+    }
+    setState(() => _searchingVenues = true);
+    try {
+      final api = context.read<ApiClient>();
+      final data = await api.get(
+        '/venues/registration-matches',
+        query: {
+          'q': query.trim(),
+          if (_selectedCity != null && _selectedCity!.isNotEmpty)
+            'city': _selectedCity!,
+          if (_selectedUf != null && _selectedUf!.isNotEmpty) 'state': _selectedUf!,
+        },
+      );
+      if (!mounted || gen != _venueSearchGen) return;
+      final list = (data as List<dynamic>)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      setState(() {
+        _venueResults = list;
+        _searchingVenues = false;
+      });
+    } on ApiException {
+      if (!mounted || gen != _venueSearchGen) return;
+      setState(() {
+        _venueResults = [];
+        _searchingVenues = false;
+      });
+    }
+  }
+
+  void _onVenueNameChanged(String value) {
+    _venueDebounce?.cancel();
+    if (_role != 'VENUE') {
+      setState(() {
+        _venueResults = [];
+        _searchingVenues = false;
+      });
+      return;
+    }
+    if (value.trim().length < 2) {
+      _venueSearchGen++;
+      setState(() {
+        _venueResults = [];
+        _searchingVenues = false;
+      });
+      return;
+    }
+    _venueDebounce = Timer(const Duration(milliseconds: 280), () {
+      _searchVenueMatches(value);
+    });
+  }
+
+  void _openVenueClaim(String venueId) {
+    if (venueId.isEmpty) return;
+    Navigator.of(context).pushNamed(
+      '${AppRoutes.claimProfile}?venueId=${Uri.encodeComponent(venueId)}',
+    );
+  }
+
   void _onCityQueryChanged(String value) {
     _cityDebounce?.cancel();
     if (_selectedCity != null && value.trim() == _selectedCityLabel) {
@@ -266,6 +347,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
     });
     FocusScope.of(context).unfocus();
+    if (_role == 'VENUE' && _name.text.trim().length >= 2) {
+      _searchVenueMatches(_name.text);
+    }
   }
 
   Future<void> _submit() async {
@@ -651,6 +735,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   autofillHints: null,
                   enableSuggestions: false,
                   autocorrect: false,
+                  onChanged: _onVenueNameChanged,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(personNameChars),
                   ],
@@ -659,8 +744,111 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ? 'Digite o nome do local'
                         : 'Digite seu nome',
                     icon: Icons.person_outline_rounded,
+                    suffix: _role == 'VENUE' && _searchingVenues
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: _accent,
+                              ),
+                            ),
+                          )
+                        : null,
                   ),
                 ),
+                if (_role == 'VENUE' && _venueResults.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Locais parecidos no After. Toque no perfil padrão para solicitar acesso.',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontFamily,
+                      fontSize: 12,
+                      color: _subtitle,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shadowColor: Colors.black12,
+                    borderRadius: BorderRadius.circular(14),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: ListView.separated(
+                        key: const Key('register-venue-suggestions'),
+                        primary: false,
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        itemCount: _venueResults.length,
+                        separatorBuilder: (_, _) => const Divider(
+                          height: 1,
+                          color: Color(0xFFE8E8EE),
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = _venueResults[index];
+                          final id = item['id']?.toString() ?? '';
+                          final label = item['name']?.toString() ?? '';
+                          final city = item['city']?.toString() ?? '';
+                          final state = item['state']?.toString() ?? '';
+                          final logoUrl = item['logoUrl']?.toString().trim() ?? '';
+                          final claimable = item['claimable'] == true;
+                          final managed = item['managed'] == true;
+                          final subtitle = claimable
+                              ? '$city, $state · Perfil padrão'
+                              : '$city, $state${managed ? ' · Já gerenciado' : ''}';
+                          return ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: const Color(0xFFEEF1F0),
+                              backgroundImage:
+                                  logoUrl.isNotEmpty ? NetworkImage(logoUrl) : null,
+                              child: logoUrl.isEmpty
+                                  ? Text(
+                                      label.isNotEmpty
+                                          ? label[0].toUpperCase()
+                                          : '?',
+                                      style: const TextStyle(
+                                        fontFamily: AppTheme.fontFamily,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF6B4EFF),
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            title: Text(
+                              label,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            subtitle: Text(
+                              subtitle,
+                              style: const TextStyle(
+                                fontFamily: AppTheme.fontFamily,
+                                fontSize: 12,
+                              ),
+                            ),
+                            trailing: claimable
+                                ? const Icon(
+                                    Icons.login_rounded,
+                                    color: _accent,
+                                    size: 20,
+                                  )
+                                : null,
+                            enabled: claimable,
+                            onTap: claimable ? () => _openVenueClaim(id) : null,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 if (_locationsError != null) ...[
                   Text(

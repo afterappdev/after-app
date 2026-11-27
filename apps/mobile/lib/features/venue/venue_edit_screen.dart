@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/venue_amenities.dart';
 import '../../core/constants/venue_categories.dart';
+import '../../core/constants/venue_music_styles.dart';
 import '../../core/config/api_config.dart';
 import '../../core/media/gallery_media.dart';
 import '../../core/network/api_client.dart';
@@ -15,6 +16,7 @@ import '../../core/theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models/user_session.dart';
 import 'venue_category_dropdown_field.dart';
+import 'venue_music_style_dropdown_field.dart';
 import 'venue_location_map.dart';
 import 'venue_hours.dart';
 import 'venue_hours_editor.dart';
@@ -54,6 +56,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
   HoursFormState _hoursForm = createDefaultHoursForm();
 
   String? _category;
+  String? _musicStyle;
   bool _requiresCategoryChoice = false;
   String? _logoUrl;
   String? _coverUrl;
@@ -256,6 +259,9 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
           VenueCategories.resolve(loadedCategory) ==
           VenueCategories.legacyLiveMusic;
       _category = VenueCategories.selectionFor(loadedCategory);
+      _musicStyle = VenueMusicStyles.selectionFor(
+        data['musicStyle']?.toString(),
+      );
       _logoUrl = data['logoUrl'] as String?;
       _coverUrl = data['coverUrl'] as String?;
       _menuUrl.text = data['menuUrl']?.toString() ?? '';
@@ -528,6 +534,7 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
       await context.read<ApiClient>().put('/venues/$venueId', body: {
         'name': _name.text.trim(),
         'category': _category ?? '',
+        'musicStyle': _musicStyle ?? '',
         'description': _description.text.trim(),
         'city': city,
         'state': state,
@@ -864,6 +871,17 @@ class _VenueEditScreenState extends State<VenueEditScreen> {
               icon: Icons.local_offer_outlined,
             ),
             onChanged: (value) => setState(() => _category = value),
+          ),
+          const SizedBox(height: 10),
+          VenueMusicStyleDropdownField(
+            value: _musicStyle,
+            style: _inputTextStyle,
+            hintStyle: _inputTextStyle.copyWith(color: _hint),
+            decoration: _fieldDecoration(
+              hint: 'Estilo musical',
+              icon: Icons.music_note_outlined,
+            ),
+            onChanged: (value) => setState(() => _musicStyle = value),
           ),
           const SizedBox(height: 14),
           _amenityGrid(),
